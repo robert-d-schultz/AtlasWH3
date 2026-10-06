@@ -1,207 +1,84 @@
-# Atlas3K
+# AtlasWH3
 
-A campaign map editor and builder for **Total War: THREE KINGDOMS**. It works on the Assembly Kit's own sources
-(the `.terry` project, its layers and maps) and compiles the map **natively**, without BOB.
+Campaign map tooling for **Total War: WARHAMMER III**. It builds a campaign map from the Assembly Kit's own sources
+(the Terry project, its layers and maps) **natively**, without BOB, and adds editors for those sources.
 
-> **Alpha.** Back up your assembly kit (`raw_data\terrain\campaigns\<map>`, `working_data`) and your packs before
-> building over them.
+AtlasWH3 is a standalone fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3K), the same tooling for Total War:
+THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline differs a lot from 3K's, so AtlasWH3 is
+retargeted to WH3 only.
 
-## What it does
+> **Status: planning. Nothing has been ported yet.** The code in this repository is still Atlas3K's 3K code, as forked
+> at tag `fork-point` (Atlas3K 0.1.0-alpha.2). It does not support WH3 yet, and with the pinned SDK it does not build
+> as is. The plan is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md).
 
-| Part | What for |
-|---|---|
-| **Scene editor** | Props, entities, prefabs and layers of the campaign `.terry`, in a 2D top view and a 3D view (forests, water, rivers, seasons). The **Terrain & trees** tab paints the kit's land and sea height maps and the CampaignTree map, with undo and save. The **Props** tab places new props from the game's models by clicking in either view, and clamps floating props to BOB's ground height ([docs](docs/scene_props_tools.md)). |
-| **Tile map** | Paint the campaign `tile_map.png` hex by hex. Every stroke is validated against BOB's tile-matching rules. The **Errors** tab (F8) highlights every tile-map error and recommends a fix for it (details below). The tile map can be read from the kit, any file, or a `.pack` (*File > Tile map source…*); edits always save to a loose file. |
-| **Terrain painter** | Heights, ground textures and trees on the compiled map. |
-| **Campaign battles** | The catchment areas where campaign battles start (`battle_locations_map.bin`), read from your linked packs. Each settlement gets a battle status (no catchment, wrong type, missing or broken redirect) and a one-click fix. You can redirect an area to any battle map in the packs, with the `battles_tables` row written for you; it saves to the output folder, a new pack or the kit ([docs](docs/battle_map_editor.md)). |
-| **Build** | Compile the map (rasters, tile list, global map and meshes, rivers, global props, camera heightmap, trees, lookup), run your own steps, pack and install. One click, or one step at a time. |
+## Why
 
-## What the build generates
+A full reprocess of a WH3 campaign map in BOB takes about 20 minutes:
+- about ten separate actions
+- BOB takes minutes just to open
+- some actions read their inputs from the **.pack** instead of `working_data`, so intermediate results have to be
+  packed and installed between actions
 
-Each compile step writes the same files BOB's campaign actions write. "Match" is how much of Atlas3K's output is
-identical to BOB's own output for the same inputs, checked byte by byte (`Atlas3K.Cli parity`) on the vanilla map
-(`3k_dlc07_main_map`) or on a large modded map (190 Expanded, `main190`).
+Two outputs don't build in BOB at all:
+- *Generate Camera Height Map* crashes, so `camera_heightmap.png` is made by hand.
+- Devastation pieces only come out if you set up a fake second campaign map for BOB to process.
 
-| Step | Generates (in `working_data`) | Replaces BOB action | Match with BOB | Checked on |
-|---|---|---|---|---|
-| `rasters` | `lf_height_map` / `lf_sea_height_map` (`.compressed_map`, `.dds`), `climate_map.cm` | height maps, climate map | 100% | vanilla |
-| `tile_list` | `tile_list.bin` | Tilemap | 100% | vanilla |
-| `global_map` | `global_map\global_blend.dds`, `texture_arrays.xml`, `tile_list.bin` | Global Mesh (global map part) | 100% | vanilla |
-| `global_mesh` | `global_meshes\land_mesh_N`, `sea_mesh_N` (`.rigid_model_v2`, `.compressed_map`) | Global Mesh | 100% (494 / 494 files main190, 465 / 465 vanilla)* | main190, vanilla |
-| `rivers` | `models\river_N` (`.wsmodel`, `.rigid_model_v2`), `height_patches\` | Terry file (rivers) | 100% (24 / 24 rivers, 87 / 87 height patches)* | main190 |
-| `global_props` | `global_props.bin` | Terry file (props) | 100% (24,778,485 bytes, 12,465 entries) | main190 |
-| `camera_heightmap` | `campaign_maps\<map>\camera_heightmap.png` | Generate Camera Height Map | 100% (2,506,520 / 2,506,520 cells) | vanilla |
-| `trees` | `campaign_maps\<map>\display\trees\trees.campaign_tree_list` | Campaign Trees | 100% (205,767 / 205,767 trees) | vanilla |
-| `lookup` | `campaign_maps\<map>\*lookup*.tga`, `.dds`, `_minimap.tga` | Convert lookup texture | 100% | vanilla |
+The goal is **one command that rebuilds the whole map from loose files**, with no pack round trips and no workarounds.
 
-\* Not counting the few bytes BOB leaves uninitialised (leftover memory). Those bytes differ between two BOB runs of
-the same input too, so the parity tool masks them.
+## Planned build steps
 
-Meshes over BOB's 65,000-vertex limit are split the way BOB's mesh splitter does it, into extra meshes of the same
-model.
+| Step | Writes | Replaces |
+|---|---|---|
+| `heightmaps` | `full_height_map.dds`, `full_logic_map.compressed_map`, `shroud_heights.dds` | Campaign Heightmap, Campaign Shroud Heights |
+| `trees` | `trees.campaign_tree_list` | Campaign Trees |
+| `tile_list` | `tile_list.bin` | Tilemap |
+| `global_map` | `global_map\` (blend, texture arrays, tile list) | Global Tilemap, Campaign Global Blendmap |
+| `masks` | colour overlays, corruption, snow, event area, patch and tile masks, `lf_normal` | Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask |
+| `devastation_pieces` | `pieces\event_*` for the main and devastated maps | Devastation pieces, without a fake campaign |
+| `lookup` | `*_lookup.tga` / `.dds`, `_minimap.tga` | Convert lookup texture |
+| `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map (crashes in BOB) |
+| `global_props` + `rivers` | `global_props.bin`, `global_props_sound.bin`, devastation-type BMDs, `models\river_*` | the props / Terry export action |
+| `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation (last) |
 
-### Campaign AI pathfinding data (`hlp_spd`)
+Until a step is native, the build runs that BOB action headless and handles the pack round trips itself.
+- **The aim:** files that work correctly in game first, then byte-identical to BOB's output wherever that is
+  practical.
+- **Inputs, not outputs:** `map.hex`, `map_data.esf`, `pathfinding.ppd` and the lookup `.bmp` come from CAIME, as
+  they did for Atlas3K. `startpos.esf` is out of scope.
 
-No BOB action makes these two files: CA generates them with the campaign engine (`empirecampaign.modder.x64.dll`,
-`reprocess_spd_data` / `reprocess_hlp_data`). Atlas3K builds both from `pathfinding.ppd` and `map_data.esf`, and the
-comparison is against the files CA ships:
+## Documentation
 
-| Step | Generates | Match with CA's file | Time |
-|---|---|---|---|
-| `hlp_spd` | `campaign_maps\<map>\spd_data.esf` (AI path table) | 100%, byte-identical on 5 vanilla files (dlc04, dlc06, dlc07 x2, 8p); 190E: 99.997% of values | 0.13 s vanilla, 0.5 s 190E |
-| `hlp_spd` | `campaign_maps\<map>\hlp_data.esf` (AI transition graph) | identical areas: 330 / 334 (dlc07), 335 / 339 (dlc06), 313 / 321 (dlc04), 311 / 321 (8p), 633 / 644 (190E); cost values 100% wherever an area's transitions match | 0.9 s vanilla, 2.8 s 190E |
+- [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md): the plan, with the decisions made, the phases, the test maps and
+  the risks.
+- [`docs/surveys/warhammer3.md`](docs/surveys/warhammer3.md): Atlas3K's survey of how far its 3K build carries over
+  to WH3, format by format.
+- The rest of `docs/` and `research/` is Atlas3K's 3K documentation. It is kept for its method (Ghidra, Frida
+  instrumentation of BOB, byte-level parity diffs) and for the rules the two games share.
+- Atlas3K's own README (3K features, install, build window, CLI):
+  [at the fork point](https://github.com/Ironictw2st/Atlas3K/blob/cdd0a08fa0a07db3bc2e7faba6822a75d5512d91/README.md).
 
-The remaining `hlp_data` differences are ties between routes of exactly equal cost, plus, on 190E, one region whose
-settlement and roads CA's build treated differently from what the map files say. The search code itself is verified
-against the engine's own search loop, and the start position was ruled out as the cause: the differences come from
-campaign state that exists only while the game runs. The generated files are valid and give equivalent AI routes.
-CLI: `Atlas3K.Cli hlp-spd [--in dir] [--out dir] [--compare dir]`. Details: [`docs/hlp_spd.md`](docs/hlp_spd.md).
+## Related tools
 
-## Install
-
-1. Install Total War: THREE KINGDOMS and its **Assembly Kit** (Steam → Library → Tools).
-2. Unzip `Atlas3K-<version>.zip` anywhere and run `Atlas3K.exe`. It needs Windows 10/11 x64 and a Direct3D 11 GPU, and no
-   .NET install (the runtime is included).
-3. The first start opens **Setup**:
-   - It finds the game through Steam. Check the folders; a green tick means the folder was found.
-   - Pick a map and press **Prepare game data**. This copies the map's compiled files and the tree tables out of
-     your own game packs into `%LocalAppData%\Atlas3K`. Atlas3K ships none of the game's data.
-
-Settings live in `%AppData%\Atlas3K\settings.json`. Change them later from **File › Settings** on the start page, the
-**Settings** tile, or **Help › Settings** / **Window › Settings** in any editor.
-
-### Walkthroughs
-
-The first time each window opens (start page, Settings, Scene editor, Tile map, Terrain painter, Build), a short guided
-tour rings its panels one at a time and says what each is for. **Next** / Enter goes on, **Back** goes back, **Skip
-tour** / Esc ends it. Replay a window's tour with **Help › Walkthrough for this window** (F1; the **Walkthrough** button
-in the Build window, **Show the walkthrough** in Settings). **Help › Reset all walkthroughs** on the start page, or **Reset
-walkthroughs** in Settings, shows every tour again.
-
-### Choosing the map
-
-The start page has an **Assembly kit** list (the `assembly_kit*` folders next to the game) and a **Map** list: the maps
-in that kit's `raw_data\terrain\campaigns` that have a `.terry`, plus the maps in your linked packs. The choice is
-remembered, and the Scene editor, Tile map, Terrain painter and Build all open on it.
-
-### Linked packs (read-only)
-
-**Settings › Linked packs** links mod `.pack` files, for example your map mod in the game's `data` folder. Atlas3K reads
-them before the vanilla packs (top of the list wins) for compiled map files, DB tables and assets. **Prepare game data**
-then lists every map (vanilla, kit and linked packs) and copies the chosen map's compiled files out of the linked packs
-first, then the vanilla packs.
-
-Atlas3K never writes to a pack or to the game's `data` folder. Edits go to the assembly kit (`raw_data`) or the output
-folder, and Settings refuses a cache or output folder inside `data`.
-
-Packs are read by Atlas3K's own C# reader (`Atlas3K.Formats\Packs\PackFile`). RPFM's library (`rpfm_lib`) is a Rust
-crate, so using it would mean shipping a native bridge for no gain: listing and reading uncompressed pack entries is all
-these features need, and the DB tables decode with the built-in schemas. RPFM itself stays the tool for editing packs.
-
-## Building a map
-
-1. Open **Build** (Ctrl+B from any editor).
-2. Click **New project** and save the `.atlas3k` file next to your mod's work.
-3. Press **Build all** (F5). The left column shows each segment and step as it runs. The log shows everything; filter
-   it, or tick *Selected row only*.
-
-| Segment | Does |
-|---|---|
-| Validate | Checks inputs and the tile map before anything is written. Accept known tile-map codes in the profile. |
-| Compile | The native steps. Tick only the ones you need; a step reads earlier steps' output from disk. |
-| Custom steps | Your own commands (see below). |
-| Pack | **New:** a pack with just the compiled map. **Merge:** your existing mod pack, with the map's folders replaced. |
-| Install | Copies the pack into the game's `data` folder, keeping a backup of the old one. Refuses while the game runs. |
-
-- **Run selected** runs only the highlighted row (one step, one custom step, or one segment).
-- **Pack only** re-packs without compiling.
-- **Cancel** stops at the next check.
-- Every run writes a log and a JSON report to `<output>\build_logs`.
-
-Hover any row, button or field for an info card on what it does. The **Project settings** tab edits everything else:
-- the compile output (default: the kit's `working_data`, as BOB did)
-- accepted tile-map errors
-- folders to delete before compiling
-- a terrain backup folder
-- pack mode and contents
-- install options
-
-### Custom steps
-
-Any program or script, run at one of these points: before compile, after compile, after pack, or after install.
-Use them for CAIME, an RPFM start-position build, your own Python fix-ups, and so on.
-
-**Tokens** in the command, arguments and working folder:
-
-| Token | Becomes |
-|---|---|
-| `{project}` | the project file's folder |
-| `{ak}` | the assembly kit |
-| `{map}` | the map name |
-| `{game}` | the game's `data` folder |
-| `{out}` | the compile output |
-| `{pack}` | the output pack |
-
-**Environment variables:** `ATLAS3K_AK`, `ATLAS3K_MAP`, `ATLAS3K_OUT`, `ATLAS3K_GAME`, `ATLAS3K_PACK`,
-`ATLAS3K_PROJECT` and `ATLAS3K_CLI` (the command-line tool).
-
-A step's output goes to the build log. A non-zero exit stops the build unless *Continue on error* is ticked.
-
-## Fixing tile-map errors
-
-Open the tile map editor's **Errors** tab (F8). The Build window also offers *Show tile errors* when Validate or
-`tile_list` finds problems.
-
-**What it shows**
-- Every problem hex is highlighted: red for errors, amber for warnings, magenta for holes. When zoomed out, each one
-  is drawn as a dot.
-- The list groups errors by type.
-- **Find holes** runs BOB's tile matching on the whole map (1–3 minutes) to find spots that would get no tile in game.
-
-**Working through it**
-- Select an error (or press N / Shift+N). The map centres on it, and the recommended repaint is previewed with a
-  dashed outline.
-- Before you can apply a fix, Atlas3K runs BOB's tile matching on the area around it to check it opens no new hole.
-  Fixes that would open a hole are dropped; the next-best one is offered, or the error is marked *manual* with advice.
-- **Apply fix** (Enter) applies the fix. **Fix all of this type** and **Fix all safe** apply many fixes as one stroke.
-- Every fix is an ordinary unsaved stroke: Ctrl+Z undoes it, and Ctrl+S saves it to the journal.
-
-On the command line, use `tiles-errors [--simulate] [--codes a,b] [--ops-out fixes.json]` and
-`tiles-fix [--codes a,b] [--dry-run]`.
-
-## Command line
-
-`Atlas3K.Cli.exe` runs the same builder headless:
-
-```
-Atlas3K.Cli.exe build --project my_map.atlas3k [--segments validate,compile,custom,pack,install] [--steps a,b] [--json]
-Atlas3K.Cli.exe new-project my_map.atlas3k --map 3k_main_map
-Atlas3K.Cli.exe setup --map 3k_main_map            # first-run data, as Settings › Prepare game data
-Atlas3K.Cli.exe build-campaign --steps rasters,tile_list --out <dir>   # compile steps only
-Atlas3K.Cli.exe validate-tilemap                   # tile-map pre-flight
-```
-
-Run it without arguments for every command.
-
-## Research: building without BOB
-
-The native build reproduces BOB's output byte for byte. [`research/README.md`](research/README.md) describes the method (Ghidra, Frida instrumentation of BOB, field-level diffs), the non-obvious rules for each step, and the tools, so the same can be done for other Warscape games. Per-step details: [`docs/native_campaign_build.md`](docs/native_campaign_build.md).
+- [WH3_visual_map_decompiler](https://github.com/robert-d-schultz/WH3_visual_map_decompiler) does the reverse: it
+  turns a compiled WH3 campaign map back into a Terry project. AtlasWH3 reuses its format readers, and the two together
+  give a round-trip test.
+- [CampaignMapToolkit (CAIME)](https://github.com/robert-d-schultz/CampaignMapToolkit) makes the campaign AI map files
+  AtlasWH3 takes as input. Its code is under a non-commercial licence, so none of it is copied here.
 
 ## Building from source
 
 ```
 dotnet build Atlas3K.slnx -c Release
 dotnet test src/Atlas3K.Tests
-powershell -ExecutionPolicy Bypass -File tools\publish.ps1   # self-contained zip in dist\
 ```
 
-The source needs the .NET 9 SDK (pinned in `global.json`).
-
-See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
+The current `global.json` pins .NET SDK 9.0.312. The first phase of the plan moves the projects to .NET 10 and renames
+them to AtlasWH3.
 
 ## Licence
 
-Atlas3K is released under the [MIT licence](LICENSE). The libraries it uses keep their own licences; see
+[MIT](LICENSE), as Atlas3K. The libraries it uses keep their own licences; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Not affiliated with Creative Assembly or SEGA. Total War: THREE KINGDOMS and its Assembly Kit are their property.
+Not affiliated with Creative Assembly or SEGA. Total War: WARHAMMER III and its Assembly Kit are their property.
+AtlasWH3 ships none of the game's data.
