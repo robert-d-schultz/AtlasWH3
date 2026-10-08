@@ -67,3 +67,18 @@ chosen maps' folders; marked with `atlaswh3_scratch_kit.txt`) and `BobRunner` ru
 AtlasWH3.Cli bob-scratch --maps cr_combi_expanded_map_1           # create / refresh the scratch kit
 AtlasWH3.Cli bob-run --maps cr_combi_expanded_map_1 --fresh       # the default group, outputs cleared first
 ```
+
+## A fresh run against the user's own output (IEE, 2026-10-08)
+
+`bob-run --maps cr_combi_expanded_map_1 --fresh` in the scratch kit: exit 0, 8 actions, 632 s. Compared with the
+`working_data` the user's GUI runs left:
+
+| Output | Fresh run vs the user's |
+|---|---|
+| `colour_overlay.dds`, `lf_sea_colour.dds`, `corruption_mask.dds`, `snow_mask.dds`, `event_area_mask.dds` | byte-identical (deterministic) |
+| `patch_mask.dds` | not written: the map's PatchVisibilityMask has no layers (the user's file is older) |
+| `global_props.bin`, `global_props_sound.bin`, `models/river_*`, `event_trees` | differ: the layers changed after the user's last run |
+| `event_tiles` | empty: the scratch kit had no `tile_list.bin` (it comes from Tilemap, a GUI-only action) |
+
+So a hybrid build must write the native `tile_list.bin` (and trees) into the scratch kit **before** the BOB group
+runs, or the pieces lose their tile lists.

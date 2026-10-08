@@ -16,9 +16,11 @@ namespace AtlasWH3.Formats.Maps;
 ///   raw         mode 143, 256 u16 values (size 513)
 /// All bit streams are packed LSB first.
 ///
-/// <see cref="Encode"/> reproduces BOB's output byte for byte (verified on every vanilla 3k_dlc07 file). The
-/// choice rule: one value is a constant palette; otherwise palette (only if &lt;= 127 values) or base+delta (only
-/// if &lt;= 13 bits), whichever needs fewer bits per pixel, base+delta winning ties; raw otherwise.
+/// <see cref="Encode"/> reproduces BOB's output byte for byte (verified on every vanilla 3k_dlc07 file, and with
+/// <c>bitTilePadding</c> 3 on WH3's full_logic_map of the IEE and Old World maps). The choice rule: one value is a
+/// constant palette; otherwise palette (only if &lt;= 127 values) or base+delta (only if &lt;= 13 bits), whichever needs
+/// fewer bits per pixel, base+delta winning ties; raw otherwise. WH3's BOB writes 3 more (zero) bytes after every
+/// bit-packed tile (palette of 2+ values, base+delta).
 /// </summary>
 public static class CompressedMap
 {
@@ -94,24 +96,29 @@ public static class CompressedMap
         return new Map(raster, header, version, tw, th);
     }
 
-    public static void Write(string path, Raster<ushort> raster, float[] header, ushort version = 3, int tileSize = 16) =>
-        File.WriteAllBytes(path, Encode(raster, header, version, tileSize));
+    /// <summary>The zero bytes WH3's BOB writes after each bit-packed tile.</summary>
+    public const int Wh3BitTilePadding = 3;
 
-    public static byte[] Encode(Raster<ushort> raster, float[] header, ushort version = 3, int tileSize = 16)
+    public static void Write(string path, Raster<ushort> raster, float[] header, ushort version = 3, int tileSize = 16, int bitTilePadding = 0) =>
+        File.WriteAllBytes(path, Encode(raster, header, version, tileSize, bitTilePadding));
+
+    public static byte[] Encode(Raster<ushort> raster, float[] header, ushort version = 3, int tileSize = 16, int bitTilePadding = 0)
     {
         if (header.Length != 6) throw new ArgumentException("header needs 6 floats", nameof(header));
         var cols = (raster.Width + tileSize - 1) / tileSize;
         var rows = (raster.Height + tileSize - 1) / tileSize;
         var tiles = new byte[cols * rows][];
-        var samples = new ushort[tileSize * tileSize];
-        for (var row = 0; row < rows; row++)
-        for (var col = 0; col < cols; col++)
+        Parallel.For(0, rows, row =>
         {
-            for (var y = 0; y < tileSize; y++)
-            for (var x = 0; x < tileSize; x++)
-                samples[y * tileSize + x] = raster.GetClamped(col * tileSize + x, row * tileSize + y);
-            tiles[row * cols + col] = EncodeTile(samples);
-        }
+            var samples = new ushort[tileSize * tileSize];
+            for (var col = 0; col < cols; col++)
+            {
+                for (var y = 0; y < tileSize; y++)
+                for (var x = 0; x < tileSize; x++)
+                    samples[y * tileSize + x] = raster.GetClamped(col * tileSize + x, row * tileSize + y);
+                tiles[row * cols + col] = EncodeTile(samples, bitTilePadding);
+            }
+        });
 
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
@@ -161,7 +168,7 @@ public static class CompressedMap
         for (var i = 0; i < n; i++) tile[i] = palette[idx.Read(paletteBits)];
     }
 
-    private static byte[] EncodeTile(ushort[] t)
+    private static byte[] EncodeTile(ushort[] t, int bitTilePadding = 0)
     {
         // palette in first-appearance order
         var palette = new List<ushort>();
@@ -187,7 +194,7 @@ public static class CompressedMap
 
         if (useDelta)
         {
-            var bw = new BitWriter(3 + (t.Length * deltaBits + 7) / 8);
+            var bw = new BitWriter(3 + (t.Length * deltaBits + 7) / 8 + bitTilePadding);
             bw.WriteByte((byte)(127 + deltaBits));
             bw.WriteUInt16(min);
             foreach (var v in t) bw.Write(v - min, deltaBits);
@@ -195,7 +202,7 @@ public static class CompressedMap
         }
         if (usePalette)
         {
-            var bw = new BitWriter(1 + 2 * palette.Count + (t.Length * paletteBits + 7) / 8);
+            var bw = new BitWriter(1 + 2 * palette.Count + (t.Length * paletteBits + 7) / 8 + bitTilePadding);
             bw.WriteByte((byte)(palette.Count - 1));
             foreach (var p in palette) bw.WriteUInt16(p);
             foreach (var v in t) bw.Write(index[v], paletteBits);

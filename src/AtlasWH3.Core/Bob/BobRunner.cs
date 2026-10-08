@@ -81,7 +81,10 @@ public sealed class BobRunner(string kitRoot)
     }
 
     private static readonly Regex SelectedLine = new(@"(\d+) action\(s\) were selected for execution", RegexOptions.Compiled);
-    private static readonly Regex HeaderLine = new(@"^=== (?<proc>[^/=]+?) / (?<action>.+?) \(from (?<input>.+?)\) \(STATUS: (?<status>\w+)\) ===", RegexOptions.Compiled | RegexOptions.Multiline);
+    // GUI runs log "(from <input>)", silent runs "(<input>)"; action names may hold parentheses ("Color Overlay (Sea)")
+    // or a progress note ("Devastation pieces: BMDs: 254/254")
+    private static readonly Regex HeaderLine = new(@"^=== (?<proc>[^/=]+?) / (?<action>.+?) \((?:from )?(?<input>[a-zA-Z]:/[^)]*)\) \(STATUS: (?<status>\w+)\) ===",
+        RegexOptions.Compiled | RegexOptions.Multiline);
 
     public static int? SelectedCount(string log) => SelectedLine.Match(log) is { Success: true } m ? int.Parse(m.Groups[1].Value) : null;
 
