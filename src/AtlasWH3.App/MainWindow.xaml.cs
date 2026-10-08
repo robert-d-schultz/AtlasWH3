@@ -254,17 +254,6 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) new Scene.SceneWindow(_paths, dialog.FileName).Show();
     }
 
-    private void OpenBattle_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new Microsoft.Win32.OpenFolderDialog
-        {
-            Title = "Battle terrain source folder (raw_data\\terrain\\battles\\<map>, holding the .terry)",
-            InitialDirectory = Path.Combine(_paths.AssemblyKitRoot, "raw_data", "terrain", "battles"),
-        };
-        if (dialog.ShowDialog(this) == true)
-            new BattleWindow(dialog.FolderName, _paths).Show();
-    }
-
     private void OpenTileMap_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog

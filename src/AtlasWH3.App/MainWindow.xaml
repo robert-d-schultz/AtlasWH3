@@ -17,7 +17,6 @@
                 <MenuItem Header="Open Terry _scene editor (campaign map)" Click="OpenScene_Click"/>
                 <MenuItem Header="Open Terry _project (.terry)..." Click="OpenSceneProject_Click"/>
                 <Separator/>
-                <MenuItem Header="Open _battle project..." Click="OpenBattle_Click"/>
                 <MenuItem Header="Edit campaign _tile map..." Click="OpenTileMap_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="Exit_Click"/>

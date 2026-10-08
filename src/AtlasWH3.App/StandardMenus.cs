@@ -39,15 +39,6 @@ public static class StandardMenus
         window.Items.Add(Item("Campaign _scene editor", () => new Scene.SceneWindow(paths).Show()));
         window.Items.Add(Item("Campaign _tile map", () => new CampaignTileWindow(paths).Show()));
         window.Items.Add(Item("Terrain _painter", () => new MainWindow(paths).Show()));
-        window.Items.Add(Item("_Battle map (experimental)…", () =>
-        {
-            var dialog = new Microsoft.Win32.OpenFolderDialog
-            {
-                Title = "Battle terrain source folder (raw_data\\terrain\\battles\\<map>, holding the .terry)",
-                InitialDirectory = Path.Combine(paths.AssemblyKitRoot, "raw_data", "terrain", "battles"),
-            };
-            if (dialog.ShowDialog(owner) == true) new BattleWindow(dialog.FolderName, paths).Show();
-        }));
         window.Items.Add(Item("Bu_ild", () => BuildWindow.Show(owner, paths)));
         window.Items.Add(Item("Se_ttings…", () => OpenSettings(owner), tooltip: SettingsTip));
         window.SubmenuOpened += (_, _) =>
