@@ -1,0 +1,28 @@
+using AtlasWH3.Formats.Maps;
+
+namespace AtlasWH3.Tests;
+
+/// <summary>WH3's compiled campaign files: read → write gives the same bytes, on BOB's output for the user's maps.</summary>
+public class CompiledFormatTests
+{
+    public static readonly string[] Maps = ["cr_combi_expanded_map_1", "cr_oldworld_map_1"];
+
+    public static string Built(string map, params string[] path) =>
+        Path.Combine([TestKits.Wh3Kit, "working_data", "terrain", "campaigns", map, .. path]);
+
+    [Fact]
+    public void TileList_V2_RoundTrips()
+    {
+        foreach (var map in Maps)
+            foreach (var file in new[] { Built(map, "tile_list.bin"), Built(map, "global_map", "tile_list.bin") })
+            {
+                if (!File.Exists(file)) continue;
+                var bytes = File.ReadAllBytes(file);
+                var list = TileList.Read(bytes);
+                Assert.Equal(2, list.Version);
+                Assert.Equal(["default"], list.Climates);
+                Assert.Equal(list.Ints[1] + 2, list.Ints[9]);
+                Assert.Equal(bytes, list.ToBytes());
+            }
+    }
+}

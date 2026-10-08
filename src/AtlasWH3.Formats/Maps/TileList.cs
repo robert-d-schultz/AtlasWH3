@@ -4,12 +4,14 @@ using System.Text;
 namespace AtlasWH3.Formats.Maps;
 
 /// <summary>
-/// tile_list.bin (root and global_map\ copy), FASTBIN0 version 1/1:
+/// tile_list.bin (root and global_map\ copy), FASTBIN0 version 2/1 (WH3) or 1/1 (3K):
 ///   u32 path count, paths (u16 length + ASCII, e.g. "terrain\tiles\campaign\generic\generic_1x1\"), in first-use order
-///   u32 climate count, climate names (u16 length + ASCII), in first-use order
-///   6 x f32 (0, 0, 1, 1, 500, 1.333)
-///   11 x i32 (0, W/4, H/4, hexW, hexH, 0, 0, A, B, W/4, H/4) where W x H is the lf grid
-///   u8 1, u32 record count, 21-byte records.
+///   u32 climate count, climate names (u16 length + ASCII), in first-use order (WH3: "default" only)
+///   6 x f32: WH3 (0, 0, 0, 0, 500, 1.333); 3K (0, 0, 1, 1, 500, 1.333)
+///   11 x i32: WH3 (0, W, H, hexW, hexH, 0, 0, A, B, W + 2, H + 2) with W x H the tile map (2 px per hex) and A, B
+///             (−24, −24) on IEE, (−16, −24) on Old World; 3K (0, W/4, H/4, hexW, hexH, 0, 0, A, B, W/4, H/4) on the lf grid
+///   u8 1, u32 record count, 21-byte records; version 2 ends with one more byte (0).
+/// Record low/high heights are world units in WH3, normalised 0..1 in 3K.
 /// </summary>
 public sealed class TileList
 {
@@ -33,14 +35,19 @@ public sealed class TileList
     public int[] Ints { get; set; } = new int[11];
     public byte Marker { get; set; } = 1;
     public List<Record> Records { get; } = [];
+    /// <summary>FASTBIN0 major version: 2 = WH3 (the default), 1 = 3K.</summary>
+    public ushort Version { get; set; } = 2;
+    /// <summary>Version 2's last byte.</summary>
+    public byte Trailer { get; set; }
 
     public static TileList Read(string path) => Read(File.ReadAllBytes(path));
 
     public static TileList Read(ReadOnlySpan<byte> b)
     {
         if (!b[..8].SequenceEqual("FASTBIN0"u8)) throw new InvalidDataException("tile_list.bin: not FASTBIN0.");
-        if (U16(b, 8) != 1 || U16(b, 10) != 1) throw new InvalidDataException("tile_list.bin: unsupported version.");
-        var list = new TileList();
+        var version = U16(b, 8);
+        if (version is not (1 or 2) || U16(b, 10) != 1) throw new InvalidDataException($"tile_list.bin: unsupported version {version}/{U16(b, 10)}.");
+        var list = new TileList { Version = version };
         var o = 12;
         ReadStrings(b, ref o, list.Paths);
         ReadStrings(b, ref o, list.Climates);
@@ -49,8 +56,10 @@ public sealed class TileList
         list.Marker = b[o++];
         var count = (int)U32(b, o);
         o += 4;
-        if (b.Length - o != count * RecordSize)
+        var trailer = version >= 2 ? 1 : 0;
+        if (b.Length - o != count * RecordSize + trailer)
             throw new InvalidDataException($"tile_list.bin: {b.Length - o} record bytes for {count} records.");
+        if (trailer > 0) list.Trailer = b[^1];
         list.Records.Capacity = count;
         for (var i = 0; i < count; i++, o += RecordSize)
             list.Records.Add(new Record
@@ -73,7 +82,7 @@ public sealed class TileList
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
         w.Write("FASTBIN0"u8);
-        w.Write((ushort)1);
+        w.Write(Version);
         w.Write((ushort)1);
         WriteStrings(w, Paths);
         WriteStrings(w, Climates);
@@ -93,6 +102,7 @@ public sealed class TileList
             w.Write(r.LowHeight);
             w.Write(r.HighHeight);
         }
+        if (Version >= 2) w.Write(Trailer);
         w.Flush();
         return ms.ToArray();
     }
@@ -106,7 +116,7 @@ public sealed class TileList
     /// </summary>
     public TileList ToGlobalMapCopy()
     {
-        var copy = new TileList { Floats = (float[])Floats.Clone(), Ints = (int[])Ints.Clone(), Marker = Marker };
+        var copy = new TileList { Floats = (float[])Floats.Clone(), Ints = (int[])Ints.Clone(), Marker = Marker, Version = Version, Trailer = Trailer };
         copy.Paths.AddRange(Paths);
         copy.Climates.AddRange(Climates);
         var clear = Paths.Select(IsBaseTile).ToArray();
