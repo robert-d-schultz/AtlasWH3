@@ -4,7 +4,9 @@ namespace AtlasWH3.Formats.Maps;
 
 /// <summary>
 /// Reads/writes the assembly-kit terrain TIFs:
-///  - 16-bit greyscale, uncompressed (height / sea_height / lf_heights / lf_sea_heights)
+///  - WH3: 32-bit float heights, 8-bit masks, RGBA colour overlays (all LZW); multi-layer maps are read through
+///    <see cref="Terry.TerrainComposite"/>
+///  - 16-bit greyscale, uncompressed (3K's height / sea_height)
 ///  - 8-bit palettised (blend: LZW; tree: uncompressed)
 /// </summary>
 public static class TiffMap
@@ -60,6 +62,60 @@ public static class TiffMap
             for (var y = 0; y < raster.Height; y++)
             {
                 Buffer.BlockCopy(raster.Data, y * raster.Width * 2, row, 0, row.Length);
+                tif.WriteScanline(row, y);
+            }
+        });
+    }
+
+    /// <summary>Makes LibTiff quiet (Photoshop's private tags); runs once, from any reader.</summary>
+    internal static void Quiet() { }
+
+    /// <summary>A 32-bit float greyscale TIF (Terry's WH3 height layers), LZW.</summary>
+    public static void WriteFloat32(string path, Raster<float> raster)
+    {
+        WriteAtomically(path, temp =>
+        {
+            using var tif = Tiff.Open(temp, "w") ?? throw new IOException($"Cannot create {temp}");
+            SetCommon(tif, raster.Width, raster.Height, 32, Photometric.MINISBLACK, Compression.LZW, 1);
+            tif.SetField(TiffTag.SAMPLEFORMAT, SampleFormat.IEEEFP);
+            var row = new byte[raster.Width * 4];
+            for (var y = 0; y < raster.Height; y++)
+            {
+                Buffer.BlockCopy(raster.Data, y * raster.Width * 4, row, 0, row.Length);
+                tif.WriteScanline(row, y);
+            }
+        });
+    }
+
+    /// <summary>An 8-bit greyscale TIF (Terry's masks), LZW.</summary>
+    public static void WriteGray8(string path, Raster<byte> raster)
+    {
+        WriteAtomically(path, temp =>
+        {
+            using var tif = Tiff.Open(temp, "w") ?? throw new IOException($"Cannot create {temp}");
+            SetCommon(tif, raster.Width, raster.Height, 8, Photometric.MINISBLACK, Compression.LZW);
+            var row = new byte[raster.Width];
+            for (var y = 0; y < raster.Height; y++)
+            {
+                Buffer.BlockCopy(raster.Data, y * raster.Width, row, 0, row.Length);
+                tif.WriteScanline(row, y);
+            }
+        });
+    }
+
+    /// <summary>An RGBA TIF (Terry's colour overlays) from 0xAABBGGRR pixels, LZW, unassociated alpha.</summary>
+    public static void WriteRgba8(string path, Raster<uint> raster)
+    {
+        WriteAtomically(path, temp =>
+        {
+            using var tif = Tiff.Open(temp, "w") ?? throw new IOException($"Cannot create {temp}");
+            SetCommon(tif, raster.Width, raster.Height, 8, Photometric.RGB, Compression.LZW);
+            tif.SetField(TiffTag.SAMPLESPERPIXEL, 4);
+            tif.SetField(TiffTag.EXTRASAMPLES, 1, new short[] { (short)ExtraSample.UNASSALPHA });
+            var row = new byte[raster.Width * 4];
+            for (var y = 0; y < raster.Height; y++)
+            {
+                Buffer.BlockCopy(raster.Data, y * raster.Width * 4, row, 0, row.Length);
                 tif.WriteScanline(row, y);
             }
         });

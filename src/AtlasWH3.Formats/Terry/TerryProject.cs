@@ -12,11 +12,20 @@ public sealed record ProjectLayer(string Id, string Name, bool IsFile, bool Expo
 /// </summary>
 public sealed class TerryProject
 {
+    /// <summary>One QTU::TerrainMapLayer of a terrain map. Terry composites the visible layers with an opacity above 0,
+    /// in file order (bottom first); see <see cref="TerrainComposite"/>.</summary>
+    public sealed record TerrainLayer(string Id, string Name, bool Visible, float Opacity)
+    {
+        public bool Composited => Visible && Opacity > 0;
+    }
+
     public sealed class TerrainMap
     {
         internal XElement Data { get; init; } = null!;
         public string Type => (string?)Data.Attribute("type") ?? "";
         public string BaseLayerId { get; init; } = "";
+        /// <summary>Every layer, bottom first.</summary>
+        public IReadOnlyList<TerrainLayer> Layers { get; init; } = [];
 
         public (int Width, int Height) Size
         {
@@ -29,11 +38,20 @@ public sealed class TerryProject
         }
     }
 
-    /// <summary>File kind used in the TIF name for each Terry map type.</summary>
+    /// <summary>File kind used in the TIF name for each Terry map type (WH3's, and 3K's lf heights).</summary>
     public static readonly IReadOnlyDictionary<string, string> KindByType = new Dictionary<string, string>
     {
         ["BlendCampaign"] = "blend",
         ["CampaignTree"] = "tree",
+        ["Height"] = "height",
+        ["HeightSea"] = "sea_height",
+        ["HeightShroud"] = "height_shroud",
+        ["ColorOverlay"] = "color_overlay",
+        ["ColorOverlaySea"] = "color_overlay_sea",
+        ["CorruptionMask"] = "corruption_mask",
+        ["SnowMask"] = "snow_mask",
+        ["PatchVisibilityMask"] = "patch_visibility_mask",
+        ["EventAreaMask"] = "event_area_mask",
         ["LowFrequencyHeight"] = "height",
         ["LowFrequencyHeightSea"] = "sea_height",
     };
@@ -60,6 +78,13 @@ public sealed class TerryProject
                     .Where(l => (string?)l.Attribute("type") == "QTU::TerrainMapLayer")
                     .Select(l => (string?)l.Element("data")?.Attribute("id"))
                     .FirstOrDefault(id => id != null) ?? "",
+                Layers = pc.Elements("pc")
+                    .Where(l => (string?)l.Attribute("type") == "QTU::TerrainMapLayer" && l.Element("data")?.Attribute("id") is not null)
+                    .Select(l => l.Element("data")!)
+                    .Select(d => new TerrainLayer((string)d.Attribute("id")!, (string?)d.Attribute("name") ?? "", (string?)d.Attribute("visible") != "0",
+                        float.TryParse((string?)d.Attribute("opacity"), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var o) ? o : 1f))
+                    .ToList(),
             })
             .ToList();
     }
@@ -201,6 +226,18 @@ public sealed class TerryProject
     public string LayerTifPath(TerrainMap map) =>
         System.IO.Path.Combine(Directory,
             $"{MapName}.{KindByType.GetValueOrDefault(map.Type, map.Type.ToLowerInvariant())}.{map.BaseLayerId}.tif");
+
+    /// <summary>The TIF of one layer of a terrain map: &lt;map&gt;.&lt;kind&gt;.&lt;layer id&gt;.tif.</summary>
+    public string LayerTifPath(TerrainMap map, TerrainLayer layer) =>
+        System.IO.Path.Combine(Directory, $"{MapName}.{KindByType.GetValueOrDefault(map.Type, map.Type.ToLowerInvariant())}.{layer.Id}.tif");
+
+    /// <summary>The project's world width (QTU::ProjectTileMap world_width), or null.</summary>
+    public float? WorldWidth =>
+        float.TryParse((string?)KindElement?.Element("data")?.Attribute("world_width"), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : null;
+
+    /// <summary>A QTU::ProjectTileMap attribute (terrain_setup, global_lighting, water_plane_material, …), or null.</summary>
+    public string? Setting(string name) => (string?)KindElement?.Element("data")?.Attribute(name);
 
     public string ToText() => TerryXml.ToText(_doc.Root!, _newline);
 
