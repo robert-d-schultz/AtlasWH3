@@ -1,7 +1,9 @@
 # Moving a Total War campaign build off BOB
 
-This folder is the research behind Atlas3K's native campaign build. The native build now reproduces BOB's output for
-Total War: THREE KINGDOMS:
+This folder is the research behind Atlas3K's native campaign build, kept in AtlasWH3 for its method. AtlasWH3 removed
+the 3K-only folders (`gmesh/`, `camera/`, `derived_maps/` and the global-mesh Frida scripts): WH3 has no global meshes,
+and its camera heightmap is built from other inputs. They are in git history before the cut. The native build
+reproduces BOB's output for Total War: THREE KINGDOMS:
 
 | File | Status |
 |---|---|
@@ -67,7 +69,6 @@ step was pushed until its bytes matched BOB's, with three tools.
    - `tilelist_fields.py`, `tilelist_area.py`, `sim_compare.py` and `sim_first_divergence.py` for tile lists;
    - `props/run_parity.sh` for global props;
    - `rivers/river_cmp.py` for rivers;
-   - the `gmesh/` scripts for global meshes;
    - `trees/lf_exact.py` for tree heights.
 
    Walking placements in BOB's own order and stopping at the first difference is what exposed every root cause below.
@@ -94,7 +95,7 @@ Each of these looked fine in the decompile and only showed up when the output wa
 | Rivers | Entity yaw turns points and tangents in float (cos/sin rounded to float first), `reverse_direction` walks the points backwards with tangents swapped, `terrain_relative` has no effect on the mesh. |
 | Rivers | The river_N numbering rule (regions by largest entity id) fits main190 but not vanilla (11 of 24 renumbered): still open. |
 | Global meshes | When the pack is set to Movie, BOB reads lf and the tile list from the game VFS, not the kit. The grid step is in double precision. The triangle merger runs 50 passes of 1.28 with an MSVC-sorted candidate list. |
-| Global meshes | The VFS rule holds on vanilla too: BOB reads CA's `tile_list.bin` and `lf_sea_height_map` from `data/terrain.pack`, not the kit's (`gmesh/find_pack_inputs.py`). Compare against a fresh BOB run only with the inputs BOB read. |
+| Global meshes | The VFS rule holds on vanilla too: BOB reads CA's `tile_list.bin` and `lf_sea_height_map` from `data/terrain.pack`, not the kit's (`gmesh/find_pack_inputs.py`, in git history). Compare against a fresh BOB run only with the inputs BOB read. |
 | Global meshes | Land byte 0xA6 is character 165 of the mesh's own `.compressed_map` output path (stale string memory): it depends on the kit folder and map name. |
 | Global meshes | MESH_SPLITTER closes a chunk after the triangle that brings it to 65,000 vertices; the chunks become extra meshes of the same LOD, not extra files. |
 
@@ -107,8 +108,6 @@ Each of these looked fine in the decompile and only showed up when the output wa
 | `trees/` | tree list decode/encode, lf and per-tile hf height prototypes |
 | `props/` | `global_props.bin` parity tools (field diff, hash-map order, `run_parity.sh`) |
 | `rivers/` | BOB river spline and mesh prototype, comparisons |
-| `gmesh/` | global mesh height query, merger and skirt prototypes, comparisons |
-| `camera/`, `derived_maps/` | camera heightmap and derived-map experiments |
 | `guandu/` (4 files) | hex grid and `map.hex` field references used by the program |
 | top-level scripts | format readers (`compressed_map.py`, `hexmap.py`), comparisons (`bob_compare.py`, `native_vs_bob.py`) |
 
