@@ -6,7 +6,7 @@ namespace AtlasWH3.App;
 public static class AppInfo
 {
     public const string Product = "AtlasWH3";
-    public const string Tagline = "Total War: THREE KINGDOMS campaign map editor";
+    public const string Tagline = "Total War: WARHAMMER III campaign map tooling";
 
     /// <summary>e.g. "0.1.0-alpha.1" (without the +commit suffix).</summary>
     public static string Version { get; } =

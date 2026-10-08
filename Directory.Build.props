@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Product>AtlasWH3</Product>
     <Company>AtlasWH3</Company>
-    <Copyright>Copyright (c) 2026 AtlasWH3 contributors</Copyright>
+    <Copyright>Copyright (c) 2026 Atlas3K contributors, AtlasWH3 contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <VersionPrefix>0.1.0</VersionPrefix>
     <VersionSuffix>alpha.2</VersionSuffix>
