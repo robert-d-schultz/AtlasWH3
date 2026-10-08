@@ -11,6 +11,8 @@ AtlasWH3 uses these libraries. Their licences apply to them, not to AtlasWH3. Th
 | BitMiracle LibTiff.NET | LibTiff.Net licence (BSD-style) | https://bitmiracle.github.io/libtiff.net/help/articles/license.html |
 | CommunityToolkit.HighPerformance | MIT | https://github.com/CommunityToolkit/dotnet |
 | System.IO.Hashing, .NET runtime | MIT | https://github.com/dotnet/runtime |
+| ZstdSharp.Port | MIT | https://github.com/oleg-st/ZstdSharp |
+| K4os.Compression.LZ4 | MIT | https://github.com/MiloszKrajewski/K4os.Compression.LZ4 |
 
 AtlasWH3 is derived from Atlas3K (https://github.com/Ironictw2st/Atlas3K), MIT, Copyright (c) 2026 Atlas3K
 contributors. Its notice is kept in [LICENSE](LICENSE).
