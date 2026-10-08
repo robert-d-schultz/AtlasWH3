@@ -1,7 +1,7 @@
 """bob-mcp: stdio MCP server that drives BOB, the Total War: Three Kingdoms Assembly Kit build tool.
 
 How BOB is driven (see bobgui.py for details):
-  * headless  - BOB started as `bob.retail.x64.exe /configuration:<name> /nosplashscreen /dont_stop_on_error`
+  * headless  - BOB started as `bob.modder.x64.exe /configuration:<name> /nosplashscreen /dont_stop_on_error`
                 (the same switches Terry's "Process with BOB" uses) with binaries/BOB/<name>_configuration.xml
                 holding <silent>1</silent> and <selected_actions><action>SHORT NAME</action></selected_actions>.
                 No window is shown; BOB runs the matching actions and exits.

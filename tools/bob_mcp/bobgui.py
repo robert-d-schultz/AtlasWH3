@@ -34,11 +34,11 @@ try:
 except Exception:
     pass
 
-# BOB_AK selects another kit (e.g. assembly_kit_190E for the 190E main map); default: the Steam kit
-AK = os.environ.get("BOB_AK") or r"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS\assembly_kit"
+# BOB_AK selects another kit; default: the Steam kit
+AK = os.environ.get("BOB_AK") or r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III\assembly_kit"
 BIN = os.path.join(AK, "binaries")
-EXE = os.path.join(BIN, "bob.retail.x64.exe")
-EXE_NAME = "bob.retail.x64.exe"
+EXE = os.path.join(BIN, "bob.modder.x64.exe")
+EXE_NAME = "bob.modder.x64.exe"
 LOGS = ["bob.log", "bob_error.log", "bob_warnings.log", "bob_startup_error.log", "bob_db.log"]
 
 TREE_IDS = {"raw": "raw_data_files", "working": "working_data_files", "retail": "retail_build_files"}
@@ -142,7 +142,7 @@ def close_gracefully(pid: int, timeout: float = 20) -> bool:
 
 # ------------------------------------------------------------------------------------------ GUI input
 def _assert_bob(hwnd: int):
-    """Refuse to send input to any window that is not owned by a running bob.retail.x64.exe."""
+    """Refuse to send input to any window that is not owned by a running bob.modder.x64.exe."""
     pid = win32process.GetWindowThreadProcessId(hwnd)[1]
     if not hwnd or pid not in bob_pids():
         raise RuntimeError(f"refusing to send input: hwnd {hwnd} (pid {pid}) is not a BOB window")

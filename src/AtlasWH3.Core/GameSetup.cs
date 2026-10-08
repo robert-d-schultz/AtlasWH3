@@ -11,7 +11,7 @@ namespace AtlasWH3.Core;
 /// </summary>
 public static partial class GameSetup
 {
-    public const string GameFolderName = "Total War THREE KINGDOMS";
+    public const string GameFolderName = "Total War WARHAMMER III";
 
     /// <summary>The game install folder (holding data\ and assembly_kit\) from Steam's library folders, or null.</summary>
     public static string? FindGameFolder()

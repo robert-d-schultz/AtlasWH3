@@ -37,7 +37,7 @@ public sealed class BuildRunner
         public IReadOnlyList<string>? CustomSteps { get; init; }
     }
 
-    public const string GameProcess = "Three_Kingdoms";
+    public const string GameProcess = "Warhammer3";
     /// <summary>Notes starting with this make an item's status "warning" instead of "ok".</summary>
     public const string WarningPrefix = "warning: ";
 

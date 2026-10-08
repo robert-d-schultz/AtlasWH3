@@ -60,7 +60,7 @@ public static class BobBattleBuild
     public static async Task<RunResult> RunAsync(string kitRoot, string map, string action, TimeSpan timeout, CancellationToken cancel = default)
     {
         var bin = Path.Combine(kitRoot, "binaries");
-        var exe = new[] { "bob.retail.x64.exe", "bob.modder.x64.exe" }.Select(e => Path.Combine(bin, e)).FirstOrDefault(File.Exists)
+        var exe = new[] { "bob.modder.x64.exe" }.Select(e => Path.Combine(bin, e)).FirstOrDefault(File.Exists)
                   ?? throw new FileNotFoundException($"BOB not found in {bin}");
         string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;");
         var scope = $"<raw>/terrain/battles/{map}/...";

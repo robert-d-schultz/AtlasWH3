@@ -5,7 +5,7 @@ public static partial class Walkthroughs
     private static readonly Tour Start = new("start", "Start page",
     [
         new(null, "Welcome to AtlasWH3",
-            "AtlasWH3 edits Total War: THREE KINGDOMS campaign maps from the Assembly Kit and builds them without BOB. " +
+            "AtlasWH3 builds Total War: WARHAMMER III campaign maps from the Assembly Kit's sources and edits those sources. " +
             "This short tour shows the start page; every editor has its own tour the first time you open it."),
         new("start.selector", "Assembly kit and map",
             "Pick the assembly kit and the map to work on, including maps from your linked mod packs. " +

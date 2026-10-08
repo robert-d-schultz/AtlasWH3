@@ -3,7 +3,7 @@ namespace AtlasWH3.Core;
 /// <summary>Where the tool reads compiled data, writes assembly-kit sources, and finds game packs.</summary>
 public sealed record ProjectPaths
 {
-    public string MapName { get; init; } = "3k_dlc07_main_map";
+    public string MapName { get; init; } = "wh3_main_combi_map_1";
     /// <summary>Folder holding the compiled terrain\ and campaign_maps\ trees (vanilla files extracted at first run).</summary>
     public string VanillaRoot { get; init; } = Defaults.CompiledRoot;
     /// <summary>Assembly kit install. Override from the CLI with <c>--ak &lt;root&gt;</c>.</summary>
@@ -74,7 +74,7 @@ public static class Defaults
 
     public static string LocalData { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AtlasWH3");
     public static string GameFolder => Or(AppSettings.Current.GameFolder,
-        Detected.Value ?? @"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS");
+        Detected.Value ?? @"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III");
     public static string AssemblyKit => Or(AppSettings.Current.AssemblyKit, Path.Combine(GameFolder, "assembly_kit"));
     public static string GameData => Path.Combine(GameFolder, "data");
     public static string CompiledRoot => Or(AppSettings.Current.CompiledRoot, Path.Combine(LocalData, "vanilla"));

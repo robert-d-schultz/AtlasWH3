@@ -60,8 +60,8 @@ from mcp.server.fastmcp import FastMCP, Image
 
 PROJECT = os.environ.get("ATLASWH3_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CLI_PROJECT = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "AtlasWH3.Cli.csproj")
-CLI_EXE = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "bin", "Release", "net9.0", "AtlasWH3.Cli.exe")
-KIT = r"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS\assembly_kit"
+CLI_EXE = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "bin", "Release", "net10.0", "AtlasWH3.Cli.exe")
+KIT = r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III\assembly_kit"
 
 mcp = FastMCP("terry")
 

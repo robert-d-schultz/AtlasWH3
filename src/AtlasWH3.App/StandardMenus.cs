@@ -147,10 +147,10 @@ public sealed class AboutWindow : Window
         panel.Children.Add(new TextBlock
         {
             Margin = new Thickness(0, 10, 0, 0), TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
-            Text = "Edits campaign maps from the Assembly Kit's sources and builds them natively, without BOB. " +
+            Text = "Builds campaign maps from the Assembly Kit's sources, natively where ported and through BOB elsewhere, and edits those sources. " +
                    "Alpha software: back up your assembly kit and packs before building over them.\n\n" +
                    "Free and open source under the MIT licence (see LICENSE).\n\n" +
-                   "Not affiliated with Creative Assembly or SEGA. Total War: THREE KINGDOMS and its Assembly Kit are their property; " +
+                   "Not affiliated with Creative Assembly or SEGA. Total War: WARHAMMER III and its Assembly Kit are their property; " +
                    "AtlasWH3 reads them from your own installation and ships none of their data.",
         });
         panel.Children.Add(Theme.Header("Third-party libraries", 14));

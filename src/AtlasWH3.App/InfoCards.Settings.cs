@@ -7,7 +7,7 @@ public static partial class InfoCards
     [
         // ---- start screen
         new("start.kit", "Assembly kit",
-            "The kit whose raw_data you edit and build, e.g. assembly_kit_190E. The list shows the assembly_kit* folders next to the game."),
+            "The kit whose raw_data you edit and build, e.g. assembly_kit. The list shows the assembly_kit* folders next to the game."),
         new("start.map", "Map",
             "The campaign map every editor opens: maps with a .terry in the kit, and maps in your linked packs. Your choice is remembered."),
         new("start.selection", "Current map",
