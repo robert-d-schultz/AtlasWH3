@@ -97,7 +97,7 @@ public class EntityEditingTests
         var id = doc.CreateEntity("PointLight", new Dictionary<string, string> { ["ECTransform.position"] = "7 8 9" }, parentLayer: "100000000000004");
         var e = doc.Read(id);
         Assert.Equal("PointLight", e.Type);
-        Assert.Equal(["ECPointLight", "ECCampaignProperties", "ECTransform"], e.Components.Select(c => c.Name));
+        Assert.Equal(["ECPointLight", "ECVisibilitySettingsCampaign", "ECCampaignProperties", "ECTransform"], e.Components.Select(c => c.Name));
         Assert.Equal("7 8 9", e.Component("ECTransform")!["position"]);
         Assert.Equal("1 1 1", e.Component("ECTransform")!["scale"]);
         Assert.Equal(["100000000000004"], e.Parents);

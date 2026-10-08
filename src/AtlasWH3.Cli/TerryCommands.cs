@@ -296,6 +296,8 @@ static class TerryCommands
             .Where(f => f.EndsWith(".layer", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".terry", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var schema = ComponentSchema.Scan(files, config, Console.Error.WriteLine);
+        // keep the battle fields decompiled from Terry's constructors (research/battle_components)
+        var decompiled = schema.MergeDecompiled(File.Exists(outPath) ? ComponentSchema.Load(outPath) : ComponentSchema.Embedded);
         schema.Save(outPath);
 
         var seen = schema.Components.Values.Where(c => c.Count > 0).ToList();
@@ -310,6 +312,7 @@ static class TerryCommands
             components_seen_not_configured = seen.Where(c => !c.InConfiguration).Select(c => c.Name),
             components_configured_never_seen = schema.Components.Values.Count(c => c.Count == 0),
             fields = seen.Sum(c => c.Fields.Count),
+            decompiled_fields_kept = decompiled,
             unclassified_signatures = schema.UnclassifiedSignatures.Take(15),
         }, Indented));
         return 0;

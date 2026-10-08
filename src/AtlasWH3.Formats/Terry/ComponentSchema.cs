@@ -73,6 +73,30 @@ public sealed class ComponentSchema
 
     public ComponentTypeSchema? Find(string component) => Components.GetValueOrDefault(component);
 
+    /// <summary>Adds the fields <paramref name="older"/> took from Terry's constructors (Source "decompile",
+    /// research/battle_components) that this schema's corpus lacks, so a rescan of another kit keeps them. A
+    /// component the corpus never shows takes its decompiled fields in their order; a corpus component gets the missing
+    /// ones appended. Returns the number of fields added.</summary>
+    public int MergeDecompiled(ComponentSchema older)
+    {
+        var added = 0;
+        foreach (var (name, old) in older.Components)
+        {
+            if (!Components.TryGetValue(name, out var current))
+                Components[name] = current = new ComponentTypeSchema { Name = name, InConfiguration = old.InConfiguration };
+            // a component this corpus never shows keeps all of the older schema's fields (WH3's kit has no battle
+            // prefabs, so the battle components' corpus fields come from Atlas3K's 3K scan, marked as such)
+            var unseen = current.Count == 0 && current.Fields.Count == 0;
+            foreach (var f in old.Fields.Where(f => (unseen || f.Source == "decompile") && current.Fields.All(c => c.Name != f.Name)))
+            {
+                if (f.Source == "corpus") f.Source = "atlas3k-corpus";
+                current.Fields.Add(f);
+                added++;
+            }
+        }
+        return added;
+    }
+
     public FieldSchema? Field(string component, string field) => Find(component)?.Fields.FirstOrDefault(f => f.Name == field);
 
     /// <summary>

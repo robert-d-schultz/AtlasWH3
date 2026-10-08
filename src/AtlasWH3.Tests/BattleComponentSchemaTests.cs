@@ -25,8 +25,8 @@ public class BattleComponentSchemaTests
         Assert.Equal(FieldType.Enum, purpose.Type);
         Assert.Contains("EFP_BOARDING", purpose.Values!);
 
-        // corpus-derived entries are untouched
-        Assert.All(Schema.Find("ECCaptureLocation")!.Fields, f => Assert.Equal("corpus", f.Source));
+        // corpus-derived entries are untouched (WH3's kit has no battle prefabs: these come from Atlas3K's 3K scan)
+        Assert.All(Schema.Find("ECCaptureLocation")!.Fields, f => Assert.Equal("atlas3k-corpus", f.Source));
         Assert.Equal(3, Schema.Find("ECTerryBattlefieldZone")!.Fields.Count);
         // marker components have no fields of their own (their shape is the entity's ECPolyline / ECRectangle)
         Assert.Empty(Schema.Find("ECPlayableArea")!.Fields);
@@ -55,8 +55,9 @@ public class BattleComponentSchemaTests
     {
         // Vanilla default deployment prefab: ECDeploymentZone / ECDeploymentZoneRegion attributes in the order the
         // constructors register them (facing_direction ... configuration), which is the order the schema keeps.
-        var file = Directory.EnumerateFiles(Path.Combine(TestKits.Vanilla, "raw_data", "art", "prefabs", "battle", "logic", "default_deployment"),
-            "deploy_land_normal_1024x1024_north.*.layer").FirstOrDefault();
+        var folder = Path.Combine(TestKits.Vanilla, "raw_data", "art", "prefabs", "battle", "logic", "default_deployment");
+        if (!Directory.Exists(folder)) return;   // a 3K kit only: WH3's kit has no battle prefabs
+        var file = Directory.EnumerateFiles(folder, "deploy_land_normal_1024x1024_north.*.layer").FirstOrDefault();
         if (file is null) return;
         var doc = XDocument.Load(file);
         var zone = doc.Descendants("ECDeploymentZone").First();

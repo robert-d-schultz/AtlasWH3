@@ -69,7 +69,7 @@ public class PropToolsTests
             var doc = LayerDocument.Parse(File.ReadAllText(layer));
             var e = doc.Read(id);
             Assert.Equal("Prop", e.Type);
-            Assert.Equal(["ECPropMesh", "ECMesh", "ECMeshRenderSettings", "ECPropHeightPatch", "ECCampaignProperties", "ECDLCMask", "ECTransform", "ECTerrainClamp"],
+            Assert.Equal(["ECPropMesh", "ECMesh", "ECMeshRenderSettings", "ECVisibilitySettingsCampaign", "ECPropHeightPatch", "ECCampaignProperties", "ECTransform"],
                 e.Components.Select(c => c.Name));
             Assert.Equal("RigidModels/campaign/vegetation/temperate/temperate_tree_pine_1.wsmodel", e.Component("ECMesh")!["model_path"]);
             Assert.Equal("12.5 3.25 40", e.Component("ECTransform")!["position"]);
