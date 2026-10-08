@@ -1,6 +1,3 @@
-using System.Buffers.Binary;
-using System.Text;
-
 namespace AtlasWH3.Formats.Maps;
 
 /// <summary>One campaign tile from terrain\tiles\campaign\_tile_database\tiles\*.bin.</summary>
@@ -21,8 +18,7 @@ public sealed record TileInfo(string Name, string Category, string Mask, int Wid
 }
 
 /// <summary>
-/// Reader for the per-tile FASTBIN0 v6 files: u16 version, name, category and mask strings (u16 length + ASCII),
-/// u16, u32 width, u32 height (in tile-map pixels), ..., and the tile folder path ("terrain\tiles\campaign\...\").
+/// The per-tile files' footprint (name, set, mask, size, folder), read with <see cref="CampaignTileDatabase.ReadTile"/>.
 /// </summary>
 public static class TileDatabase
 {
@@ -30,29 +26,9 @@ public static class TileDatabase
 
     public static TileInfo Parse(ReadOnlySpan<byte> b)
     {
-        if (!b[..8].SequenceEqual("FASTBIN0"u8)) throw new InvalidDataException("Tile database entry is not FASTBIN0.");
-        var o = 10;
-        string S(ReadOnlySpan<byte> d)
-        {
-            var n = BinaryPrimitives.ReadUInt16LittleEndian(d[o..]);
-            var s = Encoding.ASCII.GetString(d.Slice(o + 2, n));
-            o += 2 + n;
-            return s;
-        }
-        var name = S(b);
-        var category = S(b);
-        var mask = S(b);
-        var width = BinaryPrimitives.ReadInt32LittleEndian(b[(o + 2)..]);
-        var height = BinaryPrimitives.ReadInt32LittleEndian(b[(o + 6)..]);
-        var path = "";
-        var i = b.IndexOf("terrain\\tiles\\"u8);
-        if (i >= 2)
-        {
-            var n = BinaryPrimitives.ReadUInt16LittleEndian(b[(i - 2)..]);
-            path = Encoding.ASCII.GetString(b.Slice(i, n));
-        }
-        var version = BinaryPrimitives.ReadUInt16LittleEndian(b[8..]);
-        return new TileInfo(name, category, mask, width, height, path) { UseAltLf = version > 4 && b[^1] != 0 };
+        var t = CampaignTileDatabase.ReadTile("", b);
+        var path = t.Variations.Count > 0 ? t.Variations[0].Location : "";
+        return new TileInfo(t.Name, t.TileSet, t.Mask, t.Width, t.Height, path) { UseAltLf = t.UseAltLf };
     }
 
     /// <summary>Tiles keyed by normalised folder path (lower case, backslashes, trailing backslash).</summary>

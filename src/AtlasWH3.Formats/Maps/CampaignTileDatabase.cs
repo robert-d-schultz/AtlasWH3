@@ -59,11 +59,13 @@ public sealed record TileVariation(string Name, string Location, string Climate,
     }
 }
 
-/// <summary>A campaign tile (terrain\tiles\campaign\_tile_database\tiles\*.bin) with everything tile matching uses.</summary>
+/// <summary>A campaign tile (terrain\tiles\campaign\_tile_database\tiles\*.bin) with everything tile matching uses.
+/// <paramref name="HeaderByte"/> is the byte where 3K stored "scalable": 0-255 in WH3 (0 on most tiles), meaning not
+/// known.</summary>
 public sealed record CampaignTile(string File, int Version, string Name, string TileSet, string Mask, int Width, int Height,
                                   byte R, byte G, byte B, bool RandomRotatable,
                                   IReadOnlyList<TileVariation> Variations, IReadOnlyList<TileLinkTarget> LinkTargets,
-                                  IReadOnlyList<TileLink> Links, bool Barbarian = false, bool UseAltLf = false)
+                                  IReadOnlyList<TileLink> Links, bool Barbarian = false, bool UseAltLf = false, byte HeaderByte = 0)
 {
     public uint Rgb => (uint)(R << 16 | G << 8 | B);
 
@@ -78,8 +80,10 @@ public sealed record CampaignTile(string File, int Version, string Name, string 
 
 /// <summary>
 /// The campaign tile database: _settings.bin (climates and tile sets) plus tiles\*.bin. Field order is BOB's reader
-/// (research/bob_re/tiledb2/1803c5550 tile, 1803c5a50 tile set, 1803c43c0 climate, tilematch/1803c24c0 link,
-/// tilematch/1803c5c70 variation). Strings are u16 length + Latin-1.
+/// (Atlas3K's 3K research: research/bob_re/tiledb2/1803c5550 tile, 1803c5a50 tile set, 1803c43c0 climate,
+/// tilematch/1803c24c0 link, tilematch/1803c5c70 variation), with WH3's versions measured on the 320 tiles of
+/// tiles_campaign.pack (tile v5-v9, variation v8-v13; every file parses to its last byte). Strings are u16 length +
+/// Latin-1.
 /// </summary>
 public sealed class CampaignTileDatabase
 {
@@ -157,19 +161,24 @@ public sealed class CampaignTileDatabase
 
     private static byte ColourByte(float v) => (byte)Math.Clamp((int)v, 0, 255);
 
-    private static readonly byte[] LocationPrefix = Encoding.ASCII.GetBytes("terrain\\tiles\\");
-
-    /// <summary>Parses one tile file; throws if the layout does not consume the file exactly.</summary>
+    /// <summary>Parses one WH3 tile file; throws if the layout does not consume the file exactly.
+    ///  - header: name, tile set, mask, [v8+ a second mask], i32 width, height, colour (f32 × 3 before v7, else u8 × 3),
+    ///    requires_infield_lodding, random_rotatable, custom_alpha_blend_texture, u8 (<see cref="CampaignTile.HeaderByte"/>),
+    ///    encampable, custom_blend_tile;
+    ///  - i32 variation count, variations; [v8+ 2 bytes]; i32 link-target count, targets (u16, set, x, y); i32 link
+    ///    count, links (u16, set, x, y, base x, base y, entry, i32 blend-quad count (0 on every WH3 tile), blend size,
+    ///    no_offline_blend, test);
+    ///  - barbarian, use_alt_lf, then 1 (v5) or 4 (v6-v8) or 5 (v9) bytes of unknown flags.</summary>
     public static CampaignTile ReadTile(string file, ReadOnlySpan<byte> data)
     {
         if (data.Length < 10 || !data[..8].SequenceEqual("FASTBIN0"u8)) throw new InvalidDataException("not FASTBIN0");
         var r = new Reader(data, 8);
         var version = r.U16();
-        if (version < 2) throw new InvalidDataException($"tile version {version} not supported");
+        if (version is < 5 or > 9) throw new InvalidDataException($"tile version {version} not supported (WH3: 5-9)");
         var name = r.Str();
         var set = r.Str();
         var mask = r.Str();
-        if (version > 5) r.Str();                                           // second mask
+        if (version > 7) r.Str();                                           // second mask
         var w = r.I32();
         var h = r.I32();
         byte cr, cg, cb;
@@ -178,14 +187,14 @@ public sealed class CampaignTileDatabase
         r.Bool();                                                           // requires_infield_lodding
         var rotatable = r.Bool();
         r.Str();                                                            // custom_alpha_blend_texture
-        r.Bool();                                                           // scalable
+        var headerByte = r.U8();
         r.Bool();                                                           // encampable
         r.Str();                                                            // custom_blend_tile
-        if (version < 4) throw new InvalidDataException($"tile version {version} (TEXTURE_GROUP) not supported");
 
         var variations = new List<TileVariation>();
         var nv = r.I32();
         for (var i = 0; i < nv; i++) variations.Add(ReadVariation(ref r));
+        if (version > 7) r.O += 2;
         var targets = new List<TileLinkTarget>();
         var nt = r.I32();
         for (var i = 0; i < nt; i++)
@@ -202,30 +211,40 @@ public sealed class CampaignTileDatabase
             int x = r.I32(), y = r.I32(), bx = r.I32(), by = r.I32();
             var entry = r.Bool();
             var quad = r.I32();
-            if (quad != 0) throw new InvalidDataException("blend_quad points not supported");
+            if (quad != 0) throw new InvalidDataException("blend_quad points not supported (no WH3 tile has any)");
             var blendSize = r.I32();
             var noOffline = r.Bool();
             links.Add(new TileLink(linkSet, x, y, bx, by, entry, blendSize, noOffline, r.Str()));
         }
-        var barbarian = version > 2 && r.Bool();
-        var useAltLf = version > 4 && r.Bool();
+        var barbarian = r.Bool();
+        var useAltLf = r.Bool();
+        r.O += version switch { 5 => 1, 9 => 5, _ => 4 };
         if (r.O != r.Length) throw new InvalidDataException($"{r.Length - r.O} bytes left over");
-        return new CampaignTile(file, version, name, set, mask, w, h, cr, cg, cb, rotatable, variations, targets, links, barbarian, useAltLf);
+        return new CampaignTile(file, version, name, set, mask, w, h, cr, cg, cb, rotatable, variations, targets, links, barbarian, useAltLf, headerByte);
     }
 
-    // Variation v5+: u16 version, texture_set (skipped up to the location string), location, name, min_height, scale,
-    // normal_strength, overlap_border_size, i32 raw_data_tri_density, blend/index/normal_common, colour,
-    // requires_sea_in_infield, [v6 shadow_camera_depth], [v7 enable_sea_water_plane], [v8 is_subterranean], [v9 fog_mask].
+    /// <summary>Raw bytes after a variation's known fields, by variation version (all zero but the last byte on the
+    /// vanilla tiles).</summary>
+    private static int VariationTail(int version) => version switch
+    {
+        < 10 => 0,
+        11 => 19,
+        12 or 13 => 10,
+        _ => throw new InvalidDataException($"variation version {version} not supported (WH3: 8, 9, 11-13)"),
+    };
+
+    // Variation: u16 version, texture set (i32 2, eight layer names), location, name, min_height, scale,
+    // normal_strength, overlap_border_size, i32 raw_data_tri_density, blend/index/normal_common, colour (f32 × 3 before
+    // v10, else u8 × 3), requires_sea_in_infield, [v6 f32 shadow_camera_depth], [v7 enable_sea_water_plane], [v9 u8],
+    // then the raw tail of v11-v13.
     private static TileVariation ReadVariation(ref Reader r)
     {
         var version = r.U16();
-        if (version < 5) throw new InvalidDataException($"variation version {version} not supported");
-        var loc = r.IndexOf(LocationPrefix, r.O);
-        if (loc < 0) throw new InvalidDataException("variation without a location");
+        if (version < 8) throw new InvalidDataException($"variation version {version} not supported");
         var textureSet = r.O;
-        r.O = loc - 2;
-        var climate = ClimateKey(ref r, textureSet, loc - 2);
-        var textureSetBytes = r.Slice(textureSet, loc - 2);
+        r.I32();
+        for (var i = 0; i < 8; i++) r.Str();
+        var textureSetBytes = r.Slice(textureSet, r.O);
         var location = r.Str();
         var name = r.Str();
         for (var i = 0; i < 4; i++) r.F32();
@@ -235,78 +254,82 @@ public sealed class CampaignTileDatabase
         if (version < 10) { cr = ColourByte(r.F32()); cg = ColourByte(r.F32()); cb = ColourByte(r.F32()); }
         else { cr = r.U8(); cg = r.U8(); cb = r.U8(); }
         r.Bool();
-        if (version > 5) r.F32();
-        if (version > 6) r.Bool();
-        if (version > 7) r.Bool();
-        if (version > 8) r.Str();
-        return new TileVariation(name, location, climate, cr, cg, cb, textureSetBytes);
+        r.F32();
+        r.Bool();
+        if (version > 8) r.U8();
+        r.O += VariationTail(version);
+        // WH3 has one climate ("default"): a variation is not tied to one; its texture layers name ground groups
+        return new TileVariation(name, location, "", cr, cg, cb, textureSetBytes);
     }
 
-    /// <summary>The texture_set block holds key/value strings such as "climate", "arid_1": returns the climate value.</summary>
-    private static string ClimateKey(ref Reader r, int from, int to)
-    {
-        var saved = r.O;
-        var result = "";
-        r.O = from;
-        try
-        {
-            while (r.O + 2 <= to)
-            {
-                var s = r.Str();
-                if (r.O > to) break;
-                if (s == "climate" && r.O + 2 <= to) { result = r.Str(); break; }
-            }
-        }
-        catch (ArgumentOutOfRangeException) { }
-        r.O = saved;
-        return result;
-    }
-
-    private static bool IsNameAt(ReadOnlySpan<byte> b, int o, out int length)
-    {
-        length = 0;
-        if (o + 4 > b.Length) return false;
-        length = BinaryPrimitives.ReadUInt16LittleEndian(b[(o + 2)..]);
-        if (length < 3 || o + 4 + length > b.Length) return false;
-        foreach (var c in b.Slice(o + 4, length))
-            if (!(c is >= (byte)'a' and <= (byte)'z' or >= (byte)'0' and <= (byte)'9' or (byte)'_'))
-                return false;
-        return true;
-    }
-
-    /// <summary>Climate records: u16 7, name, f32 r, g, b (0-255), ...; the first run of them in the file.</summary>
+    /// <summary>
+    /// The CLIMATES list, in file order: the structure just before TILE_SETS (<see cref="ReadTileSets"/>). CLIMATE v8:
+    /// u16 version, name, u8 r, g, b, u32 texture count, TEXTURE (u16 version, name, a fixed payload), vampire and chaos
+    /// creep climates, f32 grass saturation. The list offset and the TEXTURE payload size are solved together, keeping
+    /// the one combination that ends exactly where TILE_SETS starts (WH3_visual_map_decompiler's TileSettings).
+    /// </summary>
     public static List<CampaignClimate> ReadClimates(byte[] settings)
     {
-        var result = new List<CampaignClimate>();
-        var b = settings.AsSpan();
-        for (var o = 0; o + 4 < b.Length; o++)
+        var (setsAt, _) = FindTileSets(settings) ?? throw new InvalidDataException("No tile-set records found in _settings.bin.");
+        for (var offset = setsAt - 4; offset >= 10; offset--)
         {
-            if (BinaryPrimitives.ReadUInt16LittleEndian(b[o..]) != 7 || !IsNameAt(b, o, out var n)) continue;
-            var p = o + 4 + n;
-            if (p + 12 > b.Length) break;
-            var name = Encoding.Latin1.GetString(b.Slice(o + 4, n));
-            var cr = BinaryPrimitives.ReadSingleLittleEndian(b[p..]);
-            var cg = BinaryPrimitives.ReadSingleLittleEndian(b[(p + 4)..]);
-            var cb = BinaryPrimitives.ReadSingleLittleEndian(b[(p + 8)..]);
-            if (!(cr is >= 0 and <= 255 && cg is >= 0 and <= 255 && cb is >= 0 and <= 255)) continue;
-            result.Add(new CampaignClimate(result.Count, name, ColourByte(cr), ColourByte(cg), ColourByte(cb)));
-            o = p + 11;
+            var count = BinaryPrimitives.ReadInt32LittleEndian(settings.AsSpan(offset));
+            if (count is < 1 or > 1024) continue;
+            for (var payload = 0; payload <= 256; payload += 4)
+                if (TryReadClimates(settings, offset + 4, count, payload, setsAt) is { } climates) return climates;
         }
-        return result;
+        return [];
     }
 
-    /// <summary>Tile-set records end the file: u32 count, then u16 2, name, linking_tile, shared_geometry,
-    /// also_place_tile_set, link_as_set, f32 r, g, b, u8 exclude_from_global_mesh.</summary>
-    public static List<CampaignTileSet> ReadTileSets(byte[] settings)
+    private static List<CampaignClimate>? TryReadClimates(byte[] data, int start, int count, int payload, int end)
     {
-        for (var start = 4; start + 4 < settings.Length; start++)
+        var r = new Reader(data, start);
+        var result = new List<CampaignClimate>();
+        try
         {
-            if (BinaryPrimitives.ReadUInt16LittleEndian(settings.AsSpan(start)) != 2 || !IsNameAt(settings, start, out _)) continue;
-            var count = BinaryPrimitives.ReadInt32LittleEndian(settings.AsSpan(start - 4));
-            if (count < 1 || count > 4096) continue;
-            if (TryReadTileSets(settings, start, count) is { } sets) return sets;
+            for (var i = 0; i < count; i++)
+            {
+                r.U16();
+                var name = r.Str();
+                if (name.Length == 0 || !IsPlain(name)) return null;
+                byte cr = r.U8(), cg = r.U8(), cb = r.U8();
+                var textures = r.I32();
+                if (textures is < 0 or > 4096) return null;
+                for (var t = 0; t < textures; t++)
+                {
+                    r.U16();
+                    if (!IsPlain(r.Str())) return null;
+                    r.O += payload;
+                    if (r.O > end) return null;
+                }
+                if (!IsPlain(r.Str()) || !IsPlain(r.Str())) return null;
+                r.F32();
+                if (r.O > end) return null;
+                result.Add(new CampaignClimate(i, name, cr, cg, cb));
+            }
         }
-        throw new InvalidDataException("No tile-set records found in _settings.bin.");
+        catch (ArgumentOutOfRangeException) { return null; }
+        return r.O == end ? result : null;
+    }
+
+    private static bool IsPlain(string s) => s.All(c => c is >= ' ' and <= '~');
+
+    /// <summary>Tile-set records end the file: u32 count, then TILE_SET v3: u16 version, name, linking_tile,
+    /// shared_geometry, also_place_tile_set, link_as_set, u8 r, g, b, exclude_from_global_mesh.</summary>
+    public static List<CampaignTileSet> ReadTileSets(byte[] settings) =>
+        FindTileSets(settings)?.Sets ?? throw new InvalidDataException("No tile-set records found in _settings.bin.");
+
+    /// <summary>The TILE_SETS list: the last structure of the file, so its count is the offset whose records end at
+    /// EOF.</summary>
+    private static (int Offset, List<CampaignTileSet> Sets)? FindTileSets(byte[] settings)
+    {
+        for (var offset = settings.Length - 4; offset >= 10; offset--)
+        {
+            var count = BinaryPrimitives.ReadInt32LittleEndian(settings.AsSpan(offset));
+            if (count is < 1 or > 4096) continue;
+            if (TryReadTileSets(settings, offset + 4, count) is { } sets) return (offset, sets);
+        }
+        return null;
     }
 
     private static List<CampaignTileSet>? TryReadTileSets(byte[] data, int start, int count)
@@ -315,17 +338,19 @@ public sealed class CampaignTileDatabase
         var sets = new List<CampaignTileSet>();
         try
         {
+            var version = -1;
             for (var i = 0; i < count; i++)
             {
-                if (r.U16() != 2) return null;
+                var v = r.U16();
+                if (v is 0 or > 64 || version >= 0 && v != version) return null;
+                version = v;
                 var name = r.Str();
                 var linking = r.Str();
                 var shared = r.Str();
                 var also = r.Str();
                 var linkAs = r.Str();
-                var cr = r.F32(); var cg = r.F32(); var cb = r.F32();
-                if (!(cr is >= 0 and <= 255 && cg is >= 0 and <= 255 && cb is >= 0 and <= 255)) return null;
-                sets.Add(new CampaignTileSet(i, name, linking, shared, also, linkAs, ColourByte(cr), ColourByte(cg), ColourByte(cb), r.Bool()));
+                if (name.Length == 0 || !new[] { name, linking, shared, also, linkAs }.All(IsPlain)) return null;
+                sets.Add(new CampaignTileSet(i, name, linking, shared, also, linkAs, r.U8(), r.U8(), r.U8(), r.Bool()));
             }
         }
         catch (ArgumentOutOfRangeException) { return null; }
