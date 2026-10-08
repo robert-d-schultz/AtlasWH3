@@ -31,7 +31,6 @@ public sealed record ProjectPaths
     public string TreeList => Path.Combine(CampaignMapDir, "display", "trees", "trees.campaign_tree_list");
     public string TreeIdsTsv => Path.Combine(DbTsvRoot, "campaign_tree_ids_tables", "data__.tsv");
     public string TreeVariantsTsv => Path.Combine(DbTsvRoot, "campaign_tree_variants_tables", "data__.tsv");
-    public string SeasonsTsv => Path.Combine(DbTsvRoot, "seasons_tables", "data__.tsv");
 
     public string AkTerrainDir => Path.Combine(AssemblyKitRoot, "raw_data", "terrain", "campaigns", MapName);
     public string AkWorkingDir => Path.Combine(AssemblyKitRoot, "working_data");

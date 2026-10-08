@@ -19,10 +19,6 @@ public static class DbBinaryTable
                                              new("tree_id", FieldType.StringU8), new("can_be_removed", FieldType.Boolean)],
         [("campaign_tree_variants_tables", 4)] = [new("tree_id", FieldType.StringU8), new("tree_rigid", FieldType.StringU8),
                                                   new("tree_audio", FieldType.OptionalStringU8), new("season", FieldType.OptionalStringU8)],
-        [("seasons_tables", 3)] = [new("season", FieldType.StringU8), new("longname", FieldType.StringU8), new("shortname", FieldType.StringU8),
-                                   new("onscreen_name", FieldType.StringU8), new("index", FieldType.I32), new("default", FieldType.Boolean),
-                                   new("battle_default", FieldType.Boolean), new("convert_rain_to_snow", FieldType.Boolean),
-                                   new("convert_snow_to_rain", FieldType.Boolean)],
     };
 
     public sealed record Table(string Name, int Version, Column[] Columns, List<object?[]> Rows)

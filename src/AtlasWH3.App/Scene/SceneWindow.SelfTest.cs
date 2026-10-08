@@ -309,7 +309,7 @@ public sealed partial class SceneWindow
                 var scenesWithModels = scenes.Count(p => p is not null && _model.CompositeModels(p).Count > 0);
                 Step("3d campaign world", _model.Terrain is null || (_model.Trees.Count > 0 && _model.SeaHeight is not null && _view3d.RiversReady),
                     $"{_model.TreesNote}; sea map {(_model.SeaHeight is { } sh ? $"{sh.Width}x{sh.Height}" : "none")}; rivers ready {_view3d.RiversReady}; "
-                    + $"composite scenes with models {scenesWithModels}/{scenes.Count}; season {_model.Season}");
+                    + $"composite scenes with models {scenesWithModels}/{scenes.Count}");
                 Save3D(outDir, "11_3d_overview");
                 async Task CloseUp(System.Numerics.Vector3 at, float distance, string name, float pitch = 0.55f)
                 {
@@ -387,24 +387,6 @@ public sealed partial class SceneWindow
                         var at = new System.Numerics.Vector3((float)mx, (float)_model.GroundY(mx, mz), (float)mz);
                         await CloseUp(at, 30, "26_3d_mountains", 0.75f);
                         await CloseUp(at, 10, "27_3d_mountains_close", 0.6f);
-
-                        // Winter: seasonal ground textures, snow mask, winter trees; then back to summer.
-                        _model.Season = "season_winter";
-                        _view3d.Refresh();
-                        _view3d.Invalidate();
-                        for (var wait = 0; wait < 600 && !(_view3d.SeasonReady && _view3d.TileMeshesReady); wait++) { _view3d.Invalidate(); await Task.Delay(100); }
-                        await CloseUp(at, 30, "28_3d_winter", 0.75f);
-                        var winterOk = _view3d.SeasonReady;
-                        var snow = _view3d.SnowActive;
-                        _view3d.FrameAll();
-                        _view3d.Invalidate();
-                        await Task.Delay(500);
-                        Save3D(outDir, "29_3d_winter_overview");
-                        _model.Season = "season_summer";
-                        _view3d.Refresh();
-                        for (var wait = 0; wait < 600 && !(_view3d.SeasonReady && _view3d.TileMeshesReady); wait++) { _view3d.Invalidate(); await Task.Delay(100); }
-                        Step("3d seasons", winterOk && _view3d.SeasonReady, $"winter ground + trees rebuilt; snow mask {(snow ? "applied" : "not applied (map size differs from the vanilla tile grid)")}; back to summer");
-                        Save3D(outDir, "30_3d_summer_overview");
 
                         // Region mask + cities (from the kit's map.hex), in 3D and 2D.
                         _model.ShowRegions = true;

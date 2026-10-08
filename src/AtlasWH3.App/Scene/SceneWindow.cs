@@ -162,23 +162,10 @@ public sealed partial class SceneWindow : Window
         return dock;
     }
 
-    /// <summary>Season preview and tile overlay, for both views.</summary>
+    /// <summary>View options and tile overlay, for both views.</summary>
     private UIElement SharedBar()
     {
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Background = Theme.Brush("Panel") };
-        bar.Children.Add(new TextBlock { Text = "Season", Foreground = Theme.Brush("DimText"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) });
-        var season = new ComboBox { Margin = new Thickness(2), MinWidth = 90, ToolTip = "Season preview: props whose season mask excludes it are hidden; trees and tile props use its models; ground textures and snow (3D) follow it" };
-        season.Items.Add("All seasons");
-        foreach (var name in SceneModel.Seasons) season.Items.Add(name["season_".Length..]);
-        season.SelectedIndex = 2; // summer
-        season.SelectionChanged += (_, _) =>
-        {
-            _model.Season = season.SelectedIndex <= 0 ? "" : SceneModel.Seasons[season.SelectedIndex - 1];
-            _view.Refresh();
-            _view3d.Refresh();
-            _ = _model.LoadModelBoundsAsync();
-        };
-        bar.Children.Add(season);
         var showHidden = new CheckBox
         {
             Content = "Show hidden layers", Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 2, 0),

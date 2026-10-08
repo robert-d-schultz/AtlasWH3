@@ -13,7 +13,7 @@ public static partial class Walkthroughs
         new("scene.search", "Find",
             "Search the whole map by name, asset or id, or with filters such as type:Prop or layer:name. Select all results to edit them together."),
         new("scene.sharedBar", "View options",
-            "Preview a season, show hidden layers, colour the map by region, and overlay the placed tiles (roads, rivers, coast, mountains). " +
+            "Show hidden layers, colour the map by region, and overlay the placed tiles (roads, rivers, coast, mountains). " +
             "These only change what you see."),
         new("scene.map2d", "Top view (2D)",
             "The map from above: click to select, drag a box to select many, right or middle drag to pan and use the wheel to zoom. " +

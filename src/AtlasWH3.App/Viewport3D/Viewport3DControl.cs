@@ -176,9 +176,8 @@ public sealed class Viewport3DControl : Grid
     /// <summary>Rebuilds items on the next frame (scene or model bounds changed).</summary>
     public void Refresh()
     {
-        _treeModels.Clear(); // the season may have changed
+        _treeModels.Clear();
         _treeCache = null;
-        if (_model is not null && _tileMeshSeason != _model.Season) { _tileMeshCache = null; _tileRivers = null; _tileGround = null; _tileMeshSeason = _model.Season; }
         // Rebuild now, not on the next frame: a gizmo drag right after an edit must start from the new transforms.
         if (_model is not null) Rebuild();
         else _builtVersion = -1;
@@ -195,7 +194,7 @@ public sealed class Viewport3DControl : Grid
         foreach (var it in _model.All)
         {
             var e = it.Entity;
-            if (TerryEntityTypes.IsLayerType(e.Type) || e.Transform is not var (p, r, s) || !_model.IsDrawn(it) || !_model.InSeason(e)) continue;
+            if (TerryEntityTypes.IsLayerType(e.Type) || e.Transform is not var (p, r, s) || !_model.IsDrawn(it)) continue;
             var t = new TerryTransform(p, r, s);
             var outline = new List<(Vector3, Vector3)>();
             foreach (var o in e.Outlines)
@@ -466,7 +465,7 @@ public sealed class Viewport3DControl : Grid
     /// 48 lf pixels, as in the 2D view.
     /// </summary>
     private TerrainMaterial? CreateGround(Renderer3D r, AtlasWH3.Formats.Maps.Raster<byte> groups, AtlasWH3.Formats.Maps.TextureArrays arrays,
-                                          float worldW, float worldH, string season = "")
+                                          float worldW, float worldH)
     {
         const int size = 512;
         var lib = _model!.Models;
@@ -474,7 +473,7 @@ public sealed class Viewport3DControl : Grid
         Parallel.For(0, arrays.Groups.Count, i =>
         {
             var g = arrays.Groups[i];
-            if (string.IsNullOrEmpty(g.BaseColour) || lib.Texture(SeasonalTexture(lib, g.BaseColour, season), size) is not { } img) return;
+            if (string.IsNullOrEmpty(g.BaseColour) || lib.Texture(g.BaseColour, size) is not { } img) return;
             if (img.Width == size && img.Height == size) { layers[i] = img.Rgba; return; }
             var data = new byte[size * size * 4];
             for (var y = 0; y < size; y++)
@@ -489,82 +488,6 @@ public sealed class Viewport3DControl : Grid
         var fallback = Enumerable.Range(0, Math.Max(1, arrays.Groups.Count)).Select(i => AtlasWH3.Core.Rendering.TerrainRenderer.FallbackColour(i)).ToList();
         var repeat = 48 * worldW / groups.Width;
         return r.CreateTerrainMaterial(groups.Data, groups.Width, groups.Height, layers, fallback, new Vector2(worldW, worldH), repeat);
-    }
-
-    private static readonly System.Text.RegularExpressions.Regex SeasonToken = new("_(spring|summer|harvest|autumn|winter)_", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    /// <summary>
-    /// A ground texture for the previewed season: the texture_arrays path with its season token swapped
-    /// (temperate_1_autumn_base_colour → temperate_1_winter_base_colour) when that file exists; harvest falls back to
-    /// autumn. Groups with one texture for all seasons (arid, steppe, roads...) and "all seasons" keep the listed file.
-    /// </summary>
-    private static string SeasonalTexture(AtlasWH3.Core.Assets.ModelLibrary lib, string path, string season)
-    {
-        if (season.Length == 0 || !SeasonToken.IsMatch(path)) return path;
-        var name = season.Replace("season_", "");
-        foreach (var candidate in name == "harvest" ? new[] { "harvest", "autumn" } : [name])
-        {
-            var swapped = SeasonToken.Replace(path, $"_{candidate}_", 1);
-            if (lib.Source.Exists(swapped.Replace('\\', '/'))) return swapped;
-        }
-        return path;
-    }
-
-    private string? _groundSeason, _snowSeason;
-    private bool _groundRebuilding;
-
-    /// <summary>
-    /// Follows the season selector: rebuilds the ground texture array with the season's textures, and sets the
-    /// season's snow (terrain/textures/campaign/default/snow/3k_campaign_map_[season_]snowmask.dds, one texel per
-    /// tile-map cell; only used when its size matches this map's tile grid).
-    /// </summary>
-    private void EnsureSeason()
-    {
-        if (_model is null || _r is null || _terrain is null) return;
-        var season = _model.Season;
-        if (_groundSeason != season && !_groundRebuilding && _model.TerrainBlend is var (groups, arrays) && _model.Terrain is var (_, ww, wh))
-        {
-            _groundRebuilding = true;
-            var r = _r;
-            _ = Task.Run(() =>
-            {
-                TerrainMaterial? ground = null;
-                try { ground = CreateGround(r, groups, arrays, (float)ww, (float)wh, season); } catch (Exception) { }
-                Dispatcher.BeginInvoke(() =>
-                {
-                    if (ground is not null) _ground = ground;
-                    _groundSeason = season;
-                    _groundRebuilding = false;
-                    Invalidate();
-                });
-            });
-        }
-        if (_snowSeason != season)
-        {
-            _snowSeason = season;
-            var lib = _model.Models;
-            var (gw, gh, _, _) = _model.TileGrid;
-            var r = _r;
-            _ = Task.Run(() =>
-            {
-                GpuTexture? mask = null, colour = null;
-                try
-                {
-                    var file = season.Length == 0 ? "3k_campaign_map_snowmask.dds" : $"3k_campaign_map_{season.Replace("season_", "")}_snowmask.dds";
-                    if (lib.Source.TryRead("terrain/textures/campaign/default/snow/" + file) is { } bytes)
-                    {
-                        var img = AtlasWH3.Formats.Dds.DdsTexture.Decode(bytes);
-                        if (img.Width == gw && img.Height == gh && lib.Texture("terrain/textures/campaign/default/snow/campaign_snow_base_colour.dds", 512) is { } snow)
-                        {
-                            mask = r.CreateTexture(img.Width, img.Height, img.Rgba);
-                            colour = r.CreateTexture(snow.Width, snow.Height, snow.Rgba);
-                        }
-                    }
-                }
-                catch (Exception) { }
-                Dispatcher.BeginInvoke(() => { r.SetSnow(mask, colour); SnowActive = mask is not null; Invalidate(); });
-            });
-        }
     }
 
     private GpuTexture? _regionTexture;
@@ -702,9 +625,6 @@ public sealed class Viewport3DControl : Grid
         }
     }
 
-    /// <summary>The season's snow mask is applied (the map matches the vanilla tile grid).</summary>
-    public bool SnowActive { get; private set; }
-    public bool SeasonReady => _model is null || (_groundSeason == _model.Season && !_groundRebuilding && _snowSeason == _model.Season);
 
     /// <summary>
     /// The water surface from the LowFrequencyHeightSea map (half lf resolution, same height units): a grid over the
@@ -791,7 +711,6 @@ public sealed class Viewport3DControl : Grid
     /// <summary>Placed tiles' meshes and props as ready instances, per model (built once in the background).</summary>
     private Dictionary<string, (InstanceData[] Instances, Vector3[] Centres, float[] Scales)>? _tileMeshCache;
     private bool _tileMeshCacheBuilding;
-    private string? _tileMeshSeason;
     private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _tileRivers;
     private TileGround? _tileGround;
 
@@ -959,8 +878,6 @@ public sealed class Viewport3DControl : Grid
         return new Matrix4x4(r0.X, r0.Y, r0.Z, 0, 0, sy, 0, 0, r2.X, r2.Y, r2.Z, 0, tx, baseY, tz, 1);
     }
 
-    private static readonly string[] SeasonSuffixes = ["_spring", "_summer", "_harvest", "_autumn", "_winter"];
-
     private static (Dictionary<string, (InstanceData[] Instances, Vector3[] Centres, float[] Scales)> Models, LineVertex[] RiverVertices, uint[] RiverIndices)
         BuildTileMeshCache(SceneModel model)
     {
@@ -970,7 +887,6 @@ public sealed class Viewport3DControl : Grid
         var (_, _, cx, cz) = model.TileGrid;
         float sx = (float)(cx / 128), sz = (float)(cz / 128);
         static float Lf(float v) => (float)(v * 65535 * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset);
-        var season = (model.Season.Length == 0 ? "season_summer" : model.Season)["season".Length..]; // "_summer"
         var content = new Dictionary<string, (string? Mesh, string? River, List<(string Path, Matrix4x4 Local, bool OnTerrain, float Scale)> Props)>(StringComparer.OrdinalIgnoreCase);
         var water = new Vector4(0.13f, 0.30f, 0.43f, 0.85f);
         var result = new Dictionary<string, (List<InstanceData> I, List<Vector3> C, List<float> S)>(StringComparer.OrdinalIgnoreCase);
@@ -1000,10 +916,6 @@ public sealed class Viewport3DControl : Grid
                     if (model.Models.Source.TryRead(folder + "/bmd_data.bin") is { } bmd)
                         foreach (var p in AtlasWH3.Formats.Props.GlobalProps.ReadBody(bmd).Props)
                         {
-                            // Season variants are separate models: keep the previewed season's (summer when "all").
-                            var stem = System.IO.Path.GetFileNameWithoutExtension(p.Path);
-                            if (SeasonSuffixes.FirstOrDefault(s => stem.EndsWith(s, StringComparison.OrdinalIgnoreCase)) is { } suffix
-                                && !suffix.Equals(season, StringComparison.OrdinalIgnoreCase)) continue;
                             var tr = p.Transform;
                             var local = World(new TerryTransform([tr.X, tr.Y, tr.Z], [tr.RotX, tr.RotY, tr.RotZ], [tr.ScaleX, tr.ScaleY, tr.ScaleZ]))
                                         * Matrix4x4.CreateScale(4); // bmd units: 32 per cell
@@ -1221,7 +1133,6 @@ public sealed class Viewport3DControl : Grid
         var frameClock = System.Diagnostics.Stopwatch.StartNew();
         if (_builtVersion != _model!.Version) Rebuild();
         EnsureTerrain();
-        EnsureSeason();
         EnsureRegionOverlay();
         int w = offscreen?.W ?? r.Width, h = offscreen?.H ?? r.Height;
         _cam.Aspect = w / (float)Math.Max(1, h);

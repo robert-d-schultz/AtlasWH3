@@ -11,8 +11,6 @@ public sealed class TreeOverlay
 
     public HashSet<string> HiddenTypes { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool Visible { get; set; } = true;
-    /// <summary>Only draw instances present in this season id (null = all).</summary>
-    public uint? Season { get; set; }
 
     public TreeOverlay(CampaignTreeList trees, TreeDatabase? db)
     {
@@ -47,11 +45,8 @@ public sealed class TreeOverlay
             for (var i = 0; i < list.Count; i += alphaSkip)
             {
                 var inst = list[i];
-                if (Season is { } s && !(inst.Seasons.Length == 1 && inst.Seasons[0] == CampaignTreeList.NoSeason)
-                                    && Array.IndexOf(inst.Seasons, s) < 0)
-                    continue;
                 var (mx, my) = coords.ToPixel(inst.X, inst.Z, lfW, lfH);
-                var sx = (int)((mx - view.OriginX) / view.Scale);
+                var sx =(int)((mx - view.OriginX) / view.Scale);
                 var sy = (int)((my - view.OriginY) / view.Scale);
                 if (sx < -radius || sy < -radius || sx >= width + radius || sy >= height + radius) continue;
                 Plot(bgra, width, height, sx, sy, radius, colour);

@@ -176,7 +176,7 @@ public sealed class SceneView : FrameworkElement
         foreach (var item in _model.All)
         {
             var e = item.Entity;
-            if (TerryEntityTypes.IsLayerType(e.Type) || e.Transform is not var (p, _, _) || !_model.IsDrawn(item) || !_model.InSeason(e)) continue;
+            if (TerryEntityTypes.IsLayerType(e.Type) || e.Transform is not var (p, _, _) || !_model.IsDrawn(item)) continue;
             var outlines = e.Outlines.Select(o =>
             {
                 var pts = o.Points.Select(pt => e.ToWorld(pt.X, pt.Z));

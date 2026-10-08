@@ -16,7 +16,7 @@ public static partial class Walkthroughs
         new("painter.trees", "Tree tools",
             "The species to place, how dense a scattered forest is and how far apart trees stay, plus erase options."),
         new("painter.view", "View",
-            "Turn ground textures, water and trees on or off, and preview a season. This only changes what you see."),
+            "Turn ground textures, water and trees on or off. This only changes what you see."),
         new("painter.species", "Tree species",
             "Show or hide single tree species on the map; hidden species are also left alone by the eraser."),
         new("painter.menu", "Menus",

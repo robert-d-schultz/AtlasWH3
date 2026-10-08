@@ -101,7 +101,6 @@
                             <CheckBox x:Name="ShowTextures" Content="Ground textures" IsChecked="True" Click="Layers_Changed"/>
                             <CheckBox x:Name="ShowWater" Content="Water" IsChecked="True" Click="Layers_Changed"/>
                             <CheckBox x:Name="ShowTrees" Content="Trees" IsChecked="True" Click="Layers_Changed"/>
-                            <ComboBox x:Name="SeasonCombo" Margin="0,4" SelectionChanged="Layers_Changed"/>
                         </StackPanel>
                     </Expander>
 

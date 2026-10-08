@@ -280,27 +280,12 @@ public sealed class SceneModel
         return new RegionMap(rgba, w, h, cities, lookup);
     }
 
-    /// <summary>The season previewed: "" = all (every season variant at once), else e.g. "season_summer".</summary>
-    public string Season { get; set; } = "season_summer";
-
-    public static readonly string[] Seasons = ["season_spring", "season_summer", "season_harvest", "season_autumn", "season_winter"];
-
-    /// <summary>The tree's model for the previewed season (summer when "all").</summary>
+    /// <summary>The tree's model (its first variant row).</summary>
     public string? TreeModel(string treeId)
     {
         if (_treeDb is null) return null;
-        var season = Season.Length == 0 ? "season_summer" : Season;
-        var v = _treeDb.Variants.FirstOrDefault(x => x.TreeId.Equals(treeId, StringComparison.OrdinalIgnoreCase) && x.Season == season)
-                ?? _treeDb.Variants.FirstOrDefault(x => x.TreeId.Equals(treeId, StringComparison.OrdinalIgnoreCase));
+        var v = _treeDb.Variants.FirstOrDefault(x => x.TreeId.Equals(treeId, StringComparison.OrdinalIgnoreCase));
         return v?.ModelPath.Replace('\\', '/');
-    }
-
-    /// <summary>True when the entity shows in the previewed season (no season mask = every season).</summary>
-    public bool InSeason(TerryEntityData e)
-    {
-        if (Season.Length == 0) return true;
-        var mask = e.Component("ECCampaignProperties")?["season_mask"];
-        return string.IsNullOrEmpty(mask) || mask.Split(',').Any(m => m.Trim() == Season);
     }
 
     /// <summary>Bumped on every change, so views know to redraw.</summary>
@@ -524,7 +509,7 @@ public sealed class SceneModel
                 TreesNote = $"tree DB tables not found ({_paths.TreeIdsTsv})";
                 return;
             }
-            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.Load(_paths.TreeIdsTsv, _paths.TreeVariantsTsv, _paths.SeasonsTsv);
+            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.Load(_paths.TreeIdsTsv, _paths.TreeVariantsTsv);
             var (map, palette) = TiffMap.ReadPalette8(Project.LayerTifPath(treeMap));
             var (height, worldW, _) = Terrain!.Value;
             var grid = AtlasWH3.Core.Campaign.Trees.HexGrid.ForTreeMap(map.Width, map.Height, (float)worldW);

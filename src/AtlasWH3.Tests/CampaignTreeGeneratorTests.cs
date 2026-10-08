@@ -15,9 +15,9 @@ public class CampaignTreeGeneratorTests
     private static readonly HexGrid VanillaGrid = HexGrid.ForTreeMap(1784, 1405, 595.1f);
 
     private static bool HaveVanilla =>
-        File.Exists(Paths.TreeList) && File.Exists(Paths.TreeIdsTsv) && File.Exists(Paths.SeasonsTsv);
+        File.Exists(Paths.TreeList) && File.Exists(Paths.TreeIdsTsv);
 
-    private static TreeDatabase Db() => TreeDatabase.Load(Paths.TreeIdsTsv, Paths.TreeVariantsTsv, Paths.SeasonsTsv);
+    private static TreeDatabase Db() => TreeDatabase.Load(Paths.TreeIdsTsv, Paths.TreeVariantsTsv);
 
     [Fact]
     public void CaHash_MatchesCalibsMurmur()

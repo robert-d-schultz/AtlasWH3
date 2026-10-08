@@ -37,7 +37,7 @@ public sealed class TreesStep : ICampaignBuildStep
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
         else if (TerryProject.Load(ctx.TerryFile).Find("CampaignTree") is null) missing.Add("no CampaignTree map in the .terry");
-        foreach (var tsv in new[] { ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv, ctx.Paths.SeasonsTsv })
+        foreach (var tsv in new[] { ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv })
             if (!File.Exists(tsv)) missing.Add($"missing {tsv}");
         return missing;
     }
@@ -46,7 +46,7 @@ public sealed class TreesStep : ICampaignBuildStep
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
-        var db = TreeDatabase.Load(ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv, ctx.Paths.SeasonsTsv);
+        var db = TreeDatabase.Load(ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv);
 
         var project = TerryProject.Load(ctx.TerryFile);
         var (map, palette) = TiffMap.ReadPalette8(project.LayerTifPath(project.Find("CampaignTree")!));

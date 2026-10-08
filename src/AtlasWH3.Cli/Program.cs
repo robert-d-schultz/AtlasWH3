@@ -741,7 +741,7 @@ static int TreesDecode(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--list", out var listPath);
     a = TakeOption(a, "--out", out var outPath);
     listPath ??= paths.TreeList;
-    var db = TreeDatabase.Load(paths.TreeIdsTsv, paths.TreeVariantsTsv, paths.SeasonsTsv);
+    var db = TreeDatabase.Load(paths.TreeIdsTsv, paths.TreeVariantsTsv);
     var original = File.ReadAllBytes(listPath);
     var list = CampaignTreeList.Read(original);
     // The grid is fixed by the world width and the hex count; the hex count follows from the world height.

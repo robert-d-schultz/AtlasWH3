@@ -79,8 +79,6 @@ public partial class MainWindow : Window
         PopulateSpecies();
         // Keep the species counts current after any edit, undo or redo.
         Map.Undo.Changed += PopulateTreeList;
-        SeasonCombo.ItemsSource = new[] { "All seasons" }.Concat(TreeDatabase.SeasonNames).ToList();
-        SeasonCombo.SelectedIndex = 0;
         StatusText.Text = $"Loaded: {_terrain!.Width}x{_terrain.HeightPx} terrain, {_trees!.TotalInstances:N0} trees in {_trees.Types.Count} species.";
     }
 
@@ -214,7 +212,6 @@ public partial class MainWindow : Window
         _renderer.Options.ShowTextures = ShowTextures.IsChecked == true;
         _renderer.Options.ShowWater = ShowWater.IsChecked == true;
         _treeOverlay.Visible = ShowTrees.IsChecked == true;
-        _treeOverlay.Season = SeasonCombo.SelectedIndex <= 0 ? null : (uint)(SeasonCombo.SelectedIndex - 1);
         Map.Invalidate();
     }
 
@@ -416,9 +413,6 @@ public partial class MainWindow : Window
             }
         }
         if (found is not { } f) return null;
-        var seasons = f.Seasons.Length == 1 && f.Seasons[0] == CampaignTreeList.NoSeason
-            ? "no seasons"
-            : string.Join(",", f.Seasons.Select(s => s < TreeDatabase.SeasonNames.Length ? TreeDatabase.SeasonNames[s] : s.ToString()));
-        return $"tree {name} v{f.Variant} ({seasons})";
+        return $"tree {name} v{f.Variant}";
     }
 }
