@@ -16,15 +16,17 @@ public class CoreTests
     {
         var list = new CampaignTreeList { WorldWidth = 595.1f, WorldHeight = 541.786f };
         var type = new TreeType { Name = "bamboo_1" };
-        type.Instances.Add(new TreeInstance { X = 1, Y = 2, Z = 3, Flag = 1, Variant = 4, Seasons = [0, 1, 2, 3, 4] });
-        type.Instances.Add(new TreeInstance { X = 5, Y = 6, Z = 7, Flag = 1, Variant = 0, Seasons = [CampaignTreeList.NoSeason] });
+        type.Instances.Add(new TreeInstance { X = 1, Y = 2, Z = 3, Flag = 1, Variant = 4 });
+        type.Instances.Add(new TreeInstance { X = 5, Y = 6, Z = 7, Flag = 1, Variant = 0 });
         list.Types.Add(type);
 
         var bytes = list.ToBytes();
         var back = CampaignTreeList.Read(bytes);
         Assert.Equal(bytes, back.ToBytes());
         Assert.Equal(2, back.TotalInstances);
-        Assert.Equal(CampaignTreeList.NoSeason, back.Types[0].Instances[1].Seasons[0]);
+        Assert.Equal(0xFF, back.Types[0].Instances[1].Tag);
+        Assert.Equal(4u, back.Version);
+        Assert.Equal(24 + 2 + 8 + 4 + 2 * 15, bytes.Length);
     }
 
     [Fact]
@@ -61,7 +63,7 @@ public class CoreTests
         var trees = new CampaignTreeList { WorldWidth = terrain.Coords.WorldWidth, WorldHeight = terrain.Coords.WorldHeight };
         var (wx, wz) = terrain.Coords.ToWorld(10.5, 20.5, 80, 64);
         var type = new TreeType { Name = "t" };
-        type.Instances.Add(new TreeInstance { X = (float)wx, Z = (float)wz, Seasons = [0] });
+        type.Instances.Add(new TreeInstance { X = (float)wx, Z = (float)wz, });
         trees.Types.Add(type);
 
         ExpandCanvas.Apply(terrain, trees, new HexPadding(2, 1, 1, 3));

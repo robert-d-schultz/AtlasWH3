@@ -280,13 +280,8 @@ public sealed class SceneModel
         return new RegionMap(rgba, w, h, cities, lookup);
     }
 
-    /// <summary>The tree's model (its first variant row).</summary>
-    public string? TreeModel(string treeId)
-    {
-        if (_treeDb is null) return null;
-        var v = _treeDb.Variants.FirstOrDefault(x => x.TreeId.Equals(treeId, StringComparison.OrdinalIgnoreCase));
-        return v?.ModelPath.Replace('\\', '/');
-    }
+    /// <summary>The tree's BASE model.</summary>
+    public string? TreeModel(string treeId) => _treeDb?.Model(treeId)?.Replace('\\', '/');
 
     /// <summary>Bumped on every change, so views know to redraw.</summary>
     public int Version { get; private set; }

@@ -23,13 +23,13 @@ public class TreeEditingTests
         var list = new CampaignTreeList { WorldWidth = 400 * 0.0834f, WorldHeight = 400 * 0.0964f };
         var fir = new TreeType { Name = "cold_tree_fir_large_1" };
         for (var i = 0; i < 50; i++)
-            fir.Instances.Add(new TreeInstance { X = 5 + i * 0.05f, Z = 5, Y = 1, Flag = 1, Seasons = [0, 1, 2, 3, 4] });
+            fir.Instances.Add(new TreeInstance { X = 5 + i * 0.05f, Z = 5, Y = 1, Flag = 1 });
         list.Types.Add(fir);
         return list;
     }
 
     [Fact]
-    public void Scatter_AddsTrees_WithHeightSeasonsAndSpacing_AndUndoRestores()
+    public void Scatter_AddsTrees_WithHeightAndSpacing_AndUndoRestores()
     {
         var terrain = FlatLand();
         var trees = ExistingForest();
@@ -47,7 +47,7 @@ public class TreeEditingTests
         Assert.All(added, t =>
         {
             Assert.Equal(HeightScale.ToWorld(30000), t.Y, 3);
-            Assert.Equal(new uint[] { 0, 1, 2, 3, 4 }, t.Seasons); // copied from existing firs
+            Assert.Equal(0xFF, t.Tag);
             Assert.InRange(t.Variant, 0, 5);
         });
         for (var i = 0; i < added.Count; i++)
@@ -99,7 +99,7 @@ public class TreeEditingTests
         var terrain = FlatLand();
         var trees = ExistingForest();
         var rock = new TreeType { Name = "general_rock_small_1" };
-        rock.Instances.Add(new TreeInstance { X = 5.5f, Z = 5, Seasons = [CampaignTreeList.NoSeason] });
+        rock.Instances.Add(new TreeInstance { X = 5.5f, Z = 5 });
         trees.Types.Add(rock);
 
         var (mx, my) = terrain.Coords.ToPixel(5.5, 5, terrain.Width, terrain.HeightPx);
@@ -149,8 +149,8 @@ public class TreeEditingTests
         var dir = Directory.CreateTempSubdirectory("terryclone_db").FullName;
         var ids = Path.Combine(dir, "ids.tsv");
         var variants = Path.Combine(dir, "variants.tsv");
-        File.WriteAllText(ids, $"tree_id\tcan_be_removed\tcolour_hex\n#campaign_tree_ids_tables;3;db/x\n{id}\ttrue\t{colour:X6}\n");
-        File.WriteAllText(variants, $"tree_id\tseason\ttree_rigid\ttree_audio\n#campaign_tree_variants_tables;4;db/x\n{id}\tsummer\tx.wsmodel\t\n");
+        File.WriteAllText(ids, $"tree_id\tcan_be_removed\tseason\tcolour_hex\n#campaign_tree_ids_tables;2;db/x\n{id}\ttrue\tALL\t{colour:X6}\n");
+        File.WriteAllText(variants, $"tree_id\ttree_rigid\ttree_type\ttree_audio\treceive_decals\n#campaign_tree_variants_tables;3;db/x\n{id}\tx.wsmodel\tBASE\t\tfalse\n");
         return TreeDatabase.Load(ids, variants);
     }
 }

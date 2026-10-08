@@ -79,7 +79,7 @@ public class TileErrorsTests
         var all = TileErrors.FixAll(map, Db.Value!, before.Where(e => e.Code == "line.thick"), climate: null, verifiedOnly: false);
         Assert.True(all.Fixed > 0);
         Apply(map, all.Ops);
-        var after = TileErrors.Find(map, Db.Value, suggest: false);
+        var after = TileErrors.Find(map, Db.Value!, suggest: false);
         Assert.True(after.Count(e => e.Code == "line.thick") < before.Count(e => e.Code == "line.thick"));
         Assert.True(after.Count(e => e.Severity == TileMapFinding.Error) <= before.Count(e => e.Severity == TileMapFinding.Error));
     }

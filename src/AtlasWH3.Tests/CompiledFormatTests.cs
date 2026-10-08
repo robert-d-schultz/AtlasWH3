@@ -1,4 +1,5 @@
 using AtlasWH3.Formats.Maps;
+using AtlasWH3.Formats.Trees;
 
 namespace AtlasWH3.Tests;
 
@@ -24,5 +25,19 @@ public class CompiledFormatTests
                 Assert.Equal(list.Ints[1] + 2, list.Ints[9]);
                 Assert.Equal(bytes, list.ToBytes());
             }
+    }
+
+    [Fact]
+    public void TreeList_V4_RoundTrips()
+    {
+        foreach (var map in Maps)
+        {
+            var file = Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "display", "trees", "trees.campaign_tree_list");
+            if (!File.Exists(file)) continue;
+            var bytes = File.ReadAllBytes(file);
+            var list = CampaignTreeList.Read(bytes);
+            Assert.All(list.Types.SelectMany(t => t.Instances), t => Assert.Equal((1, 0xFF), (t.Flag, t.Tag)));
+            Assert.Equal(bytes, list.ToBytes());
+        }
     }
 }

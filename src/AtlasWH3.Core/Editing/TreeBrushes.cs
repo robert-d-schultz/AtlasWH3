@@ -260,19 +260,10 @@ public sealed class TreeBrush : TerrainBrush
             Z = (float)z,
             Flag = 1,
             Variant = (byte)_random.Next(6),
-            Seasons = SeasonsFor(type),
         });
         nearby.Add(((float)x, (float)z));
         _log.Add((float)x, (float)z);
         return true;
-    }
-
-    private uint[] SeasonsFor(TreeType type)
-    {
-        // Existing instances of the species are the most reliable source (matches what BOB wrote).
-        foreach (var t in type.Instances)
-            if (t.Seasons is { Length: > 0 }) return (uint[])t.Seasons.Clone();
-        return _db?.SeasonsFor(type.Name) ?? [0, 1, 2, 3, 4];
     }
 }
 

@@ -70,7 +70,6 @@ public class CampaignTreeGeneratorTests
             for (var j = 0; j < a.Count; j++)
             {
                 Assert.Equal((a[j].X, a[j].Z, a[j].Variant, a[j].Flag), (b[j].X, b[j].Z, b[j].Variant, b[j].Flag));
-                Assert.Equal(a[j].Seasons, b[j].Seasons);
                 dy.Add(Math.Abs(a[j].Y - b[j].Y));
             }
         }

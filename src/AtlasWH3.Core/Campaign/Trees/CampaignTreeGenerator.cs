@@ -44,7 +44,7 @@ public readonly record struct HexGrid(int Columns, int Rows, float WorldWidth)
 ///    (generate_canonical&lt;float&gt; · 0.4 − 0.2 each) and the rotation index (uniform_int 0..5)
 ///  - y = terrain height at (x, z) (supplied by the caller)
 ///  - types in CA hash-map order of first appearance (<see cref="CaHash.HashMapOrder"/>), instances in row-major
-///    hex order, seasons from <see cref="TreeDatabase.BobSeasonsFor"/>, header bounds (0, 0, width, height)
+///    hex order, header bounds (0, 0, width, height)
 /// </summary>
 public static class CampaignTreeGenerator
 {
@@ -87,9 +87,8 @@ public static class CampaignTreeGenerator
         var result = new CampaignTreeList { WorldWidth = grid.WorldWidth, WorldHeight = grid.WorldHeight };
         foreach (var id in CaHash.HashMapOrder(order))
         {
-            var seasons = db.BobSeasonsFor(id);
             var type = new TreeType { Name = id };
-            type.Instances.AddRange(instances[id].Select(t => t with { Seasons = seasons }));
+            type.Instances.AddRange(instances[id]);
             result.Types.Add(type);
         }
         return result;
