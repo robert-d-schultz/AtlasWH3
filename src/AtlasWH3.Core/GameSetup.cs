@@ -69,25 +69,28 @@ public static partial class GameSetup
     [GeneratedRegex("\"path\"\\s+\"([^\"]+)\"")]
     private static partial Regex LibraryPath();
 
-    /// <summary>The DB tables (vanilla database packs) the tree tools read, as RPFM-style TSVs under <paramref name="dbRoot"/>.</summary>
+    /// <summary>The DB tables AtlasWH3 reads (<see cref="DbSchema.NeededTables"/>, from the vanilla db.pack), as RPFM-style
+    /// TSVs under <paramref name="dbRoot"/>.</summary>
     public static IReadOnlyList<string> ExtractDbTables(string gameDataDir, string dbRoot, Action<string>? log = null) =>
         ExtractDbTables(gameDataDir, dbRoot, [], log);
 
-    /// <summary>As above, with the linked mod packs' table files added (read-only; a file that does not decode with
-    /// the built-in schema is skipped with a log line).</summary>
+    /// <summary>As above, with the linked mod packs' table files added (read-only; a file whose version the schema
+    /// does not know is skipped with a log line). Files of another version than the vanilla one are matched by column
+    /// name.</summary>
     public static IReadOnlyList<string> ExtractDbTables(string gameDataDir, string dbRoot, IReadOnlyList<string> linkedPacks, Action<string>? log = null)
     {
         SourceGuard.EnsureWritable(dbRoot, gameDataDir, linkedPacks);
-        var vanilla = PackSet.OpenVanilla(gameDataDir, n => n.StartsWith("database", StringComparison.OrdinalIgnoreCase));
+        var vanilla = PackSet.OpenVanilla(gameDataDir, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
         var mods = linkedPacks.Where(File.Exists).Select(PackFile.Open).ToList();
         var packs = new PackSet(mods.Concat(vanilla.Packs));
         var written = new List<string>();
-        foreach (var table in DbBinaryTable.Schemas.Keys.Select(k => k.Table).Distinct())
+        foreach (var table in DbSchema.NeededTables)
         {
             var prefix = PackFile.Normalize($"db/{table}/");
-            // every data file of the table across the database packs; the highest-priority pack wins per file name
-            var files = packs.Packs.SelectMany(p => p.Entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal))).Distinct().ToList();
-            if (files.Count == 0) throw new FileNotFoundException($"{table} not found in {gameDataDir}\\database*.pack");
+            // every data file of the table across the db packs; the highest-priority pack wins per file name
+            var files = packs.Packs.SelectMany(p => p.Entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal))).Distinct()
+                .OrderBy(f => vanilla.Packs.Contains(packs.FindOwner(f)!) ? 0 : 1).ToList();
+            if (files.Count == 0) throw new FileNotFoundException($"{table} not found in {gameDataDir}\\db*.pack");
             DbBinaryTable.Table? merged = null;
             foreach (var file in files)
             {
@@ -99,7 +102,13 @@ public static partial class GameSetup
                     continue;
                 }
                 if (merged is null) merged = t;
-                else merged.Rows.AddRange(t.Rows);
+                else if (t.Version == merged.Version) merged.Rows.AddRange(t.Rows);
+                else
+                {
+                    var map = merged.Columns.Select(c => t.Index(c.Name)).ToArray();
+                    merged.Rows.AddRange(t.Rows.Select(row => map.Select(i => i >= 0 ? row[i] : null).ToArray()));
+                    log?.Invoke($"{file}: version {t.Version} rows matched by column name to version {merged.Version}");
+                }
             }
             var path = Path.Combine(dbRoot, table, "data__.tsv");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

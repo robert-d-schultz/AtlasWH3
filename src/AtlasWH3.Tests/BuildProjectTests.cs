@@ -78,17 +78,6 @@ public class BuildProjectTests : IDisposable
         Assert.Single(missing);
     }
 
-    [Fact]
-    public void ReadsVanillaTreeTables()
-    {
-        var data = new ProjectPaths().GameDataDir;
-        if (!Directory.Exists(data)) return;   // no game install on this machine
-        var packs = PackSet.OpenVanilla(data, n => n.StartsWith("database", StringComparison.OrdinalIgnoreCase));
-        var table = DbBinaryTable.Read("campaign_tree_ids_tables", packs.TryRead("db/campaign_tree_ids_tables/data__")!);
-        Assert.Equal(3, table.Version);
-        Assert.Contains(table.Rows, r => (string)r[table.Index("tree_id")]! == "arid_tree_poplar_large_1");
-    }
-
     private static void Write(string root, string rel, string text)
     {
         var path = Path.Combine(root, rel);

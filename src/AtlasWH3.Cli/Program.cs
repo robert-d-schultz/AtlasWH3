@@ -93,6 +93,8 @@ switch (command)
         return BuildCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when AiPathfindingCommands.Names.Contains(c):
         return AiPathfindingCommands.Run(paths, c, args.Skip(1).ToArray());
+    case var c when DbCommands.Names.Contains(c):
+        return DbCommands.Run(paths, c, args.Skip(1).ToArray());
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
         Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
