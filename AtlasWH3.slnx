@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AtlasWH3.App/AtlasWH3.App.csproj" />
+    <Project Path="src/AtlasWH3.Cli/AtlasWH3.Cli.csproj" />
+    <Project Path="src/AtlasWH3.Core/AtlasWH3.Core.csproj" />
+    <Project Path="src/AtlasWH3.Db/AtlasWH3.Db.csproj" />
+    <Project Path="src/AtlasWH3.Formats/AtlasWH3.Formats.csproj" />
+    <Project Path="src/AtlasWH3.Tests/AtlasWH3.Tests.csproj" />
+    <Project Path="src/AtlasWH3.Web/AtlasWH3.Web.csproj" />
+  </Folder>
+</Solution>

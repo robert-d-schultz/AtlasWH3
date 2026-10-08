@@ -35,7 +35,7 @@ __pycache__/
 !/research/*/*.md
 !/research/*/*.ps1
 !/research/*/*.sh
-!/research/*/*.atlas3k
+!/research/*/*.atlaswh3
 research/trees/tile_hf/
 
 # 2026-10-05 repo clean-up (user): the program + the research on moving the build off BOB only.

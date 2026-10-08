@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AtlasWH3.Core\AtlasWH3.Core.csproj" />
+    <ProjectReference Include="..\AtlasWH3.Formats\AtlasWH3.Formats.csproj" />
+    <ProjectReference Include="..\AtlasWH3.Db\AtlasWH3.Db.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

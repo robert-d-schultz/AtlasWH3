@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AtlasWH3.Core\AtlasWH3.Core.csproj" />
+    <ProjectReference Include="..\AtlasWH3.Formats\AtlasWH3.Formats.csproj" />
+    <ProjectReference Include="..\AtlasWH3.Db\AtlasWH3.Db.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="3.119.0" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>AtlasWH3</AssemblyName>
+    <RootNamespace>AtlasWH3.App</RootNamespace>
+    <ApplicationIcon>Assets/atlaswh3.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets/atlaswh3.ico" />
+  </ItemGroup>
+
+</Project>

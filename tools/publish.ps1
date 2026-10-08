@@ -1,5 +1,5 @@
-# Builds the Atlas3K alpha download: Atlas3K.exe (editor) + Atlas3K.Cli.exe (headless builder), self-contained
-# win-x64 (no .NET install needed), plus the read-me files, in dist\Atlas3K-<version>\ and a zip of it.
+# Builds the AtlasWH3 alpha download: AtlasWH3.exe (editor) + AtlasWH3.Cli.exe (headless builder), self-contained
+# win-x64 (no .NET install needed), plus the read-me files, in dist\AtlasWH3-<version>\ and a zip of it.
 #   powershell -ExecutionPolicy Bypass -File tools\publish.ps1 [-NoZip]
 param([switch]$NoZip)
 $ErrorActionPreference = "Stop"
@@ -11,10 +11,10 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path "$env:P
 [xml]$props = Get-Content (Join-Path $root "Directory.Build.props")
 $group = $props.Project.PropertyGroup | Select-Object -First 1
 $version = "$($group.VersionPrefix)-$($group.VersionSuffix)"
-$out = Join-Path $root "dist\Atlas3K-$version"
+$out = Join-Path $root "dist\AtlasWH3-$version"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 
-foreach ($project in "src\Atlas3K.App\Atlas3K.App.csproj", "src\Atlas3K.Cli\Atlas3K.Cli.csproj") {
+foreach ($project in "src\AtlasWH3.App\AtlasWH3.App.csproj", "src\AtlasWH3.Cli\AtlasWH3.Cli.csproj") {
     Write-Host "publishing $project"
     dotnet publish (Join-Path $root $project) -c Release -r win-x64 --self-contained true -o $out -p:DebugType=none -p:GenerateDocumentationFile=false -nologo -v q
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $project" }

@@ -1,4 +1,4 @@
-"""Read-only PFH4/PFH5 pack index reader (same layout as src/Atlas3K.Formats/Packs/PackFile.cs)."""
+"""Read-only PFH4/PFH5 pack index reader (same layout as src/AtlasWH3.Formats/Packs/PackFile.cs)."""
 import os, struct, sys
 
 

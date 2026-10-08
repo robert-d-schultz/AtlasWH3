@@ -1,0 +1,124 @@
+﻿<Window x:Class="AtlasWH3.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:AtlasWH3.App"
+        Title="AtlasWH3" Height="900" Width="1500"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}">
+    <Window.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{x:Static local:MainWindow.UndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{x:Static local:MainWindow.RedoCommand}"/>
+    </Window.InputBindings>
+    <DockPanel>
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top" local:Walkthrough.Spot="painter.menu">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Export to Assembly Kit..." Click="ExportAk_Click"/>
+                <MenuItem Header="Export _trees list..." Click="ExportTrees_Click"/>
+                <Separator/>
+                <MenuItem Header="Open Terry _scene editor (campaign map)" Click="OpenScene_Click"/>
+                <MenuItem Header="Open Terry _project (.terry)..." Click="OpenSceneProject_Click"/>
+                <Separator/>
+                <MenuItem Header="Open _battle project..." Click="OpenBattle_Click"/>
+                <MenuItem Header="Edit campaign _tile map..." Click="OpenTileMap_Click"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="Exit_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Undo" InputGestureText="Ctrl+Z" Command="{x:Static local:MainWindow.UndoCommand}"/>
+                <MenuItem Header="_Redo" InputGestureText="Ctrl+Y" Command="{x:Static local:MainWindow.RedoCommand}"/>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="_Fit to window" Click="Fit_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Map">
+                <MenuItem Header="_Expand canvas (mirror CAIME resize)..." Click="Expand_Click"/>
+                <MenuItem Header="Show pending _DB changes..." Click="DbChanges_Click"/>
+            </MenuItem>
+            <MenuItem x:Name="LaunchBobItem" Header="_Tools">
+                <MenuItem Header="Launch _BOB" Click="LaunchBob_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <StatusBar DockPanel.Dock="Bottom" local:Walkthrough.Spot="painter.status">
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="Loading..." FontFamily="{StaticResource MonoFont}"/>
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="200"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Background="{StaticResource Panel}">
+                <StackPanel Margin="10,6">
+                    <Expander Header="Tool" IsExpanded="True" local:Walkthrough.Spot="painter.tool">
+                        <StackPanel Margin="4,4,0,6">
+                            <RadioButton x:Name="ToolNavigate" Content="Navigate (no edit)" IsChecked="True" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolRaise" Content="Raise terrain" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolLower" Content="Lower terrain" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolSmooth" Content="Smooth" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolFlatten" Content="Flatten (to click height)" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolNoise" Content="Noise" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolPaint" Content="Paint ground texture" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolTreePlace" Content="Trees: place (click / drag)" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolTreeScatter" Content="Trees: scatter forest" Checked="Tool_Changed"/>
+                            <RadioButton x:Name="ToolTreeErase" Content="Trees: erase" Checked="Tool_Changed"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Brush" IsExpanded="True" local:Walkthrough.Spot="painter.brush">
+                        <StackPanel Margin="4,4,0,6">
+                            <TextBlock x:Name="RadiusLabel" Text="Radius"/>
+                            <Slider x:Name="RadiusSlider" Minimum="2" Maximum="400" Value="40" ValueChanged="Brush_Changed"/>
+                            <TextBlock x:Name="StrengthLabel" Text="Strength"/>
+                            <Slider x:Name="StrengthSlider" Minimum="0.01" Maximum="1" Value="0.4" ValueChanged="Brush_Changed"/>
+                            <TextBlock x:Name="SoftnessLabel" Text="Softness"/>
+                            <Slider x:Name="SoftnessSlider" Minimum="0" Maximum="1" Value="0.7" ValueChanged="Brush_Changed"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Ground texture" IsExpanded="True" local:Walkthrough.Spot="painter.texture">
+                        <ListBox x:Name="TextureList" Height="220" Margin="4,4,0,6" SelectionChanged="Brush_Changed"/>
+                    </Expander>
+
+                    <Expander Header="Tree tools" local:Walkthrough.Spot="painter.trees">
+                        <StackPanel Margin="4,4,0,6">
+                            <TextBlock Text="Species to place"/>
+                            <ComboBox x:Name="SpeciesCombo" Margin="0,2,0,6" SelectionChanged="Brush_Changed"/>
+                            <TextBlock x:Name="DensityLabel" Text="Scatter density"/>
+                            <Slider x:Name="DensitySlider" Minimum="0.5" Maximum="20" Value="6" ValueChanged="Brush_Changed"/>
+                            <TextBlock x:Name="SpacingLabel" Text="Min spacing"/>
+                            <Slider x:Name="SpacingSlider" Minimum="0.05" Maximum="1" Value="0.18" ValueChanged="Brush_Changed"/>
+                            <CheckBox x:Name="AvoidWaterCheck" Content="Don't place in water" IsChecked="True" Click="Brush_Changed"/>
+                            <CheckBox x:Name="EraseOnlySpeciesCheck" Content="Erase only the selected species" Click="Brush_Changed"/>
+                            <TextBlock Text="Erase skips species hidden in Tree species." Foreground="{StaticResource DimText}" TextWrapping="Wrap" FontSize="11"/>
+                            <Button Content="Remove ALL trees of selected species" Margin="0,6,0,0" Click="RemoveSpecies_Click"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="View" IsExpanded="True" local:Walkthrough.Spot="painter.view">
+                        <StackPanel Margin="4,4,0,6">
+                            <CheckBox x:Name="ShowTextures" Content="Ground textures" IsChecked="True" Click="Layers_Changed"/>
+                            <CheckBox x:Name="ShowWater" Content="Water" IsChecked="True" Click="Layers_Changed"/>
+                            <CheckBox x:Name="ShowTrees" Content="Trees" IsChecked="True" Click="Layers_Changed"/>
+                            <ComboBox x:Name="SeasonCombo" Margin="0,4" SelectionChanged="Layers_Changed"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Tree species" local:Walkthrough.Spot="painter.species">
+                        <StackPanel Margin="4,4,0,6">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <Button Content="All" Width="50" Click="TreesAll_Click" Margin="0,0,4,0"/>
+                                <Button Content="None" Width="50" Click="TreesNone_Click"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="TreeTypeList"/>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{StaticResource Bg}"/>
+            <local:MapView x:Name="Map" Grid.Column="2" local:Walkthrough.Spot="painter.map"/>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -68,8 +68,8 @@ Until a step is native, the build runs that BOB action headless and handles the 
 ## Building from source
 
 ```
-dotnet build Atlas3K.slnx -c Release
-dotnet test src/Atlas3K.Tests
+dotnet build AtlasWH3.slnx -c Release
+dotnet test src/AtlasWH3.Tests
 ```
 
 The current `global.json` pins .NET SDK 9.0.312. The first phase of the plan moves the projects to .NET 10 and renames

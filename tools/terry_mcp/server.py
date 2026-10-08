@@ -1,6 +1,6 @@
-"""terry-mcp: stdio MCP server for Atlas3K's native campaign-map build (the BOB replacement).
+"""terry-mcp: stdio MCP server for AtlasWH3's native campaign-map build (the BOB replacement).
 
-Every tool shells out to the Atlas3K CLI (src/Atlas3K.Cli), which rebuilds BOB's campaign outputs straight
+Every tool shells out to the AtlasWH3 CLI (src/AtlasWH3.Cli), which rebuilds BOB's campaign outputs straight
 from the assembly-kit sources, reading intermediate files from disk -- no BOB, no pack import between steps.
 
 Steps (in BOB's order): rasters, tile_list, global_map, global_mesh, rivers, global_props, camera_heightmap, trees, lookup.
@@ -58,9 +58,9 @@ import tempfile
 
 from mcp.server.fastmcp import FastMCP, Image
 
-PROJECT = os.environ.get("ATLAS3K_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CLI_PROJECT = os.path.join(PROJECT, "src", "Atlas3K.Cli", "Atlas3K.Cli.csproj")
-CLI_EXE = os.path.join(PROJECT, "src", "Atlas3K.Cli", "bin", "Release", "net9.0", "Atlas3K.Cli.exe")
+PROJECT = os.environ.get("ATLASWH3_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CLI_PROJECT = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "AtlasWH3.Cli.csproj")
+CLI_EXE = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "bin", "Release", "net9.0", "AtlasWH3.Cli.exe")
 KIT = r"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS\assembly_kit"
 
 mcp = FastMCP("terry")
@@ -70,7 +70,7 @@ def _run(args: list[str], timeout: int = 3600) -> dict:
     if not os.path.exists(CLI_EXE):
         built = _build_cli()
         if built["exit_code"] != 0:
-            return {"error": "Atlas3K CLI does not build", **built}
+            return {"error": "AtlasWH3 CLI does not build", **built}
     proc = subprocess.run([CLI_EXE, *args], cwd=PROJECT, capture_output=True, text=True, timeout=timeout)
     result: dict = {"exit_code": proc.returncode}
     try:
@@ -132,9 +132,9 @@ def build_step(step: str, map_name: str = "3k_dlc07_main_map", out_dir: str | No
 @mcp.tool()
 def build_project(project: str, segments: list[str] | None = None, steps: list[str] | None = None,
                   custom_steps: list[str] | None = None, out_dir: str | None = None, pack_output: str | None = None) -> dict:
-    """Run an Atlas3K project's build (.atlas3k), exactly as the app's Build window does.
+    """Run an AtlasWH3 project's build (.atlaswh3), exactly as the app's Build window does.
 
-    project: path to the .atlas3k file (e.g. research/main190/main190.atlas3k).
+    project: path to the .atlaswh3 file (e.g. research/main190/main190.atlaswh3).
     segments: subset of validate, compile, custom, pack, install; default = the project's enabled segments
               (pack / install only when the profile enables them).
     steps: native compile steps to run instead of the profile's.
@@ -234,7 +234,7 @@ def list_outputs(map_name: str = "3k_dlc07_main_map", out_dir: str | None = None
 
 @mcp.tool()
 def rebuild_tool() -> dict:
-    """Recompile the Atlas3K CLI (Release) after source changes."""
+    """Recompile the AtlasWH3 CLI (Release) after source changes."""
     return _build_cli()
 
 

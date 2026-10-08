@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>AtlasWH3 map editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="bar">
+  <div class="seg" id="modes">
+    <button data-mode="tiles" class="on">Tile map</button>
+    <button data-mode="blend">Textures</button>
+  </div>
+  <div class="seg" id="tools"></div>
+  <label class="size"><span id="sizeLabel">Size</span><input type="range" id="size" min="0" max="12" value="1"></label>
+  <span class="grow"></span>
+  <button id="undo" title="Undo">↶</button>
+  <button id="redo" title="Redo">↷</button>
+  <button id="save" class="primary">Save</button>
+  <button id="menuBtn" title="Panel">☰</button>
+</div>
+
+<div id="main">
+  <canvas id="view"></canvas>
+  <div id="panel">
+    <div class="section" id="blendOpts">
+      <label>Softness <input type="range" id="softness" min="0" max="100" value="60"></label>
+      <label>Strength <input type="range" id="strength" min="5" max="100" value="100"></label>
+      <label>Only over <select id="onlyReplace"><option value="-1">any texture</option></select></label>
+      <label class="check"><input type="checkbox" id="natural" checked> Natural colours</label>
+      <label class="check"><input type="checkbox" id="pressure" checked> Pen pressure → size</label>
+    </div>
+    <div class="section" id="tileOpts">
+      <label class="check"><input type="checkbox" id="allowWarnings"> Save despite warnings</label>
+      <button id="simulate">Simulate BOB Tilemap (1-3 min)</button>
+      <button id="lineDone" class="hidden">Draw line</button>
+    </div>
+    <input id="filter" placeholder="Filter…" autocomplete="off">
+    <div id="palette"></div>
+    <div class="section">
+      <div class="head">Issues</div>
+      <div id="summary"></div>
+      <div id="issues"></div>
+    </div>
+    <div class="section">
+      <div class="head">Saved edits</div>
+      <div id="history"></div>
+    </div>
+  </div>
+</div>
+<div id="status">Loading…</div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

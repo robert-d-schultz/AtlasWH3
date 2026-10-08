@@ -1,9 +1,9 @@
 <Project>
-  <!-- Product and version for every Atlas3K project; the About box and the start page read InformationalVersion. -->
+  <!-- Product and version for every AtlasWH3 project; the About box and the start page read InformationalVersion. -->
   <PropertyGroup>
-    <Product>Atlas3K</Product>
-    <Company>Atlas3K</Company>
-    <Copyright>Copyright (c) 2026 Atlas3K contributors</Copyright>
+    <Product>AtlasWH3</Product>
+    <Company>AtlasWH3</Company>
+    <Copyright>Copyright (c) 2026 AtlasWH3 contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <VersionPrefix>0.1.0</VersionPrefix>
     <VersionSuffix>alpha.2</VersionSuffix>
@@ -11,15 +11,15 @@
     <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
-  <Target Name="Atlas3KSourceRevision" BeforeTargets="GetAssemblyVersion;AddSourceRevisionToInformationalVersion" Condition="'$(SourceRevisionId)' == ''">
+  <Target Name="AtlasWH3SourceRevision" BeforeTargets="GetAssemblyVersion;AddSourceRevisionToInformationalVersion" Condition="'$(SourceRevisionId)' == ''">
     <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
-      <Output TaskParameter="ConsoleOutput" PropertyName="_Atlas3KRevision" />
-      <Output TaskParameter="ExitCode" PropertyName="_Atlas3KGitExit" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="_AtlasWH3Revision" />
+      <Output TaskParameter="ExitCode" PropertyName="_AtlasWH3GitExit" />
     </Exec>
     <!-- only a real commit id: without git on PATH the output is an error message -->
-    <PropertyGroup Condition="'$(_Atlas3KGitExit)' == '0'">
-      <SourceRevisionId>$(_Atlas3KRevision)</SourceRevisionId>
+    <PropertyGroup Condition="'$(_AtlasWH3GitExit)' == '0'">
+      <SourceRevisionId>$(_AtlasWH3Revision)</SourceRevisionId>
     </PropertyGroup>
   </Target>
 </Project>

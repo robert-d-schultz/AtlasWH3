@@ -1,0 +1,151 @@
+﻿<Window x:Class="AtlasWH3.App.BattleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:AtlasWH3.App"
+        Title="AtlasWH3 - Battle Map" Height="900" Width="1500"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}">
+    <Window.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{x:Static local:BattleWindow.UndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{x:Static local:BattleWindow.RedoCommand}"/>
+        <KeyBinding Key="S" Modifiers="Ctrl" Command="{x:Static local:BattleWindow.SaveCommand}"/>
+    </Window.InputBindings>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Save" InputGestureText="Ctrl+S" Command="{x:Static local:BattleWindow.SaveCommand}"/>
+                <MenuItem Header="Open project _folder" Click="OpenFolder_Click"/>
+                <Separator/>
+                <MenuItem Header="_Close" Click="Close_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Undo" InputGestureText="Ctrl+Z" Command="{x:Static local:BattleWindow.UndoCommand}"/>
+                <MenuItem Header="_Redo" InputGestureText="Ctrl+Y" Command="{x:Static local:BattleWindow.RedoCommand}"/>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="_Fit to window" Click="Fit_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Build">
+                <MenuItem Header="_Build with BOB (Tilemap + Low frequency data)" Click="Build_Click"/>
+                <MenuItem Header="_Compare build with a reference folder..." Click="Compare_Click"/>
+                <Separator/>
+                <MenuItem Header="Check _explicit tiles" Click="CheckExplicit_Click"/>
+            </MenuItem>
+        </Menu>
+
+        <Border DockPanel.Dock="Bottom" Background="#252526" Padding="6,3">
+            <TextBlock x:Name="StatusText" Text="Loading..." FontFamily="Consolas"/>
+        </Border>
+
+        <ScrollViewer DockPanel.Dock="Left" Width="300" VerticalScrollBarVisibility="Auto" Background="#252526">
+            <StackPanel Margin="10">
+                <TextBlock Style="{StaticResource Header}" Text="Tool" Margin="0,0,0,4"/>
+                <RadioButton x:Name="ToolNavigate" Content="Navigate (no edit)" IsChecked="True" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolPaint" Content="Paint tile map" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolFill" Content="Fill region (click)" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolPick" Content="Eyedropper (click)" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolRaise" Content="Raise height" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolLower" Content="Lower height" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolSmooth" Content="Smooth height" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolFlatten" Content="Flatten (to click height)" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolNoise" Content="Height noise" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolTileSelect" Content="Settlement/resource tiles: select, move" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolTilePlace" Content="Settlement/resource tiles: place" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolAreaSelect" Content="Catchment areas: select, move, resize" Checked="Tool_Changed"/>
+                <RadioButton x:Name="ToolAreaDraw" Content="Catchment areas: draw new" Checked="Tool_Changed"/>
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <TextBlock Text="Height brushes edit: " VerticalAlignment="Center"/>
+                    <ComboBox x:Name="HeightTargetCombo" Width="90" SelectedIndex="0" SelectionChanged="Tool_Changed">
+                        <ComboBoxItem Content="Land"/>
+                        <ComboBoxItem Content="Sea"/>
+                    </ComboBox>
+                </StackPanel>
+
+                <TextBlock Style="{StaticResource Header}" Text="Brush"/>
+                <TextBlock x:Name="RadiusLabel" Text="Radius"/>
+                <Slider x:Name="RadiusSlider" Minimum="0.5" Maximum="40" Value="2" ValueChanged="Brush_Changed"/>
+                <TextBlock x:Name="StrengthLabel" Text="Strength (height)"/>
+                <Slider x:Name="StrengthSlider" Minimum="0.01" Maximum="1" Value="0.3" ValueChanged="Brush_Changed"/>
+                <TextBlock x:Name="SoftnessLabel" Text="Softness (height)"/>
+                <Slider x:Name="SoftnessSlider" Minimum="0" Maximum="1" Value="0.7" ValueChanged="Brush_Changed"/>
+                <CheckBox x:Name="ReplaceOnlyCheck" Content="Paint only over the colour where the stroke starts" Click="Brush_Changed"/>
+
+                <TextBlock Style="{StaticResource Header}" Text="Tile map colour"/>
+                <Border x:Name="SelectedSwatch" Height="22" BorderBrush="#555" BorderThickness="1" Margin="0,0,0,4">
+                    <TextBlock x:Name="SelectedLabel" Margin="4,2" Foreground="White" FontWeight="SemiBold"/>
+                </Border>
+                <TextBox x:Name="PaletteSearch" Margin="0,0,0,4" TextChanged="PaletteSearch_Changed" ToolTip="Filter the palette"/>
+                <CheckBox x:Name="UsedOnlyCheck" Content="Only colours used on this map" IsChecked="True" Click="PaletteSearch_Changed"/>
+                <CheckBox x:Name="HighlightCheck" Content="Highlight the selected colour on the map" Click="Layers_Changed"/>
+                <ListBox x:Name="PaletteList" Height="300"
+                         SelectionChanged="Palette_Selected"/>
+
+                <TextBlock Style="{StaticResource Header}" Text="Settlement / resource tiles (explicit)"/>
+                <TextBlock x:Name="TileSelectedText" TextWrapping="Wrap" Foreground="{StaticResource Text}" Text="Nothing selected."/>
+                <StackPanel Orientation="Horizontal" Margin="0,4">
+                    <Button Content="Rotate (R)" Width="80" Margin="0,0,4,0" Click="TileRotate_Click"/>
+                    <Button Content="Delete (Del)" Width="80" Click="TileDelete_Click"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,2">
+                    <TextBlock Text="Place rotation: " VerticalAlignment="Center"/>
+                    <ComboBox x:Name="PlaceRotationCombo" Width="70" SelectedIndex="0" SelectionChanged="PlaceTile_Changed">
+                        <ComboBoxItem Content="0"/>
+                        <ComboBoxItem Content="90"/>
+                        <ComboBoxItem Content="180"/>
+                        <ComboBoxItem Content="270"/>
+                    </ComboBox>
+                </StackPanel>
+                <TextBox x:Name="TileSearch" Margin="0,2" TextChanged="TileSearch_Changed" ToolTip="Filter tiles (e.g. city_han, port, farm)"/>
+                <ListBox x:Name="TileList" Height="170"
+                         SelectionChanged="PlaceTile_Changed"/>
+                <TextBlock x:Name="ConflictText" TextWrapping="Wrap" Foreground="#F88" FontSize="11"/>
+
+                <TextBlock Style="{StaticResource Header}" Text="Catchment area"/>
+                <TextBlock x:Name="AreaSelectedText" TextWrapping="Wrap" Foreground="{StaticResource Text}" Text="Nothing selected. Tab cycles overlapping areas."/>
+                <CheckBox x:Name="TypeAmbush" Content="land_ambush" Click="AreaType_Click"/>
+                <CheckBox x:Name="TypeStandard" Content="settlement_standard (walled siege)" Click="AreaType_Click"/>
+                <CheckBox x:Name="TypeUnfortified" Content="settlement_unfortified" Click="AreaType_Click"/>
+                <CheckBox x:Name="TypeGate" Content="gate_battle" Click="AreaType_Click"/>
+                <TextBlock Text="Redirect to (battle folder[/catchment id])" Margin="0,4,0,0"/>
+                <TextBox x:Name="AreaRedirect"/>
+                <TextBlock Text="Culture (defending faction restriction)"/>
+                <TextBox x:Name="AreaCulture"/>
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="Centre" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AreaCx" Grid.Column="1" ToolTip="Centre x" Margin="0,1"/><TextBox x:Name="AreaCy" Grid.Column="3" ToolTip="Centre y" Margin="0,1"/>
+                    <TextBlock Text="Box min" Grid.Row="1" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AreaX0" Grid.Row="1" Grid.Column="1" ToolTip="Box min x" Margin="0,1"/><TextBox x:Name="AreaY0" Grid.Row="1" Grid.Column="3" ToolTip="Box min y" Margin="0,1"/>
+                    <TextBlock Text="Box max" Grid.Row="2" VerticalAlignment="Center"/>
+                    <TextBox x:Name="AreaX1" Grid.Row="2" Grid.Column="1" ToolTip="Box max x" Margin="0,1"/><TextBox x:Name="AreaY1" Grid.Row="2" Grid.Column="3" ToolTip="Box max y" Margin="0,1"/>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,4">
+                    <Button Content="Apply" Width="80" Margin="0,0,4,0" Click="AreaApply_Click"/>
+                    <Button Content="Delete (Del)" Width="80" Click="AreaDelete_Click"/>
+                </StackPanel>
+                <TextBlock Text="New areas get the ticked types. Encampment areas are generated by BOB from road corners."
+                           TextWrapping="Wrap" Foreground="{StaticResource DimText}" FontSize="11"/>
+
+                <TextBlock Style="{StaticResource Header}" Text="View"/>
+                <ComboBox x:Name="ViewModeCombo" SelectedIndex="0" SelectionChanged="Layers_Changed" Margin="0,0,0,4">
+                    <ComboBoxItem Content="Tile map"/>
+                    <ComboBoxItem Content="Climate"/>
+                    <ComboBoxItem Content="Catchment land mask"/>
+                    <ComboBoxItem Content="Heights (grey)"/>
+                </ComboBox>
+                <CheckBox x:Name="ShowShade" Content="Hillshade" IsChecked="True" Click="Layers_Changed"/>
+                <CheckBox x:Name="ShowWater" Content="Water (sea above land)" IsChecked="True" Click="Layers_Changed"/>
+                <CheckBox x:Name="ShowGrid" Content="Cell grid (zoomed in)" IsChecked="True" Click="Layers_Changed"/>
+                <CheckBox x:Name="ShowExplicit" Content="Explicit tiles (settlements, resources)" IsChecked="True" Click="Layers_Changed"/>
+                <CheckBox x:Name="ShowCatchments" Content="Catchment areas" Click="Layers_Changed"/>
+
+                <TextBlock Style="{StaticResource Header}" Text="Project"/>
+                <TextBlock x:Name="ProjectInfo" TextWrapping="Wrap" Foreground="#AAA" FontSize="11"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <local:BattleMapView x:Name="Map"/>
+    </DockPanel>
+</Window>
