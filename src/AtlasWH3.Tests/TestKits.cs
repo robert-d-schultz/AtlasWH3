@@ -3,15 +3,25 @@ using AtlasWH3.Core;
 namespace AtlasWH3.Tests;
 
 /// <summary>
-/// Fixed assembly kits for the data tests, independent of the user's AtlasWH3 settings (which may point the default
-/// kit at a modded copy, e.g. assembly_kit_190E): vanilla data tests read <see cref="Vanilla"/>, the 190 Expanded
-/// tests read <see cref="Expanded"/>. Both live next to each other in the game folder.
+/// Fixed game data for the data tests, independent of the user's AtlasWH3 settings.
+///  - WH3: <see cref="Wh3Game"/> (the Steam install) and its kit.
+///  - Atlas3K's inherited tests still read Three Kingdoms data (<see cref="Vanilla"/>, <see cref="Expanded"/>); on a
+///    machine without a 3K install they skip, until Phase 1 moves them to WH3 fixtures.
 /// </summary>
 internal static class TestKits
 {
-    public static string Vanilla => Path.Combine(Defaults.GameFolder, "assembly_kit");
-    public static string Expanded => Path.Combine(Defaults.GameFolder, "assembly_kit_190E");
+    public static string Wh3Game => GameSetup.FindGameFolder() ?? @"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III";
+    public static string Wh3GameData => Path.Combine(Wh3Game, "data");
+    public static string Wh3Kit => Path.Combine(Wh3Game, "assembly_kit");
 
-    /// <summary>Default paths with the vanilla kit.</summary>
-    public static ProjectPaths VanillaPaths => new() { AssemblyKitRoot = Vanilla };
+    public const string ThreeKingdoms = @"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS";
+    public static string Vanilla => Path.Combine(ThreeKingdoms, "assembly_kit");
+    public static string Expanded => Path.Combine(ThreeKingdoms, "assembly_kit_190E");
+
+    /// <summary>Default paths with the 3K vanilla kit and data.</summary>
+    public static ProjectPaths VanillaPaths => new()
+    {
+        AssemblyKitRoot = Vanilla, GameDataDir = Path.Combine(ThreeKingdoms, "data"), MapName = "3k_dlc07_main_map",
+        VanillaRoot = Path.Combine(ThreeKingdoms, "atlas_vanilla"),
+    };
 }

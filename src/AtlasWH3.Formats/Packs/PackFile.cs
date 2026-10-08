@@ -2,13 +2,15 @@ using System.Text;
 
 namespace AtlasWH3.Formats.Packs;
 
-// Read-only PFH4/PFH5 pack reader for Total War: Three Kingdoms, adapted from
-// Z:\Claude\TKAudio\Tk3AudioTool\Services\Tk3Pack.cs (verified against real 3K packs).
+// Read-only PFH4/PFH5 pack reader, adapted from Atlas3K's 3K reader (Z:\Claude\TKAudio\Tk3AudioTool\Services\Tk3Pack.cs).
+// WH3's packs are PFH5 with byte mask 1 (checked on the 2026-09 game build).
 //
 // Header: "PFH5", u32 byteMask, u32 dependantCount, u32 dependantIndexSize, u32 fileCount,
 // u32 fileIndexSize, timestamp buffer (4 bytes, or 24 if byteMask & 0x100), dependant names.
 // File table: u32 size, [u32 timestamp if byteMask & 0x40], [u8 compressed if PFH5], zero-terminated path.
 // Data follows the table, in table order.
+// A compressed entry (every campaign file in WH3's packs) is u32 uncompressed size + one zstd frame, or one LZ4 frame
+// (some tile meshes in tiles_campaign.pack). Old packs' LZMA1 streams are reported, not decoded.
 
 public sealed record PackEntry(string Path, long Offset, uint Size, bool IsCompressed);
 
@@ -66,14 +68,39 @@ public sealed class PackFile
     {
         if (!_entries.TryGetValue(Normalize(internalPath), out var entry))
             return null;
-        if (entry.IsCompressed)
-            throw new NotSupportedException($"'{entry.Path}' in {Path.GetFileName(SourcePath)} is compressed.");
 
         using var stream = new FileStream(SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         stream.Seek(entry.Offset, SeekOrigin.Begin);
         var data = new byte[entry.Size];
         stream.ReadExactly(data);
-        return data;
+        return entry.IsCompressed ? Decompress(data, entry.Path) : data;
+    }
+
+    private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD];
+    private static readonly byte[] Lz4Magic = [0x04, 0x22, 0x4D, 0x18];
+
+    /// <summary>A compressed entry's bytes: u32 uncompressed size, then a zstd or LZ4 frame.</summary>
+    public static byte[] Decompress(byte[] data, string name = "entry")
+    {
+        if (data.Length < 8) throw new InvalidDataException($"'{name}': compressed entry of {data.Length} bytes");
+        var size = BitConverter.ToInt32(data, 0);
+        var frame = data.AsSpan(4);
+        if (frame.StartsWith(ZstdMagic))
+        {
+            var result = new byte[size];
+            using var zstd = new ZstdSharp.Decompressor();
+            var written = zstd.Unwrap(frame, result);
+            if (written != size) throw new InvalidDataException($"'{name}': zstd gave {written} bytes, the entry says {size}");
+            return result;
+        }
+        if (frame.StartsWith(Lz4Magic))
+        {
+            var result = new byte[size];
+            using var lz4 = K4os.Compression.LZ4.Streams.LZ4Stream.Decode(new MemoryStream(data, 4, data.Length - 4, false));
+            lz4.ReadExactly(result);
+            return result;
+        }
+        throw new NotSupportedException($"'{name}' is compressed with LZMA1 (or an unknown format); only zstd and LZ4 entries are supported");
     }
 
     public static string Normalize(string path) => path.Replace('/', '\\').Trim().ToLowerInvariant();
