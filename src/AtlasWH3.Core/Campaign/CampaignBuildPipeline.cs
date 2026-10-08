@@ -10,17 +10,32 @@ public sealed class CampaignBuildPipeline
 {
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
-    /// <summary>All steps in BOB's build order.</summary>
+    /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phase 3). A <see cref="PendingStep"/> is
+    /// not native yet: Atlas3K's 3K version of it (TileListStep, Trees.TreesStep, Props.GlobalPropsStep, …) is kept as
+    /// the basis of the re-port, but writes 3K formats, so it is not in the pipeline.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
-        new PendingStep("rasters", "Campaign Heightmap", [], "3K's lf_height_map / climate_map writers were cut; the WH3 heightmaps are not ported yet"),
-        new TileListStep(),
-        new Rivers.RiversStep(),
-        new Props.GlobalPropsStep(),
-        new CameraHeightmapStep(),
-        new Trees.TreesStep(),
+        new PendingStep("heightmaps", "Campaign Heightmap, Campaign Shroud Heights", [],
+            "full_logic_map.compressed_map, full_height_map.dds (BC6H) and shroud_heights.dds from the Height / HeightShroud TIFs (Phase 3.1)"),
+        new PendingStep("tile_list", "Tilemap", ["heightmaps"],
+            "tile_list.bin v2 from tile_map.png on the WH3 tile database (Phase 3.3; Atlas3K's TileListStep writes 3K's v1)"),
+        new PendingStep("trees", "Campaign Trees", ["heightmaps"],
+            "trees.campaign_tree_list v4 with heights from full_logic_map and the WH3 tree tables (Phase 3.2; Atlas3K's TreesStep writes 3K's v5)"),
+        new PendingStep("global_map", "Global Tilemap, Campaign Global Blendmap", ["tile_list"],
+            "global_map\\: 8-bit global_blend.dds, texture_arrays.xml and the subset tile_list.bin (Phase 3.4)"),
+        new PendingStep("masks", "Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask", [],
+            "colour overlays, corruption, snow, event area, patch and tile masks, lf_normal (Phase 3.5)"),
+        new PendingStep("rivers", "Terry file (models\\river_<id>)", [],
+            "the 2-vertex ribbon river models of the ECRiver splines (Phase 3.10; Atlas3K's RiversStep writes 3K's 5-vertex rivers)"),
+        new PendingStep("global_props", "Terry file (global_props.bin, global_props_sound.bin, devastation types)", ["rivers"],
+            "BMD v27 global props with culture-mask buckets, sound and devastation-type files (Phase 3.9; Atlas3K's GlobalPropsStep writes 3K's v35)"),
+        new PendingStep("devastation_pieces", "Devastation pieces", ["heightmaps", "tile_list", "trees", "global_map", "masks", "global_props"],
+            "pieces\\event_* for the main and devastated maps, from both Terry projects (Phase 3.6)"),
         new LookupStep(),
-        new AiPathfinding.AiPathfindingStep(),
+        new PendingStep("camera_heightmap", "Generate Camera Height Map (crashes in BOB)", ["heightmaps", "global_props"],
+            "camera_heightmap.png from the logic heights and prop height patches (Phase 3.8; Atlas3K's CameraHeightmapStep samples 3K's global meshes)"),
+        new PendingStep("hlp_spd", "the game's own hlp/spd generation", [],
+            "hlp_data.esf v1 and spd_data.esf v1 (Phase 6; Atlas3K's AiPathfindingStep writes 3K's v0)"),
     ];
 
     /// <summary>Steps that run when none are named: every one that is native.</summary>

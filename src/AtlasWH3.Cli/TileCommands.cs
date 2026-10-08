@@ -131,7 +131,7 @@ static class TileCommands
         };
         if (r.Changed.Count > 0)
             o["bounds"] = new JsonArray(r.Changed.Min(h => h.Col), r.Changed.Min(h => h.Row), r.Changed.Max(h => h.Col), r.Changed.Max(h => h.Row));
-        o["status"] = r.Written ? "written; build tile_list (tiles-simulate / tiles-errors --simulate checks holes first), then global_map, global_mesh"
+        o["status"] = r.Written ? "written; build tile_list (tiles-simulate / tiles-errors --simulate checks holes first), then global_map"
             : r.Changed.Count == 0 ? "nothing changed"
             : a.Flag("--dry-run") ? "dry run: not written"
             : "NOT written: the edit causes the blocking issues listed (fix them, or pass --allow-warnings / --force)";

@@ -154,7 +154,7 @@ public sealed partial class CampaignTileWindow : Window
         {
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0), Foreground = Theme.Brush("DimText"),
             Text = "Right/middle drag pans, wheel zooms. Double-click an issue to go to it. After saving, build the map (Ctrl+B: " +
-                   "tile_list, then global_map + global_mesh) and check holes (tiles-holes / check_tile_holes).",
+                   "tile_list, then global_map) and check holes (tiles-holes / check_tile_holes).",
         });
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Theme.Brush("Panel"), Content = panel };
         _tabs.Items.Add(new TabItem { Header = "Paint", Content = scroll });

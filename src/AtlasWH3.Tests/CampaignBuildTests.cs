@@ -297,7 +297,14 @@ public class CampaignBuildTests
     public void Pipeline_OnlyNativeStepsRunByDefault()
     {
         Assert.DoesNotContain(CampaignBuildPipeline.NativeSteps, s => s is PendingStep);
-        Assert.Contains(CampaignBuildPipeline.NativeSteps, s => s.Name == "global_map");
+        Assert.Contains(CampaignBuildPipeline.NativeSteps, s => s.Name == "lookup");
+        // dependencies name real steps and come earlier (the pipeline creates tasks in this order)
+        var seen = new HashSet<string>();
+        foreach (var step in CampaignBuildPipeline.AllSteps)
+        {
+            Assert.All(step.DependsOn, d => Assert.Contains(d, seen));
+            seen.Add(step.Name);
+        }
     }
 
     [Fact]

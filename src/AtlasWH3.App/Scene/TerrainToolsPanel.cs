@@ -160,7 +160,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         _redo.ToolTip = "Redo (Ctrl+Y)";
         _save.ToolTip = "Write the changed TIFs (land also updates lf_heights.tif, sea lf_sea_heights.tif when present) in their own format; "
                         + "the originals are backed up first in output\\terrain_edits";
-        _build.ToolTip = "Open the Build window: re-run rasters, tile_list, global_mesh, camera_heightmap (heights) and trees so the game sees the edits";
+        _build.ToolTip = "Open the Build window: re-run heightmaps, tile_list, camera_heightmap (heights) and trees so the game sees the edits";
         _undo.Click += (_, _) => Undo();
         _redo.Click += (_, _) => Redo();
         _save.Click += (_, _) => Save();
@@ -602,7 +602,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         var trees = Path.Combine(ctx.CampaignMapOutDir, "display", "trees", "trees.campaign_tree_list");
         var stale = new List<string>();
         if (!File.Exists(heights) || File.GetLastWriteTimeUtc(heights) < Newest(KitTarget.Land, KitTarget.Sea))
-            stale.Add("rasters, tile_list, global_mesh, camera_heightmap");
+            stale.Add("heightmaps, tile_list, camera_heightmap");
         if (!File.Exists(trees) || File.GetLastWriteTimeUtc(trees) < Newest(KitTarget.Land, KitTarget.Trees))
             stale.Add("trees");
         if (stale.Count > 0)
