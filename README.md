@@ -7,9 +7,9 @@ AtlasWH3 is a standalone fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3
 THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline differs a lot from 3K's, so AtlasWH3 is
 retargeted to WH3 only.
 
-> **Status: planning. Nothing has been ported yet.** The code in this repository is still Atlas3K's 3K code, as forked
-> at tag `fork-point` (Atlas3K 0.1.0-alpha.2). It does not support WH3 yet, and with the pinned SDK it does not build
-> as is. The plan is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md).
+> **Status: early port.** Phase 0 (fork housekeeping) is done: the code builds on .NET 10 as AtlasWH3, the 3K-only
+> parts are cut, and the build pipeline lists the WH3 steps, all but `lookup` still pending. Nothing builds a WH3 map
+> yet. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -52,6 +52,8 @@ Until a step is native, the build runs that BOB action headless and handles the 
   the risks.
 - [`docs/surveys/warhammer3.md`](docs/surveys/warhammer3.md): Atlas3K's survey of how far its 3K build carries over
   to WH3, format by format.
+- [`docs/upstream_sync.md`](docs/upstream_sync.md): how to look at Atlas3K's changes since the fork and cherry-pick
+  fixes.
 - The rest of `docs/` and `research/` is Atlas3K's 3K documentation. It is kept for its method (Ghidra, Frida
   instrumentation of BOB, byte-level parity diffs) and for the rules the two games share.
 - Atlas3K's own README (3K features, install, build window, CLI):
@@ -72,8 +74,8 @@ dotnet build AtlasWH3.slnx -c Release
 dotnet test src/AtlasWH3.Tests
 ```
 
-The current `global.json` pins .NET SDK 9.0.312. The first phase of the plan moves the projects to .NET 10 and renames
-them to AtlasWH3.
+Needs the .NET 10 SDK (`global.json` takes any 10.0 feature band from 10.0.100). Tests that need a game install or kit
+data skip when it is missing.
 
 ## Licence
 

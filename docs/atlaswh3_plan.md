@@ -1,7 +1,7 @@
 # AtlasWH3 plan
 
 AtlasWH3 is a standalone hard fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3K), retargeted from Total War:
-THREE KINGDOMS to Total War: WARHAMMER III. This document is the plan. No porting work has started yet.
+THREE KINGDOMS to Total War: WARHAMMER III. This document is the plan. Progress is ticked off per phase in §6.
 
 Written 2026-10-06, at fork point `fork-point` (= Atlas3K `cdd0a08`, 0.1.0-alpha.2).
 
@@ -183,22 +183,24 @@ Phases 1 and 2 overlap.
 
 ### Phase 0: Fork housekeeping (1–2 days)
 
-- [ ] SDK: move `global.json` to the installed **.NET 10** SDK (LTS) and retarget the projects to `net10.0(-windows)`.
+- [x] SDK: move `global.json` to the installed **.NET 10** SDK (LTS) and retarget the projects to `net10.0(-windows)`.
   Build green, with the 3K tests skipped or failing as expected.
-- [ ] Rename `Atlas3K` → `AtlasWH3` in one mechanical commit: solution, projects, namespaces, `Product`, settings
+- [x] Rename `Atlas3K` → `AtlasWH3` in one mechanical commit: solution, projects, namespaces, `Product`, settings
   folders (`%AppData%\AtlasWH3`, `%LocalAppData%\AtlasWH3`), project extension `.atlas3k` → `.atlaswh3`, CLI name,
   `ATLAS3K_*` env vars → `ATLASWH3_*`.
-- [ ] README: what AtlasWH3 is, "derived from Atlas3K" credit, MIT notice kept and a copyright line added,
+- [x] README: what AtlasWH3 is, "derived from Atlas3K" credit, MIT notice kept and a copyright line added,
   `THIRD_PARTY_NOTICES.md` updated.
-- [ ] Game plumbing: install folder `Total War WARHAMMER III`, process `Warhammer3`, kit `bob.modder.x64.exe`.
-- [ ] Cut, in their own commits so the cuts are easy to find later:
+- [x] Game plumbing: install folder `Total War WARHAMMER III`, process `Warhammer3`, kit `bob.modder.x64.exe`.
+- [x] Cut, in their own commits so the cuts are easy to find later (2026-10-08):
   - the battle terrain editor (`BattleWindow*`, the battle project and object code that only it uses; keep what the
     Campaign battles window needs)
   - `global_mesh`, `GlobalMesh/`, river `height_patches`, `climate_map.cm`, `lf_height_map` / `lf_sea_height_map`
   - seasons (DB `seasons_tables`, season buckets, the 3D viewer's season switch)
-  - 3K tree tables and the 3K-only `research/` folders (they stay in git history)
-- [ ] Mark every remaining 3K-shaped step as `PendingStep`, so the pipeline runs but says what isn't ported.
-- [ ] A `docs/upstream_sync.md` note: how to look at upstream (`git fetch upstream; git log fork-point..upstream/master`)
+  - 3K tree tables and the 3K-only `research/` folders (they stay in git history). The research folders are cut; the
+    3K tree tables and the season fields of the 3K formats go with their WH3 replacements in Phase 1 (the tree step
+    and the scene editor still read them until then).
+- [x] Mark every remaining 3K-shaped step as `PendingStep`, so the pipeline runs but says what isn't ported.
+- [x] A `docs/upstream_sync.md` note: how to look at upstream (`git fetch upstream; git log fork-point..upstream/master`)
   and cherry-pick fixes in shared code.
 
 ### Phase 1: Read WH3 (1.5–2.5 weeks)
