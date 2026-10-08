@@ -1,5 +1,5 @@
 using AtlasWH3.Core;
-using AtlasWH3.Core.Campaign.GlobalMesh;
+using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Core.Campaign.Trees;
 using AtlasWH3.Core.Exporters;
 using AtlasWH3.Formats;
@@ -56,7 +56,7 @@ public class CampaignTreeGeneratorTests
         var db = Db();
         var original = CampaignTreeList.Load(Paths.TreeList);
         var (colours, _) = CampaignTreeGenerator.Decode(original, VanillaGrid, db);
-        var ts = GlobalMeshStep.TileSize;
+        var ts = TileHfHeight.TileSize3K;
         var lf = new LfSampler(CompressedMap.Read(lfPath), 1784 * ts, 1405 * ts, ts);
         var rebuilt = CampaignTreeGenerator.Generate(colours, VanillaGrid, db,
             (_, _, x, z) => lf.Height(x, z / TreesStep.CampaignZScale));
@@ -94,7 +94,7 @@ public class CampaignTreeGeneratorTests
     {
         var lfPath = Path.Combine(Paths.TerrainDir, "lf_height_map.compressed_map");
         if (!HaveVanilla || !File.Exists(lfPath)) return;
-        var ts = GlobalMeshStep.TileSize;
+        var ts = TileHfHeight.TileSize3K;
         var lf = new LfSampler(CompressedMap.Read(lfPath), 1784 * ts, 1405 * ts, ts);
         var trees = CampaignTreeList.Load(Paths.TreeList).Types.SelectMany(t => t.Instances).ToList();
         var exact = trees.Count(t => lf.Height(t.X, t.Z / TreesStep.CampaignZScale) == t.Y);

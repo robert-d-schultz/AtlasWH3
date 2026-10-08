@@ -1,6 +1,6 @@
 using AtlasWH3.Formats.Maps;
 
-namespace AtlasWH3.Core.Campaign.GlobalMesh;
+namespace AtlasWH3.Core.Campaign.Terrain;
 
 /// <summary>
 /// BOB's low-frequency terrain height at a world point (WARSCAPE::TERRAIN_RENDER_SETUP::get_height_worker with the

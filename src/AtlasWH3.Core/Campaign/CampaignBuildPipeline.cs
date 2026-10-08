@@ -13,10 +13,8 @@ public sealed class CampaignBuildPipeline
     /// <summary>All steps in BOB's build order.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
-        new RastersStep(),
+        new PendingStep("rasters", "Campaign Heightmap", [], "3K's lf_height_map / climate_map writers were cut; the WH3 heightmaps are not ported yet"),
         new TileListStep(),
-        new GlobalMapStep(),
-        new GlobalMesh.GlobalMeshStep(),
         new Rivers.RiversStep(),
         new Props.GlobalPropsStep(),
         new CameraHeightmapStep(),

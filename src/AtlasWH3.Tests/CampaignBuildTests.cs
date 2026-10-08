@@ -199,19 +199,6 @@ public class CampaignBuildTests
     }
 
     [Fact]
-    public void TileCoverage_ClassifiesCategoriesLikeVanilla()
-    {
-        static (bool, bool) C(string category) => Core.Campaign.GlobalMesh.TileCoverage.Classify($@"terrain\tiles\campaign\{category}\x\");
-        Assert.Equal((true, false), C("generic"));
-        Assert.Equal((true, false), C("mountains_cold"));
-        Assert.Equal((false, true), C("generic_sea"));
-        Assert.Equal((true, true), C("sea_coast"));
-        Assert.Equal((false, false), C("roads_paved"));
-        Assert.Equal((false, false), C("river"));
-        Assert.Equal((false, true), C("river_mouth"));
-    }
-
-    [Fact]
     public void LfSampler_ReproducesVanillaLandMeshHeights()
     {
         var mesh = Vanilla("global_meshes", "land_mesh_40.rigid_model_v2");
@@ -219,7 +206,7 @@ public class CampaignBuildTests
         var model = RigidModelV2.Read(File.ReadAllBytes(mesh));
         var lf = CompressedMap.Read(Vanilla("lf_height_map.compressed_map"));
         const float tile = 595.1f / 1784f;
-        var sampler = new Core.Campaign.GlobalMesh.LfSampler(lf, 1784 * tile, 1405 * tile, tile);
+        var sampler = new Core.Campaign.Terrain.LfSampler(lf, 1784 * tile, 1405 * tile, tile);
         var errors = new List<float>();
         for (var v = 0; v < model.VertexCount; v += 3)
         {
@@ -253,10 +240,6 @@ public class CampaignBuildTests
         // vanilla river_0 lies around (115, 410)
         Assert.InRange((model.Bounds[0] + model.Bounds[3]) / 2, 105, 125);
         Assert.InRange((model.Bounds[2] + model.Bounds[5]) / 2, 400, 420);
-        var patches = Core.Campaign.Rivers.RiverBuilder.HeightPatches(model, 0);
-        Assert.NotEmpty(patches);
-        Assert.All(patches, p => Assert.Equal((512, 512), (p.Raster.Width, p.Raster.Height)));
-        Assert.Equal("river_0_patch_0x0", patches[0].Name);
     }
 
     [Fact]
@@ -341,7 +324,7 @@ public class CampaignBuildTests
         var db = TileDatabase.Load(packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(prefix, StringComparison.Ordinal))
             .Distinct().Select(k => packs.TryRead(k)).OfType<byte[]>());
         var terrain = new AtlasWH3.Core.Campaign.Terrain.TileHfHeight(TileList.Read(Vanilla("tile_list.bin")), db, packs.TryRead,
-            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.GlobalMesh.GlobalMeshStep.TileSize);
+            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.Terrain.TileHfHeight.TileSize3K);
         var trees = AtlasWH3.Formats.Trees.CampaignTreeList.Load(Paths.TreeList);
         int n = 0, exact = 0, close = 0;
         var misses = new List<string>();
@@ -373,7 +356,7 @@ public class CampaignBuildTests
             .Distinct().Select(k => packs.TryRead(k)).OfType<byte[]>());
         var list = TileList.Read(Vanilla("tile_list.bin"));
         var terrain = new AtlasWH3.Core.Campaign.Terrain.TileHfHeight(list, db, packs.TryRead,
-            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.GlobalMesh.GlobalMeshStep.TileSize)
+            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.Terrain.TileHfHeight.TileSize3K)
             { BobCells = true, CellScaleX = Env("ATLASWH3_TREE_IX"), CellScaleZ = Env("ATLASWH3_TREE_IZ") };
         var trees = AtlasWH3.Formats.Trees.CampaignTreeList.Load(bobList);
         int n = 0, exact = 0;

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AtlasWH3.Core.Campaign.GlobalMesh;
+using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Core.Editing;
 using AtlasWH3.Formats.Maps;
 
@@ -95,13 +95,13 @@ public sealed class TileMapEditor
 
     /// <summary>World (x, z) of a hex centre: tile-map pixel × the campaign tile size, z = 0 south.</summary>
     public static (double X, double Z) HexToWorld(int col, int row) =>
-        ((2 * col + 1) * GlobalMeshStep.TileSize, (2 * row + (col & 1) + 1) * GlobalMeshStep.TileSize);
+        ((2 * col + 1) * TileHfHeight.TileSize3K, (2 * row + (col & 1) + 1) * TileHfHeight.TileSize3K);
 
     /// <summary>The hex whose 2×2 pixel block holds world (x, z).</summary>
     public static (int Col, int Row) WorldToHex(double x, double z)
     {
-        var col = (int)Math.Floor(x / GlobalMeshStep.TileSize / 2);
-        var py = z / GlobalMeshStep.TileSize - (col & 1);
+        var col = (int)Math.Floor(x / TileHfHeight.TileSize3K / 2);
+        var py = z / TileHfHeight.TileSize3K - (col & 1);
         return (col, (int)Math.Floor(py / 2));
     }
 

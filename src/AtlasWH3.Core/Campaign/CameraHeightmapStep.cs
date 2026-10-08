@@ -30,7 +30,7 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
 
     public string Name => "camera_heightmap";
     public string ReplacesBobAction => "Terrain / Generate Camera Height Map";
-    public IReadOnlyList<string> DependsOn => ["global_mesh", "global_props", "rivers", "tile_list"];
+    public IReadOnlyList<string> DependsOn => ["global_props", "rivers", "tile_list"];
 
     /// <summary>BOB's CAMERA_HEIGHT_MAP_SETTINGS (rules.bob [Terrain] cam_hmap_*).</summary>
     public sealed record Settings(float ResolutionScale, int SamplesPerUnit, bool ApplyBlur, int BlurKernel, float StandardDeviation, bool FromRules);
@@ -70,8 +70,8 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     }
 
     /// <summary>Scene extents: x 0..tiles W · T, z 0..tiles H · T · 1.15476.</summary>
-    public static float SceneWidth(int tilesW) => tilesW * 128f * (GlobalMesh.GlobalMeshStep.TileSize / 128f);
-    public static float SceneDepth(int tilesH) => tilesH * 128f * (GlobalMesh.GlobalMeshStep.TileSize / 128f) * CameraHeightField.ZScale;
+    public static float SceneWidth(int tilesW) => tilesW * 128f * (TileHfHeight.TileSize3K / 128f);
+    public static float SceneDepth(int tilesH) => tilesH * 128f * (TileHfHeight.TileSize3K / 128f) * CameraHeightField.ZScale;
 
     public static Settings ReadSettings(string rulesBob)
     {
@@ -216,7 +216,7 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         var tl = TileList.Read(fs.Read(dir + "tile_list.bin") ?? throw new InvalidOperationException("no tile_list.bin in the build output or the packs"));
         tilesW = tl.Ints[1];
         tilesH = tl.Ints[2];
-        var tileSize = GlobalMesh.GlobalMeshStep.TileSize;
+        var tileSize = TileHfHeight.TileSize3K;
         var prefix = PackFile.Normalize(TileDatabase.Folder);
         var db = TileDatabase.Load(fs.Packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(prefix, StringComparison.Ordinal))
             .Distinct().Select(k => fs.Packs.TryRead(k)).OfType<byte[]>());

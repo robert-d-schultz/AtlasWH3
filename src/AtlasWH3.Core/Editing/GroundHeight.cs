@@ -1,6 +1,5 @@
 using AtlasWH3.Core.Campaign;
 using AtlasWH3.Core.Campaign.Camera;
-using AtlasWH3.Core.Campaign.GlobalMesh;
 using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Formats.Maps;
 using AtlasWH3.Formats.Packs;
@@ -95,7 +94,7 @@ public sealed class GroundHeight
                     db = TileDatabase.Load(vanilla.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(dbPrefix, StringComparison.Ordinal))
                         .Distinct().Select(k => vanilla.TryRead(k)).OfType<byte[]>());
                 }
-                var tiles = new TileHfHeight(TileList.Read(tileList), db, read, CompressedMap.Decode(lf), GlobalMeshStep.TileSize) { BobCells = true };
+                var tiles = new TileHfHeight(TileList.Read(tileList), db, read, CompressedMap.Decode(lf), TileHfHeight.TileSize3K) { BobCells = true };
                 double At(double x, double z) => tiles.TreeHeight((float)x, (float)z);
                 var diff = reference is null || worldW <= 0 || worldH <= 0 ? double.NaN : MedianDifference(At, reference, worldW, worldH);
                 if (diff > MaxReferenceDifference)

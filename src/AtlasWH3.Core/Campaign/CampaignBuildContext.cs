@@ -21,11 +21,6 @@ public sealed class CampaignBuildContext
     /// bytes BOB leaves uninitialised); "wide" = the wider game-valid water that also covers the land-mesh river holes.</summary>
     public string RiverGeometry { get; init; } = "bob";
 
-    /// <summary>global_mesh step: "bob" = BOB's height query, skirts, bounds and compressed maps (identical to BOB's
-    /// files apart from the bytes BOB leaves uninitialised); "native" = the earlier game-valid approximation (lf sampled
-    /// under the tile coverage, skirts under every open boundary edge).</summary>
-    public string GlobalMeshGeometry { get; init; } = "bob";
-
     public CampaignBuildContext(ProjectPaths paths, string? targetRoot = null, Action<string>? log = null)
     {
         Paths = paths;

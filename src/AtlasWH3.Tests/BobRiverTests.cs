@@ -97,33 +97,4 @@ public class BobRiverTests
         }
         finally { if (Directory.Exists(outDir)) Directory.Delete(outDir, true); }
     }
-
-    /// <summary>BOB rasterises the river models already on disk when its Terry file run starts (here the native models
-    /// the kit held, saved in output/backups/main190_working_before_frida_rivers2_*): every patch file and the
-    /// collection must come out byte-identical from those models.</summary>
-    [Fact]
-    public void Main190_HeightPatches_MatchBobByteForByte()
-    {
-        var backups = Path.Combine(Main190.OutputRoot, "backups");
-        var source = Directory.Exists(backups)
-            ? Directory.GetDirectories(backups, "main190_working_before_frida_rivers2_*").Select(d => Path.Combine(d, "terrain", "models")).FirstOrDefault(Directory.Exists)
-            : null;
-        if (source is null || !Directory.Exists(Path.Combine(BobRun, "height_patches"))) return;
-        var collection = new HeightPatchCollection();
-        var count = 0;
-        foreach (var file in Directory.GetFiles(source, "river_*.wsmodel.rigid_model_v2")
-                     .OrderBy(f => int.Parse(Path.GetFileName(f).Split('_', '.')[1])))
-        {
-            var number = int.Parse(Path.GetFileName(file).Split('_', '.')[1]);
-            foreach (var (name, raster, header, minX, minZ, maxX, maxZ) in BobRiver.HeightPatches(RigidModelV2.Read(file), number))
-            {
-                var bob = File.ReadAllBytes(Path.Combine(BobRun, "height_patches", name + ".compressed_map"));
-                Assert.True(bob.AsSpan().SequenceEqual(CompressedMap.Encode(raster, header)), name);
-                collection.Patches.Add(new HeightPatchCollection.Patch(HeightPatchCollection.PatchPath(Main190.MapName, name), minX, minZ, maxX, maxZ));
-                count++;
-            }
-        }
-        Assert.Equal(87, count);
-        Assert.Equal(File.ReadAllBytes(Path.Combine(BobRun, "height_patches", "rivers.height_patch_collection")), collection.ToBytes());
-    }
 }

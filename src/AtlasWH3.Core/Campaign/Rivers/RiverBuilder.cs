@@ -28,7 +28,6 @@ public sealed record RiverPoint((double X, double Y, double Z) Position, (double
 /// </summary>
 public static class RiverBuilder
 {
-    private const int PatchUnits = 32, PixelsPerUnit = 16, PatchSize = PatchUnits * PixelsPerUnit;
 
     /// <summary>Extra width and end extension so the water covers the land-mesh river holes (which follow the river
     /// tiles, not the spline). Wider water is harmless: it lies under the higher banks.</summary>
@@ -214,67 +213,5 @@ public static class RiverBuilder
         if (len > 0) { x /= len; y /= len; z /= len; }
         s[0] = B(x); s[1] = B(y); s[2] = B(z); s[3] = 0;
         static byte B(double c) => (byte)Math.Clamp(Math.Round((c + 1) * 127.5), 0, 255);
-    }
-
-    /// <summary>Water-surface height patches for one river: (patch name, raster, header, world rectangle).</summary>
-    public static List<(string Name, Raster<ushort> Raster, float[] Header, float MinX, float MinZ, float MaxX, float MaxZ)>
-        HeightPatches(RigidModelV2 model, int riverNumber)
-    {
-        // world-space triangles from the model (positions relative to the pivot in the material block)
-        var pivot = (X: BitConverter.ToSingle(model.MaterialBlock, 0x224), Y: BitConverter.ToSingle(model.MaterialBlock, 0x228),
-                     Z: BitConverter.ToSingle(model.MaterialBlock, 0x22C));
-        var n = model.VertexCount;
-        var px = new double[n]; var py = new double[n]; var pz = new double[n];
-        for (var i = 0; i < n; i++)
-        {
-            px[i] = BitConverter.ToSingle(model.Vertices, i * 48) + pivot.X;
-            py[i] = BitConverter.ToSingle(model.Vertices, i * 48 + 4) + pivot.Y;
-            pz[i] = BitConverter.ToSingle(model.Vertices, i * 48 + 8) + pivot.Z;
-        }
-        var blocks = new Dictionary<(int Bx, int Bz), float[]>();
-        for (var t = 0; t + 2 < model.Indices.Length; t += 3)
-        {
-            int a = model.Indices[t], b = model.Indices[t + 1], c = model.Indices[t + 2];
-            var area = (px[b] - px[a]) * (pz[c] - pz[a]) - (px[c] - px[a]) * (pz[b] - pz[a]);
-            if (Math.Abs(area) < 1e-12) continue;
-            var x0 = (int)Math.Floor(Math.Min(px[a], Math.Min(px[b], px[c])) * PixelsPerUnit);
-            var x1 = (int)Math.Ceiling(Math.Max(px[a], Math.Max(px[b], px[c])) * PixelsPerUnit);
-            var z0 = (int)Math.Floor(Math.Min(pz[a], Math.Min(pz[b], pz[c])) * PixelsPerUnit);
-            var z1 = (int)Math.Ceiling(Math.Max(pz[a], Math.Max(pz[b], pz[c])) * PixelsPerUnit);
-            for (var gz = z0; gz <= z1; gz++)
-                for (var gx = x0; gx <= x1; gx++)
-                {
-                    double qx = (gx + 0.5) / PixelsPerUnit, qz = (gz + 0.5) / PixelsPerUnit;
-                    var u = ((px[b] - qx) * (pz[c] - qz) - (px[c] - qx) * (pz[b] - qz)) / area;
-                    var v = ((px[c] - qx) * (pz[a] - qz) - (px[a] - qx) * (pz[c] - qz)) / area;
-                    var w = 1 - u - v;
-                    if (u < 0 || v < 0 || w < 0) continue;
-                    var key = ((int)Math.Floor((double)gx / PatchSize), (int)Math.Floor((double)gz / PatchSize));
-                    if (!blocks.TryGetValue(key, out var block))
-                    {
-                        blocks[key] = block = new float[PatchSize * PatchSize];
-                        Array.Fill(block, float.NaN);
-                    }
-                    var lx = gx - key.Item1 * PatchSize;
-                    var lz = gz - key.Item2 * PatchSize;
-                    block[lz * PatchSize + lx] = (float)(u * py[a] + v * py[b] + w * py[c]);
-                }
-        }
-        if (blocks.Count == 0) return [];
-        int bx0 = blocks.Keys.Min(k => k.Bx), bz0 = blocks.Keys.Min(k => k.Bz);
-        var result = new List<(string, Raster<ushort>, float[], float, float, float, float)>();
-        foreach (var (key, block) in blocks.OrderBy(k => k.Key.Bx).ThenBy(k => k.Key.Bz))
-        {
-            var covered = block.Select((h, i) => (h, i)).Where(p => !float.IsNaN(p.h)).ToList();
-            var max = covered.Max(p => p.h);
-            const float lo = -50f;
-            var raster = new Raster<ushort>(PatchSize, PatchSize);
-            foreach (var (h, i) in covered)
-                raster.Data[i] = (ushort)Math.Clamp(Math.Round((h - lo) / (max - lo) * 65535), 1, 65535);
-            var name = $"river_{riverNumber}_patch_{(key.Bx - bx0) * PatchSize}x{(key.Bz - bz0) * PatchSize}";
-            result.Add((name, raster, [0, lo, 0, 0, max, 0], key.Bx * PatchUnits, key.Bz * PatchUnits,
-                (key.Bx + 1) * PatchUnits, (key.Bz + 1) * PatchUnits));
-        }
-        return result;
     }
 }

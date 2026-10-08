@@ -22,6 +22,10 @@ namespace AtlasWH3.Core.Campaign.Terrain;
 /// </summary>
 public sealed class TileHfHeight
 {
+    /// <summary>World units per tile-map pixel on every 3K campaign map (vanilla 595.1 / 1784). WH3 derives it from the
+    /// map data instead (Phase 1).</summary>
+    public const float TileSize3K = 595.1f / 1784f;
+
     private const float K = 1f / 65535f;
     private readonly TileList _list;
     private readonly TileInfo?[] _tileOfPath;

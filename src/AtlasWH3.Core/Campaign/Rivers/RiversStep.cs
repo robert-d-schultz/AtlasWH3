@@ -1,18 +1,18 @@
 using System.Diagnostics;
-using AtlasWH3.Core.Campaign.GlobalMesh;
+using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Formats.Maps;
 using AtlasWH3.Formats.Models;
 
 namespace AtlasWH3.Core.Campaign.Rivers;
 
-/// <summary>models\river_N.* and height_patches\* from the ECRiverSpline entities of the AK layers.</summary>
+/// <summary>models\river_N.* from the ECRiverSpline entities of the AK layers.</summary>
 public sealed class RiversStep : ICampaignBuildStep
 {
     /// <summary>World units per lf pixel along x and z in the props/hex world (vanilla 595.1 / 7136, 541.786 / 5620).</summary>
     public const double WorldPerPixelX = 595.1 / 7136, WorldPerPixelZ = 541.78619 / 5620;
 
     public string Name => "rivers";
-    public string ReplacesBobAction => "Terrain / Terry file (models\\river_N, height_patches)";
+    public string ReplacesBobAction => "Terrain / Terry file (models\\river_N)";
     public IReadOnlyList<string> DependsOn => ["rasters"];
 
     /// <summary>Number river_N by the entity names (CA's shipped vanilla files) instead of BOB's numbering. Keep in step
@@ -42,8 +42,8 @@ public sealed class RiversStep : ICampaignBuildStep
             worldW = (float)(lf.Raster.Width * WorldPerPixelX);
             worldH = (float)(lf.Raster.Height * WorldPerPixelZ);
             // terrain height for terrain_relative splines: props-world z maps onto the square-pixel terrain grid
-            var terrainH = lf.Raster.Height / 4 * GlobalMeshStep.TileSize;
-            var sampler = new LfSampler(lf, lf.Raster.Width / 4 * GlobalMeshStep.TileSize, terrainH, GlobalMeshStep.TileSize);
+            var terrainH = lf.Raster.Height / 4 * TileHfHeight.TileSize3K;
+            var sampler = new LfSampler(lf, lf.Raster.Width / 4 * TileHfHeight.TileSize3K, terrainH, TileHfHeight.TileSize3K);
             var h = worldH;
             terrain = (x, z) => sampler.Height((float)x, (float)(z * terrainH / h));
         }
@@ -63,14 +63,11 @@ public sealed class RiversStep : ICampaignBuildStep
         if (duplicates.Count > 0) throw new InvalidDataException($"river numbers used twice (entity names river_N): {string.Join(", ", duplicates)}");
 
         var models = ctx.OutFile("models");
-        var patchesDir = ctx.OutFile("height_patches");
         Directory.CreateDirectory(models);
-        Directory.CreateDirectory(patchesDir);
-        foreach (var old in Directory.EnumerateFiles(models, "river_*").Concat(Directory.EnumerateFiles(patchesDir, "river_*")))
+        foreach (var old in Directory.EnumerateFiles(models, "river_*"))
             File.Delete(old);
 
         var written = new List<string>();
-        var collection = new HeightPatchCollection();
         var bob = !Wide(ctx);
         var bounds = bob ? BobRiver.MapBounds(ctx.Paths) : null;
         if (bob && bounds is null)
@@ -101,20 +98,8 @@ public sealed class RiversStep : ICampaignBuildStep
             var wsmodel = Path.Combine(models, $"river_{river.Number}.wsmodel");
             File.WriteAllText(wsmodel, WsModel.River(ctx.MapName, river.Number, river.Material, bob ? "\n" : "\r\n"));
             written.AddRange([mesh, wsmodel]);
-
-            var patches = bob ? BobRiver.HeightPatches(model, river.Number) : RiverBuilder.HeightPatches(model, river.Number);
-            foreach (var (name, raster, header, minX, minZ, maxX, maxZ) in patches)
-            {
-                var file = Path.Combine(patchesDir, name + ".compressed_map");
-                CompressedMap.Write(file, raster, header);
-                written.Add(file);
-                collection.Patches.Add(new HeightPatchCollection.Patch(HeightPatchCollection.PatchPath(ctx.MapName, name), minX, minZ, maxX, maxZ));
-            }
         }
-        var collectionPath = Path.Combine(patchesDir, "rivers.height_patch_collection");
-        collection.Write(collectionPath);
-        written.Add(collectionPath);
-        notes.Add($"{rivers.Count} rivers, {collection.Patches.Count} height patches");
+        notes.Add($"{rivers.Count} rivers");
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 

@@ -277,7 +277,7 @@ public class PropToolsTests
             Assert.True(close >= trees.Count * 0.99, $"{close} of {trees.Count} tree heights match");
 
             // a compiled terrain that does not match the project's own lf (another map, an old build) is skipped
-            var (w, h) = (1784 * Core.Campaign.GlobalMesh.GlobalMeshStep.TileSize, 1405 * Core.Campaign.GlobalMesh.GlobalMeshStep.TileSize * 1.15476);
+            var (w, h) = (1784 * Core.Campaign.Terrain.TileHfHeight.TileSize3K, 1405 * Core.Campaign.Terrain.TileHfHeight.TileSize3K * 1.15476);
             var same = GroundHeight.Built(paths, paths.MapName, null, out _, ground.At, w, h);
             Assert.Equal(0, same!.ReferenceDifference, 9);
             Assert.Null(GroundHeight.Built(paths, paths.MapName, null, out var whyNot, (x, z) => ground.At(x, z) + 5, w, h));

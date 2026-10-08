@@ -41,9 +41,6 @@ switch (command)
     case "props-to-layers":
         PropsToLayers(paths, args.Skip(1).ToArray());
         break;
-    case "compile-map":
-        CompileMap(paths, args.Skip(1).ToArray());
-        break;
     case "build-campaign":
         return BuildCampaign(paths, args.Skip(1).ToArray());
     case "diagnose-campaign":
@@ -99,8 +96,7 @@ switch (command)
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
         Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
-        Console.WriteLine("          compile-map [--out <dir>]      BOB-less compiled terrain (pack layout)");
-        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--fresh-trees] [--river-geometry bob|wide] [--global-mesh bob|native] [--json]   native replacement for BOB's campaign actions (--fresh-trees: compute every tree height, no reference reuse; --river-geometry wide: wider game-valid river water instead of BOB's; --global-mesh native: the earlier game-valid land/sea meshes instead of BOB's)");
+        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--fresh-trees] [--river-geometry bob|wide] [--json]   native replacement for BOB's campaign actions (--fresh-trees: compute every tree height, no reference reuse; --river-geometry wide: wider game-valid river water instead of BOB's)");
         Console.WriteLine("          diagnose-campaign [--out <dir>] [--json]              per-step input check");
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
         Console.WriteLine("                [--out <dir>] [--pack-output <file>] [--json]      a project's build (as the GUI's Build window)");
@@ -140,7 +136,6 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--steps", out var steps);
     a = TakeOption(a, "--accept-tilemap", out var accept);
     a = TakeOption(a, "--river-geometry", out var riverGeometry);
-    a = TakeOption(a, "--global-mesh", out var globalMesh);
     var freshTrees = TakeFlag(ref a, "--fresh-trees");
     var json = TakeFlag(ref a, "--json");
     var sw = Stopwatch.StartNew();
@@ -149,7 +144,6 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
         AcceptedTileMapIssues = (accept ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(),
         ReuseTreeHeights = !freshTrees,
         RiverGeometry = riverGeometry ?? "bob",
-        GlobalMeshGeometry = globalMesh ?? "bob",
     };
     var outcomes = new CampaignBuildPipeline().Run(ctx, steps?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     if (json)
@@ -525,16 +519,6 @@ static bool TakeFlag(ref string[] a, string name)
     var found = a.Contains(name, StringComparer.OrdinalIgnoreCase);
     a = a.Where(s => !s.Equals(name, StringComparison.OrdinalIgnoreCase)).ToArray();
     return found;
-}
-
-static void CompileMap(ProjectPaths paths, string[] a)
-{
-    a = TakeOption(a, "--out", out var outDir);
-    var sw = Stopwatch.StartNew();
-    var result = new CompiledTerrainExporter(paths).ExportRasters(outDir, Console.WriteLine);
-    foreach (var note in result.Notes) Console.WriteLine("note: " + note);
-    foreach (var file in result.Written) Console.WriteLine($"  {new FileInfo(file).Length,12:N0}  {Path.GetRelativePath(result.TargetDir, file)}");
-    Console.WriteLine($"wrote {result.Written.Count} files to {result.TargetDir} in {sw.Elapsed.TotalSeconds:F1} s");
 }
 
 /// <summary>Removes "name value" from args (anywhere in the list) and returns the value, or null if absent.</summary>

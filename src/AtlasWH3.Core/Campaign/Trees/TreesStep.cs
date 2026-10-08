@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using AtlasWH3.Core.Campaign.GlobalMesh;
 using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Formats.Packs;
 using AtlasWH3.Core.Exporters;
@@ -51,7 +50,7 @@ public sealed class TreesStep : ICampaignBuildStep
 
         var project = TerryProject.Load(ctx.TerryFile);
         var (map, palette) = TiffMap.ReadPalette8(project.LayerTifPath(project.Find("CampaignTree")!));
-        var tileSize = GlobalMeshStep.TileSize;
+        var tileSize = TileHfHeight.TileSize3K;
         var grid = HexGrid.ForTreeMap(map.Width, map.Height, (float)(map.Width * (595.1 / 1784)));
         var colours = CampaignTreeGenerator.ReadTreeMap(map, palette, grid, AkExporter.NoTreeIndex);
 
@@ -113,7 +112,7 @@ public sealed class TreesStep : ICampaignBuildStep
         notes.Add($"tree heights: lf + tile hf ({Path.GetFileName(Path.GetDirectoryName(tl))}/tile_list.bin)");
         // Campaign Trees' provider (qttoolutility FUN_18011f1d0): the tiles registered at the point's cell, highest
         // answering height (vanilla: all 205,767 trees bit-exact against BOB's own output)
-        return new TileHfHeight(TileList.Read(tl), db, packs.TryRead, lfMap, GlobalMeshStep.TileSize) { BobCells = true };
+        return new TileHfHeight(TileList.Read(tl), db, packs.TryRead, lfMap, TileHfHeight.TileSize3K) { BobCells = true };
     }
 
     /// <summary>The reference list's trees by hex (compiled root, then working_data), if it is on the same grid.</summary>
