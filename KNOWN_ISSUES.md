@@ -12,6 +12,9 @@
 - **Lookup textures:** the game reads only the first 1024 colours of a region lookup's palette, and the `lookup` step
   writes BOB's palette order (first appearance). On a map with more than 1024 regions some regions get no colour.
   Reorder the palette afterwards (Old World uses a script) until the step does it.
+- **Camera height map:** the `camera_heightmap` step samples the logic heights and the layers' height patches the way
+  BOB's action does, but not BOB's tile terrain, and it ignores `cam_hmap_apply_blur`. It is not byte-identical to
+  anything (BOB's own action fails without the `cam_hmap_*` rules).
 - **Prepare game data** extracts one map at a time. Run it again for another map.
 - Folder changes in Settings apply to windows opened after saving.
 - The build runs while editors stay open. Saving an edit during a build can make the output mix old and new data;

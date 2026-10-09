@@ -140,14 +140,14 @@ public class CampaignBuildTests
             // random rotation (Rz * Ry * Rx) with scale
             double ax = rng.NextDouble() * 6 - 3, ay = rng.NextDouble() * 3 - 1.5, az = rng.NextDouble() * 6 - 3;
             double[] scale = [0.2 + rng.NextDouble() * 5, 0.2 + rng.NextDouble() * 5, 0.2 + rng.NextDouble() * 5];
-            var expected = CameraHeightmapStep.Matrix(new Formats.Props.PropTransform(0, 0, 0,
+            var expected = Core.Campaign.Camera.CameraScene3K.Matrix(new Formats.Props.PropTransform(0, 0, 0,
                 ax * 180 / Math.PI, ay * 180 / Math.PI, az * 180 / Math.PI, scale[0], scale[1], scale[2]));
             // file layout: column i = (m[0][i], m[1][i], m[2][i])
             var columns = new float[9];
             for (var c = 0; c < 3; c++)
                 for (var r = 0; r < 3; r++)
                     columns[c * 3 + r] = (float)expected[r * 3 + c];
-            var roundTrip = CameraHeightmapStep.Matrix(Formats.Props.PropTransform.FromColumns(columns, 0, 0, 0));
+            var roundTrip = Core.Campaign.Camera.CameraScene3K.Matrix(Formats.Props.PropTransform.FromColumns(columns, 0, 0, 0));
             for (var i = 0; i < 9; i++) Assert.Equal(expected[i], roundTrip[i], 3);
         }
     }

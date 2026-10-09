@@ -366,6 +366,21 @@ palette by hand** (`lookup_tweak.py`): the game reads only 1024 palette entries 
 regions than that. **Circle back:** build that reorder into the step instead of the hand-kept colour list. Left: the
 in-game check. Numbers in `docs/native_campaign_build.md`.
 
+**3.8 status (2026-10-09):** `CameraHeightmapStep` is in the pipeline. WH3's generator (read off the kit) is 3K's:
+BOB's grid, cell sampling and PNG encoding carry over, and the grid is the tile map × `cam_hmap_resolution_scale`. Why
+BOB fails: the kit's rules.bob sets none of the `cam_hmap_*` keys and BOB has no defaults, so the grid is 0 × 0. CA ran
+0.25 (every shipped vanilla combi map is 720 × 486, and the user's files have the same scale); the step defaults to
+that and 8 samples per unit. BOB's scene height is max(height patches, tile terrain, lf). The step uses the logic map
+plus every height-patched layer entity, `for_camera_height_map_only` included (the trees' patch loader), so mountains'
+patches are in the map, unlike the hand-made files. The tile terrain is not modelled. There is no BOB output to match:
+CA's vanilla file is stale in places. Against the user's files: IEE correlation 0.986 (higher on the 3,040 patched
+props and along slopes, from BOB's max-sampling), Old World 0.997 (no patches). IEE 18 s, Old World 15 s. Atlas3K's 3K
+scene moved to `CameraScene3K` (the editors' ground height still uses it). Left:
+- the in-game check;
+- a BOB run with the `cam_hmap_*` keys added to rules.bob, which should make the GUI action work and give a reference;
+- BOB's tile terrain term and blur.
+Numbers in `docs/native_campaign_build.md`.
+
 Each step is done when:
 - it is native in the hybrid pipeline,
 - the game loads every fixture map and shows no visible difference from BOB's build,

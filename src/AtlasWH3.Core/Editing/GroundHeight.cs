@@ -138,7 +138,7 @@ public sealed class GroundHeight
             var from = Directory.Exists(root) ? root : "game packs";
             try
             {
-                var field = CameraHeightmapStep.BuildField(new CampaignBuildContext(mapPaths, root), [], out _, out _);
+                var field = CameraScene3K.BuildField(new CampaignBuildContext(mapPaths, root), [], out _, out _);
                 double At(double x, double z) => field.Height((float)x, (float)z);
                 var diff = reference is null || worldW <= 0 || worldH <= 0 ? double.NaN : MedianDifference(At, reference, worldW, worldH);
                 if (diff > MaxSceneDifference)

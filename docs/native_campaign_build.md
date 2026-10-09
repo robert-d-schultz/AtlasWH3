@@ -230,6 +230,44 @@ the map's working_data and EmpireDesignData folders.
 - The other lookups (`elector_counts_small`, `wh3_main_hef_court_small`) shipped in the IEE and Old World packs come
   from other sources than the kit's BMPs (different sizes or palettes); not compared further.
 
+### camera_heightmap.png (WH3)
+
+`CameraHeightmapStep`. Read off the WH3 kit (capstone, 2026-10-09): `TOOLDATABUILDER::generate_camera_height_map`
+(tooldatabuilderdll 0x19de90, cell max 0x19fd40, row and pixel lambdas 0x1e16f0 / 0x1e1ca0), its action in bob_terrain
+(0x2d040, settings 0x33180) and `WS_TERRAIN_LOGIC::height` in warscape (0x579b80 → 0x5b20e0).
+- **Why BOB fails:** the settings come from rules.bob `[Terrain]` `cam_hmap_resolution_scale`, `cam_hmap_samples_per_wu`,
+  `cam_hmap_apply_blur`, `cam_hmap_blur_kernel`, `cam_hmap_standard_drv` and (new in WH3) `cam_hmap_output_target`. The
+  kit's `raw_data\terrain\campaigns\rules.bob` sets none of them, and BOB has no defaults, so the resolution is 0, the
+  grid is 0 × 0 and the action fails. Not tried in BOB yet: adding the keys to rules.bob should let the GUI action run.
+- **Generator:** the same as 3K's (below, under *Format notes*). The grid is ceil(terrain size in tiles · res), and
+  the terrain size is the tile map's (`tile_list.bin` ints 1 and 2: vanilla combi 2880 × 1941). Every shipped vanilla
+  combi map is 720 × 486, so CA ran res 0.25; the user's IEE (800 × 486) and Old World (1024 × 887) files have the same
+  scale. Cells are centred at (u · step, j · step) over `WS_TERRAIN_LOGIC::bounds`. The cell max takes n × n samples
+  plus the centre, n = ceil(extent · samples per unit) cut to u16, and both loops run the z count. Pixels and
+  `height_scale` are as in 3K, and the blur (0x3d6780) runs only with `cam_hmap_apply_blur` (not ported).
+- **Scene height:** `WS_TERRAIN_LOGIC::height` → for a campaign, max(P(x, z), T(x, z′), lf(x, z′)) with z′ = z / 1.15476:
+  P = the height patch objects at the point (0x5b5c30, max from −FLT_MAX), T = the tile terrain (0x5b5f20), lf =
+  `TERRAIN_RENDER_SETUP::get_lf_height` over `lf_world_space_bounds`, clamped to the map. The native step uses
+  `TreeHeightField` for it: the nearest full_logic_map texel, raised by every height-patched layer entity
+  (`apply_height_patch`), **including `for_camera_height_map_only`**, which the trees leave out. T is not modelled.
+- **Defaults** when rules.bob sets nothing: res 0.25 (CA's) and 8 samples per unit. On vanilla combi, BOB's pattern over
+  the shipped full_logic_map matches CA's pixels exactly in 2% / 4% / 21% / 26% / 23% / 22% of land cells at 1 / 2 / 4 /
+  8 / 16 / 32 samples (bilinear sampling: 17% / 24% at 4 / 8).
+- **CA's vanilla file is not an oracle:** its mountains are the height patches (the logic map has none of them), but it
+  is stale in places (in the south-east the logic map is 11.8 where the camera map says 1.4), and off the logic map
+  BOB's scene had terrain (sea-floor props) where full_logic_map is 0. Correlation with the max-pooled logic map is 0.92.
+- **Against the user's hand-made files** (made from the raw heights, no patches): IEE correlation 0.986. West of the
+  old vanilla edge they agree within the sampling; to the east the native map is higher on the 3,040 patched props
+  (mountains, 204 models) and along slopes (BOB's max over samples), and a few lake bowls are lower. Old World has no
+  height patches: correlation 0.997, the native map up to about 1 higher on slopes (the user's file is also a row short:
+  3549 · 0.25 rounds up to 888).
+- **Time:** IEE 18 s, Old World 15 s.
+- **Inputs:** the build's (else working_data's) full_logic_map and tile_list.bin, the .terry's `world_width` (else
+  map_data.esf's), the layers' height-patched entities, their models' patches from the packs (vanilla plus `--pack`),
+  and the rules.bob files (`campaigns\rules.bob`, then the map folder's).
+- **Open:** BOB's tile terrain T; the blur; entities inside groups (their parents' transforms; none in the fixtures);
+  a BOB run with the cam_hmap keys set, as the reference.
+
 ### full_height_map.dds (BC6H_SF16)
 
 Error of the decoded texture against the composited Height (red) and HeightSea (green) sources, per texel:
@@ -623,7 +661,7 @@ Decompiled from `QTU::CampaignTreeGenerator` / `generate_campaign_tree_list_for`
 - **Reverse:** `Atlas3K.Cli trees-decode [--list] [--out]` maps a compiled list back to hex colours and heights, checks that regenerating is byte-identical, and writes the AK CampaignTree TIF (1784 × 1405, 2×2 px per hex, palette = sorted DB colours, 19 = no tree).
 - **Vanilla AK caveat:** neither the kit's `3k_dlc07_main_map.tree.*.tif` (no trees) nor `tree_new` (90% of hexes) reproduces the shipped list. Use the decoded TIF.
 
-### camera_heightmap.png
+### camera_heightmap.png (3K)
 
 - **What the game needs:** `empirecampaign.dll` loads `campaign_maps\<map>\camera_heightmap.png` and requires the tEXt `height_scale`.
 - **Status:** byte-identical to BOB on vanilla 3k_dlc07 (2026-10-05; 2,195,093 bytes, MD5 `6c6353e4…`), every float cell of BOB's sample buffer bit-exact. Before this work the native step rasterised props (correlation 0.94); a BOB-faithful Python prototype reached 95.6% bit-exact cells.

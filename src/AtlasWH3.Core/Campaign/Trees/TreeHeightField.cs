@@ -38,6 +38,10 @@ public sealed class TreeHeightField
 
     public IReadOnlyList<Patch> Patches { get; }
 
+    /// <summary>The terrain's world extents: x 0..width, z 0..depth · <see cref="ZScale"/>.</summary>
+    public float WorldWidth => _width;
+    public float WorldDepth => _depth * ZScale;
+
     /// <param name="logic">full_logic_map.compressed_map (row 0 = south).</param>
     /// <param name="worldWidth">The project's world_width (.terry), else the map's width (map_data.esf).</param>
     public TreeHeightField(CompressedMap.Map logic, float worldWidth, IReadOnlyList<Patch> patches)
@@ -174,8 +178,9 @@ public sealed class TreeHeightField
     /// <summary>
     /// The height patches of a Terry project's layer files, their models, maps and materials read from
     /// <paramref name="packs"/>. A model whose patch is not in the packs is skipped (listed in <paramref name="notes"/>).
+    /// Patches with for_camera_height_map_only are left out unless <paramref name="camera"/> (the camera height map's).
     /// </summary>
-    public static List<Patch> LoadPatches(TerryProject project, PackSet packs, List<string> notes)
+    public static List<Patch> LoadPatches(TerryProject project, PackSet packs, List<string> notes, bool camera = false)
     {
         var models = new Dictionary<string, (CompressedMap.Map Map, bool Add)?>(StringComparer.OrdinalIgnoreCase);
         var missing = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -189,7 +194,11 @@ public sealed class TreeHeightField
             {
                 var hp = e.Element("ECPropHeightPatch");
                 if (hp is null || (string?)hp.Attribute("apply_height_patch") != "true") continue;
-                if ((string?)hp.Attribute("for_camera_height_map_only") == "true") { cameraOnly++; continue; }
+                if ((string?)hp.Attribute("for_camera_height_map_only") == "true")
+                {
+                    cameraOnly++;
+                    if (!camera) continue;
+                }
                 // an entity inside a group would need its parents' transforms; none of the fixtures has one
                 if (e.Parent?.Name != "entities") { nested++; continue; }
                 var model = (string?)e.Element("ECMesh")?.Attribute("model_path");
@@ -206,7 +215,7 @@ public sealed class TreeHeightField
             }
         }
         notes.Add($"height patches: {patches.Count} props, {models.Values.Count(v => v is not null)} models" +
-                  (cameraOnly > 0 ? $", {cameraOnly} camera-only skipped" : ""));
+                  (cameraOnly > 0 ? $", {cameraOnly} camera-only {(camera ? "included" : "skipped")}" : ""));
         if (nested > 0) notes.Add($"{nested} height-patched props inside groups are not applied (not supported yet)");
         if (missing.Count > 0) notes.Add($"no height patch in the packs for {missing.Count} model(s): {string.Join(", ", missing.Take(8))}" +
                                          (missing.Count > 8 ? ", ..." : ""));

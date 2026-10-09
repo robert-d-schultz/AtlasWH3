@@ -9,9 +9,10 @@ retargeted to WH3 only.
 
 > **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
 > projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list`,
-> `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless except the camera
-> height map. `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
-> campaign), so far without the pieces' objects. The other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless.
+> `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
+> campaign), so far without the pieces' objects. `lookup` and `camera_heightmap` are in too. The other steps are still
+> pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -22,7 +23,8 @@ A full reprocess of a WH3 campaign map in BOB takes about 20 minutes:
   packed and installed between actions
 
 Two outputs don't build in BOB at all:
-- *Generate Camera Height Map* crashes, so `camera_heightmap.png` is made by hand.
+- *Generate Camera Height Map* fails (the kit's rules.bob has none of its settings), so `camera_heightmap.png` is
+  made by hand.
 - Devastation pieces only come out if you set up a fake second campaign map for BOB to process.
 
 The goal is **one command that rebuilds the whole map from loose files**, with no pack round trips and no workarounds.
@@ -38,7 +40,7 @@ The goal is **one command that rebuilds the whole map from loose files**, with n
 | `masks` | colour overlays, corruption, snow, event area and patch masks, `lf_normal` | Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask |
 | `devastation_pieces` | `pieces\event_*` for the main and devastated maps | Devastation pieces, without a fake campaign |
 | `lookup` | `*_lookup.tga` / `.dds`, `_minimap.tga` | Convert lookup texture |
-| `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map (crashes in BOB) |
+| `camera_heightmap` | `camera_heightmap.png` (with the props' height patches) | Generate Camera Height Map (fails in BOB) |
 | `global_props` + `rivers` | `global_props.bin`, `global_props_sound.bin`, devastation-type BMDs, `models\river_*` | the props / Terry export action |
 | `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation (last) |
 

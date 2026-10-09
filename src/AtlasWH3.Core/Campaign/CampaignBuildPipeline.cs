@@ -11,7 +11,7 @@ public sealed class CampaignBuildPipeline
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
     /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phase 3). A <see cref="PendingStep"/> is
-    /// not native yet: Atlas3K's 3K version of it (Props.GlobalPropsStep, CameraHeightmapStep, …) is kept as
+    /// not native yet: Atlas3K's 3K version of it (Props.GlobalPropsStep, …) is kept as
     /// the basis of the re-port, but writes 3K formats, so it is not in the pipeline.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
@@ -26,8 +26,7 @@ public sealed class CampaignBuildPipeline
             "BMD v27 global props with culture-mask buckets, sound and devastation-type files (Phase 3.9; Atlas3K's GlobalPropsStep writes 3K's v35)"),
         new DevastationPiecesStep(),
         new LookupStep(),
-        new PendingStep("camera_heightmap", "Generate Camera Height Map (crashes in BOB)", ["heightmaps", "global_props"],
-            "camera_heightmap.png from the logic heights and prop height patches (Phase 3.8; Atlas3K's CameraHeightmapStep samples 3K's global meshes)"),
+        new CameraHeightmapStep(),
         new PendingStep("hlp_spd", "the game's own hlp/spd generation", [],
             "hlp_data.esf v1 and spd_data.esf v1 (Phase 6; Atlas3K's AiPathfindingStep writes 3K's v0)"),
     ];
