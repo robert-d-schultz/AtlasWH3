@@ -66,8 +66,8 @@ public sealed class TerrainCompositeTests : IDisposable
         var p = Project(Map("SnowMask", "3x1", ("a", "1", "1"), ("b", "1", "1")));
         TiffMap.WriteGray8(Path.Combine(_dir, "t.snow_mask.a.tif"), new Raster<byte>(3, 1, [0, 255, 128]));
         TiffMap.WriteGray8(Path.Combine(_dir, "t.snow_mask.b.tif"), new Raster<byte>(3, 1, [51, 0, 128]));
-        // 128/255 + 128/255 · (1 − 128/255) = 0.7520 → 192
-        Assert.Equal([51, 255, 192], TerrainComposite.Mask(p, "SnowMask").Data);
+        // 128/255 + 128/255 · (1 − 128/255) = 0.7520 → 191.77, truncated to 191
+        Assert.Equal([51, 255, 191], TerrainComposite.Mask(p, "SnowMask").Data);
     }
 
     [Fact]

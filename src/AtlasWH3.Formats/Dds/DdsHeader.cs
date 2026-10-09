@@ -97,11 +97,12 @@ public sealed class DdsHeader
         return header;
     }
 
-    public const uint DxgiR32Float = 41, DxgiBc6hSf16 = 96;
+    public const uint DxgiR32Float = 41, DxgiR8Unorm = 61, DxgiR8Uint = 62, DxgiBc1Unorm = 71, DxgiBc4Unorm = 80, DxgiBc6hSf16 = 96;
 
-    /// <summary>A 148-byte DX10 header for one 2D texture with one mip, as WH3's BOB writes it: block-compressed formats
-    /// carry LINEARSIZE (bytes of the top level), uncompressed ones PITCH (bytes per row).</summary>
-    public static byte[] BuildDx10(int width, int height, uint dxgiFormat, bool blockCompressed, int bytesPerPixelOrBlock)
+    /// <summary>A 148-byte DX10 header for one 2D texture, as WH3's BOB writes it: block-compressed formats
+    /// carry LINEARSIZE (bytes of the top level), uncompressed ones PITCH (bytes per row); with more than one mip the
+    /// caps add COMPLEX | MIPMAP.</summary>
+    public static byte[] BuildDx10(int width, int height, uint dxgiFormat, bool blockCompressed, int bytesPerPixelOrBlock, int mips = 1)
     {
         var header = new byte[148];
         void W(int offset, uint value) => BitConverter.GetBytes(value).CopyTo(header, offset);
@@ -115,11 +116,11 @@ public sealed class DdsHeader
             ? (uint)(((width + 3) / 4) * ((height + 3) / 4) * bytesPerPixelOrBlock)
             : (uint)(width * bytesPerPixelOrBlock));
         W(24, 1);                                // depth
-        W(28, 1);                                // mip count
+        W(28, (uint)mips);
         W(76, 32);
         W(80, 0x4);                              // DDPF_FOURCC
         W(84, 0x30315844);                       // "DX10"
-        W(108, 0x1000);
+        W(108, mips > 1 ? 0x401008u : 0x1000u);  // TEXTURE, plus COMPLEX | MIPMAP
         W(128, dxgiFormat);
         W(132, 3);                               // TEXTURE2D
         W(140, 1);                               // array size

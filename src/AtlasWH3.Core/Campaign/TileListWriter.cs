@@ -64,8 +64,9 @@ public static class TileListWriter
     /// <param name="width">Tile map width (2 points per hex).</param>
     /// <param name="height">Tile map height (2 points per hex, plus 1).</param>
     /// <param name="tileMask">tile_mask.dds (<see cref="TileMask"/>).</param>
+    /// <param name="patchMask">patch_mask.dds (<see cref="PatchMask"/>).</param>
     public static TileList Build(CampaignTileDatabase db, int width, int height, IEnumerable<PlacedTile> placed,
-                                 HeightField land, HeightField sea, out byte[] tileMask)
+                                 HeightField land, HeightField sea, out byte[] tileMask, out byte[] patchMask)
     {
         var instances = placed.Select(p => new Instance(p)).ToList();
         var grids = new Dictionary<int, int[]> { [1] = new int[width * height], [2] = new int[width * height] };
@@ -121,6 +122,7 @@ public static class TileListWriter
         list.Ints = [0, width, height, width / 2, height / 2, 0, 0, x0, y0, width + 2, height + 2];
         list.Marker = 1;
         tileMask = TileMask(db, instances, grids, width, height);
+        patchMask = PatchMask(db, instances, grids, width, height);
         return list;
     }
 
@@ -149,6 +151,63 @@ public static class TileListWriter
             }
             mask[header.Length + cell] = (byte)(tiles == 0 ? 64 : value);
         }
+        return mask;
+    }
+
+    /// <summary>
+    /// The patch grid of patch_mask.dds, as TERRAIN_DIMENSIONS::terrain_map_size (warscape 0x1805ba840) sizes it from the
+    /// tile map: 128 columns and round(128 · h / w) "rows", each axis then cut to whole cells of ⌈w / 128⌉ and
+    /// ⌈h / rows⌉ points (all in float, truncated). IEE (3200 × 1941): 128 × 77; Old World (4096 × 3549): 128 × 110.
+    /// </summary>
+    public static (int Width, int Height) PatchGrid(int width, int height)
+    {
+        static int Ceil(float v) { var i = (int)v; return i == v || v < 0 ? i : i + 1; }
+        float w = width, h = height;
+        var rows = h / w * 128f;
+        rows = rows > 0 ? rows + 0.5f : rows - 0.5f;
+        float r = (int)rows;
+        var cx = Ceil(w * (1f / 128f));
+        var cy = Ceil(h / r);
+        return ((int)(w / (cx * 128f) * 128f), (int)(h / (cy * r) * r));
+    }
+
+    /// <summary>
+    /// patch_mask.dds, written by the Tilemap action after tile_mask.dds (bob_terrain 0x180004636): R8_UINT, one byte per
+    /// cell of <see cref="PatchGrid"/>, rows from the south. A cell of side s = ⌊w / grid width⌋ (both axes) ORs, over the
+    /// tile-map points of [x·s − s, x·s + s] × [y·s − s, y·s + s] on the map: 64 for a point with no tile or with a tile
+    /// of an exclude_from_global_mesh set, 16 for a land tile, 32 for a use_alt_lf tile.
+    /// </summary>
+    private static byte[] PatchMask(CampaignTileDatabase db, List<Instance> instances, Dictionary<int, int[]> grids, int width, int height)
+    {
+        var (pw, ph) = PatchGrid(width, height);
+        var s = width / pw;
+        var point = new byte[width * height];
+        for (var cell = 0; cell < point.Length; cell++)
+        {
+            int value = 0, tiles = 0;
+            foreach (var grid in grids.Values)
+            {
+                var id = Math.Abs(grid[cell]);
+                if (id == 0 || instances[id - 1].Removed) continue;
+                tiles++;
+                var tile = instances[id - 1].Tile;
+                if (db.TileSet(tile.TileSet) is { ExcludeFromGlobalMesh: true }) value |= 64;
+                value |= tile.UseAltLf ? 32 : 16;
+            }
+            point[cell] = (byte)(tiles == 0 ? 64 : value);
+        }
+        var header = AtlasWH3.Formats.Dds.DdsHeader.BuildDx10(pw, ph, AtlasWH3.Formats.Dds.DdsHeader.DxgiR8Uint, false, 1);
+        var mask = new byte[header.Length + pw * ph];
+        header.CopyTo(mask, 0);
+        for (var py = 0; py < ph; py++)
+            for (var px = 0; px < pw; px++)
+            {
+                byte v = 0;
+                for (var y = Math.Max(0, py * s - s); y <= Math.Min(height - 1, py * s + s); y++)
+                    for (var x = Math.Max(0, px * s - s); x <= Math.Min(width - 1, px * s + s); x++)
+                        v |= point[y * width + x];
+                mask[header.Length + py * pw + px] = v;
+            }
         return mask;
     }
 

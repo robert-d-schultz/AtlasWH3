@@ -39,7 +39,7 @@ public class TileListWriterTests
     }
 
     /// <summary>
-    /// 2026-10-08. Old World: tile_list.bin and tile_mask.dds byte-identical. IEE: tile_mask.dds byte-identical, every
+    /// 2026-10-08. Old World: tile_list.bin and tile_mask.dds byte-identical (patch_mask.dds too, 2026-10-09, also on IEE). IEE: tile_mask.dds byte-identical, every
     /// record identical but 473 low/high pairs (452 on sea tiles), in the east (x 2814-3068, y 412-730), where the user
     /// edited the height layers after that BOB run (the .tif files are newer than tile_list.bin).
     /// </summary>
@@ -57,8 +57,10 @@ public class TileListWriterTests
         var project = TerryProject.Load(Terry(map));
         var land = HeightField.FromRaster(TerrainComposite.Heights(project, "Height"));
         var sea = HeightField.FromRaster(TerrainComposite.Heights(project, "HeightSea"));
-        var built = TileListWriter.Build(db, bob.Ints[1], bob.Ints[2], BobPlacement(db, bob), land, sea, out var mask);
+        var built = TileListWriter.Build(db, bob.Ints[1], bob.Ints[2], BobPlacement(db, bob), land, sea, out var mask, out var patch);
 
+        var referencePatch = CompiledFormatTests.Built(map, "patch_mask.dds");
+        if (File.Exists(referencePatch)) Assert.Equal(File.ReadAllBytes(referencePatch), patch);
         Assert.Equal(File.ReadAllBytes(referenceMask), mask);
         Assert.Equal(bob.Ints, built.Ints);
         Assert.Equal(bob.Floats, built.Floats);

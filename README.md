@@ -9,7 +9,7 @@ retargeted to WH3 only.
 
 > **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
 > projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list`,
-> `trees` and `global_map`, are in. Together they replace every BOB action that can't run headless except the camera
+> `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless except the camera
 > height map. The other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why

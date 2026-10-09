@@ -6,9 +6,9 @@ using AtlasWH3.Formats.Terry;
 namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
-/// terrain\campaigns\&lt;map&gt;\tile_list.bin and tile_mask.dds (BOB "Tilemap"): <see cref="TileMatchSimulator"/> places
+/// terrain\campaigns\&lt;map&gt;\tile_list.bin, tile_mask.dds and patch_mask.dds (BOB "Tilemap"): <see cref="TileMatchSimulator"/> places
 /// the tiles from tile_map.png on the campaign tile database of the game packs, then <see cref="TileListWriter"/> runs
-/// BOB's river flow pass, the low/high heights and writes the records and the mask. The heights come from the .terry's composited Height and
+/// BOB's river flow pass, the low/high heights and writes the records and the masks. The heights come from the .terry's composited Height and
 /// HeightSea maps, the ones the heightmaps step compiles: BOB reads them from the installed pack (the heightmap →
 /// tilemap pack round trip), this step from the sources. The tile map validator's errors are blocking problems.
 /// </summary>
@@ -70,15 +70,17 @@ public sealed class TileListStep : ICampaignBuildStep
         var sea = HeightField.FromRaster(TerrainComposite.Heights(project, "HeightSea"));
         ctx.Cancel.ThrowIfCancellationRequested();
         ctx.Log("flow, records...");
-        var list = TileListWriter.Build(db, map.PixelWidth, map.PixelHeight, placed, land, sea, out var tileMask);
+        var list = TileListWriter.Build(db, map.PixelWidth, map.PixelHeight, placed, land, sea, out var tileMask, out var patchMask);
 
         Directory.CreateDirectory(ctx.TerrainOutDir);
         var path = ctx.OutFile("tile_list.bin");
         list.Write(path);
         var maskPath = ctx.OutFile("tile_mask.dds");
         File.WriteAllBytes(maskPath, tileMask);
+        var patchPath = ctx.OutFile("patch_mask.dds");
+        File.WriteAllBytes(patchPath, patchMask);
         notes.Add($"{list.Records.Count} records ({sim.Tiles.Count} placed), {list.Paths.Count} tiles used");
         if (sim.NoTile.Count > 0) notes.Add($"{sim.NoTile.Count} tile-map points got no tile (holes in game)");
-        return new StepResult(Name, [path, maskPath], notes, sw.Elapsed);
+        return new StepResult(Name, [path, maskPath, patchPath], notes, sw.Elapsed);
     }
 }

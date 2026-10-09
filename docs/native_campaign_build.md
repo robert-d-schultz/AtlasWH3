@@ -11,9 +11,10 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | Step | Replaces BOB action | Parity (IEE `cr_combi_expanded_map_1`, Old World `cr_oldworld_map_1`) |
 |---|---|---|
 | `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
-| `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. Not yet checked in game |
+| `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. `patch_mask.dds` (2026-10-09): byte-identical on both, from BOB's placement. Not yet checked in game |
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
 | `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
+| `masks` | Color Overlay, Color Overlay (Sea), Snow Mask, Corruption Mask, Event Area Mask | 2026-10-09. `colour_overlay.dds`, `lf_sea_colour.dds`, `snow_mask.dds`, `corruption_mask.dds`, `event_area_mask.dds`: **byte-identical** on IEE (against the user's BOB output, which a fresh BOB run reproduced) and Old World (against a fresh BOB run in the scratch kit: its working_data overlays were trimmed to 14 mips by `trim_mips.py`, and its event area TIF is newer than that run), every mip level. IEE 7 s, Old World 12 s. Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -119,6 +120,49 @@ bob_terrain.modder.x64.dll's strings (2026-10-09):
   73,817 of 598,161. 3K kept every record and cleared the flag of base tiles.
 - BOB's Global Tilemap reads the tile list from the installed pack (the tilemap → global tilemap pack round trip).
   The step reads this build's `tile_list.bin`, else the kit's working_data copy.
+
+### Masks (WH3)
+
+The six terrain-map actions of BOB's default group (`ACTION_PROCESS_TERRAIN_MAP`) save through
+`WARSCAPE::save_image_and_generate_mips`, which links an old DirectXTex statically into warscape.modder.x64.dll.
+`DirectXTex` ports the parts they use (MIT; measured 2026-10-09 on both fixtures):
+
+- **Pixels:** the composited map (`TerrainComposite`), stored in TIF row order (not flipped, unlike the heights).
+  - Masks union as `out += opacity · layer · (1 − out)` in float, **truncated** to 8 bits. IEE's snow mask (two visible
+    layers) is byte-identical only with truncation; rounding missed 2,927 of 389,286 top-level blocks.
+  - A colour overlay with no visible layer comes out flat grey 127 (0.5, truncated), every block `7BEF 7BEF 00000000`:
+    Old World's ColorOverlay has only a hidden layer.
+- **Mips:** the full chain (Old World's overlays have 15 levels; the user's working_data copies had 14 after
+  `trim_mips.py`), each level from the previous one with DirectXTex's **linear** filter, never WIC:
+  `CreateLinearFilter` weights (`srcB = (u + 0.5) · scale + 0.5`), `BILINEAR_INTERPOLATE` in float, values loaded as
+  b · (1/255). The level is stored back to 8 bits before the next: R8_UNORM **truncates** (v · 255), so a flat area
+  can lose 1 where the two weights sum to just under 1 (1,537 such pixels on IEE's corruption level 1); R8G8B8A8_UNORM
+  **rounds half up** (`XMStoreUByteN4`). An exact 2:1 level is then the 2 × 2 average.
+- **Blocks:** 4 × 4, a partial block repeating pixels as DirectXTex does (missing columns/rows take 0, 0, 0, 1), not
+  the edge pixel.
+  - BC1 (`colour_overlay`, `lf_sea_colour`): `D3DXEncodeBC1` as in the source (`OptimizeRGB`, perceptual weights, no
+    dithering, alpha threshold 0.5).
+  - BC4 (`snow_mask`): `D3DXEncodeBC4U` (`FindEndPointsBC4U`, `OptimizeAlpha`), but the palette of
+    `FindClosestUNORM` (warscape 0x18076c0d0) is MSVC-folded: entry i is `f1 · c + r0 · c′` (r0 the raw endpoint byte,
+    c′ = (7 − i) / 7 / 255 as a constant, some constants an ulp off i / 7), not `(f0 · (7 − i) + f1 · i) / 7`. With the
+    source formula ties broke the other way in about 2% of blocks.
+- **snow_mask.dds** is the SnowMask stretched to one pixel more each way, rounded up to whole blocks (IEE 3200 × 1941 →
+  3204 × 1944), with the same linear filter (R8, truncated), then mipped and compressed.
+- **Formats:** DX10 headers, LINEARSIZE for BC1 / BC4, PITCH otherwise, caps COMPLEX | MIPMAP with mips:
+  BC1_UNORM (71), BC4_UNORM (80), corruption R8_UNORM (61) mipped, event area R8_UINT (62) one level.
+- **Patch Visibility Mask** writes nothing while the PatchVisibilityMask map has no layers (both fixtures); the
+  `patch_mask.dds` in working_data is the **Tilemap** action's (bob_terrain 0x180004636, after `tile_mask.dds`):
+  - grid: `terrain_map_size` type 2 (warscape 0x1805ba840): 128 columns, r = round(128 · h / w) "rows", then each axis
+    cut to whole cells of ⌈w / 128⌉ and ⌈h / r⌉ points: IEE 128 × 77, Old World 128 × 110;
+  - cell (x, y), side s = ⌊w / 128⌋ for **both** axes, ORs over the tile-map points of [x·s − s, x·s + s] ×
+    [y·s − s, y·s + s] on the map (all three tile layers): 64 for no tile or a tile of an exclude_from_global_mesh
+    set, 16 for a land tile, 32 for a use_alt_lf tile (warscape tile +0x1a2; +0x3c must be 0). R8_UINT, rows from the
+    south.
+  - **BOB's bug:** the rows cover only 77 · 25 = 1,925 of IEE's 1,941 tile-map rows (Old World 110 · 32 = 3,520 of
+    3,549), so the north band is in no cell. The user sees the sea-floor mask poke out under land, worst in the north,
+    and fixes the mask by hand. The step writes BOB's mask for now; the fix is open (see the plan).
+- **lf_normal.dds** is not one of these: the GUI-only Campaign Heightmap writes it through NVTT 2.0.8 (header tag
+  `NVTT`, DXT5 with DDPF_NORMAL). Not native yet.
 
 ### full_height_map.dds (BC6H_SF16)
 

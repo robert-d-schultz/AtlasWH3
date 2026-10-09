@@ -282,7 +282,7 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 | 3.2 | `trees` | `trees.campaign_tree_list` v4 | 3K generator, height from `full_logic_map`, WH3 tree tables, 256-variant check (`tree_variants.py`) | 2–4 d |
 | 3.3 | `tile_list` | `tile_list.bin` v2, `tile_mask.dds` | 3K tile matching on the WH3 tile DB; verify against the fixtures. BOB takes about 5 min for this. Atlas3K's tile-map editor and validator come with it. | 1–2 w |
 | 3.4 | `global_map` (Global Tilemap) | 8-bit `global_blend.dds` (255 → 0), per-map `texture_arrays.xml` (from the asset db), subset `tile_list.bin` | survey | 1–2 d |
-| 3.5 | `masks` | `colour_overlay`, `lf_sea_colour` (BC1), `corruption_mask` (R8), `snow_mask` (BC4, with the bilinear stretch to whole blocks), `event_area_mask`, `patch_mask`, `terrain_visibility_mask`, `lf_normal` (DXT5nm) | TIF → DDS; mips as BOB writes them | ~1 w |
+| 3.5 | `masks` | `colour_overlay`, `lf_sea_colour` (BC1), `corruption_mask` (R8), `snow_mask` (BC4, with the stretch to whole blocks), `event_area_mask`; `patch_mask` comes with 3.3 (Tilemap writes it); `lf_normal` (DXT5nm, NVTT) belongs to Campaign Heightmap (3.1) | TIF → DDS; mips as BOB writes them | ~1 w |
 | 3.6 | `devastation_pieces` | `pieces\event_*` for **both** the main and the devastate folder, plus the devastate folder's `environment_collection.xml`, `event_area_mask.dds`, `event_tiles`, `event_trees` (§2 table) | read the main **and** devastated projects directly (§2); the decompiler's `docs/event-area-pieces.md`; exactly the current event areas; also removes the 14-mip crash. Needs 3.9's BMD writer for the piece objects, so the piece rasters, tiles and trees come first, then the objects. | 1–2 w |
 | 3.7 | `lookup` | `*lookup*.tga/.dds`, `_minimap.tga` from CAIME's exported `*_lookup.bmp` | works as is (byte-identical on albion); fix palette alpha | ≤ 1 d |
 | 3.8 | `camera_heightmap` | `camera_heightmap.png` (0.5 px/hex on IE; tEXt `height_scale`, 8192-byte IDAT chunks, Atlas3K's byte-exact PNG/zlib writer) | logic heights + prop height patches (`height_patches.py`). BOB crashes on this action (§2), so this replaces hand editing. Check it against CA's shipped vanilla IE file, and against the user's hand-made IEE and Old World files. Worth moving earlier if the hand editing costs more than the BOB steps. | ~1 w |
@@ -320,6 +320,22 @@ variation db (`warscape_asset_variation_db\*.assetdb`) of the game **and the mod
 trees. The step reports a blend whose palette disagrees with the group list. The pack round trip into Global Tilemap
 goes, since the step reads the build's own `tile_list.bin`. Left: the in-game check. Numbers in
 `docs/native_campaign_build.md`.
+
+**3.5 status (2026-10-09):** `MasksStep` is in the pipeline. All five files are byte-identical to BOB's on IEE and Old
+World, every mip level (Old World against a fresh BOB run in the scratch kit; its working_data overlays had been through
+`trim_mips.py`). BOB saves them through a statically linked old DirectXTex, now ported (`DirectXTex`: linear mip
+filter, R8 truncating and RGBA8 rounding stores, BC1, BC4 with MSVC's folded palette). IEE 7 s, Old World 12 s. The
+mask union truncates (it rounded). `patch_mask.dds` turned out to be the Tilemap action's: `TileListStep` writes it,
+byte-identical on both maps. Left:
+- the in-game check;
+- the **patch_mask bug** (the user's report): BOB's 128 × 77 grid covers 1,925 of IEE's 1,941 tile-map rows (Old World
+  3,520 of 3,549), so the sea-floor mask pokes out under land in the north and the user fixes it by hand. The step
+  still writes BOB's mask; the fix needs the user's manual adjustment (or the game's reading of the grid) to aim at;
+- BOB's Patch Visibility Mask with a painted PatchVisibilityMask (no fixture has layers);
+- `lf_normal.dds` (NVTT, from the Heightmap action), still not native;
+- the overlays have the full mip chain as BOB writes it (15 on Old World), which BOB's Devastation pieces crash on
+  (the `trim_mips` fix-up of Phase 2).
+Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:
 - it is native in the hybrid pipeline,

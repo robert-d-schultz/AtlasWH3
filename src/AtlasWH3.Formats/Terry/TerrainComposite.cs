@@ -10,7 +10,8 @@ namespace AtlasWH3.Formats.Terry;
 ///  - palette maps (BlendCampaign, CampaignTree, EventAreaMask) replace wherever the layer is not 255 (255 = empty);
 ///  - colour overlays (ColorOverlay, ColorOverlaySea) hard-light each layer onto the ones below where its alpha is
 ///    above 0; the bottom layer comes out as itself (WH3_visual_map_decompiler docs/colour-overlay-blending.md);
-///  - masks (CorruptionMask, SnowMask, PatchVisibilityMask) union: out += opacity · layer · (1 − out), in 0..1.
+///  - masks (CorruptionMask, SnowMask, PatchVisibilityMask) union: out += opacity · layer · (1 − out), in 0..1 floats,
+///    truncated to 8 bits (BOB's snow_mask.dds of IEE's two layers is byte-identical with truncation, not rounding).
 /// Layers are read row by row, so a composite costs one output raster.
 /// </summary>
 public static class TerrainComposite
@@ -87,7 +88,7 @@ public static class TerrainComposite
         return (result, palette);
     }
 
-    /// <summary>A mask (CorruptionMask, SnowMask, PatchVisibilityMask): the union of its layers, 0..255.</summary>
+    /// <summary>A mask (CorruptionMask, SnowMask, PatchVisibilityMask): the union of its layers, 0..255, truncated.</summary>
     public static Raster<byte> Mask(TerryProject project, string type)
     {
         var map = Map(project, type);
@@ -110,7 +111,7 @@ public static class TerrainComposite
                     for (var x = 0; x < w; x++) acc[x] += opacity * (line[x] / 255f) * (1f - acc[x]);
                 }
                 var o = result.Data.AsSpan(y * w, w);
-                for (var x = 0; x < w; x++) o[x] = (byte)Math.Clamp(MathF.Round(acc[x] * 255f), 0, 255);
+                for (var x = 0; x < w; x++) o[x] = (byte)(Math.Clamp(acc[x], 0f, 1f) * 255f);
             }
         }
         finally { foreach (var r in readers) r.Dispose(); }

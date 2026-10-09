@@ -13,6 +13,7 @@ AtlasWH3 uses these libraries. Their licences apply to them, not to AtlasWH3. Th
 | System.IO.Hashing, .NET runtime | MIT | https://github.com/dotnet/runtime |
 | ZstdSharp.Port | MIT | https://github.com/oleg-st/ZstdSharp |
 | K4os.Compression.LZ4 | MIT | https://github.com/MiloszKrajewski/K4os.Compression.LZ4 |
+| DirectXTex (ported: linear filter, BC1 and BC4 encoders in `Dds/DirectXTex.cs`), Copyright (c) Microsoft Corporation | MIT | https://github.com/microsoft/DirectXTex |
 
 AtlasWH3 is derived from Atlas3K (https://github.com/Ironictw2st/Atlas3K), MIT, Copyright (c) 2026 Atlas3K
 contributors. Its notice is kept in [LICENSE](LICENSE).
