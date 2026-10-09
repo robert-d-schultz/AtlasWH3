@@ -56,7 +56,8 @@ public sealed class HeightmapsStep : ICampaignBuildStep
             throw new InvalidDataException($"HeightSea is {sea.Width}x{sea.Height}, Height is {land.Width}x{land.Height}");
         ctx.Log("full_height_map.dds (BC6H)...");
         var heightPath = ctx.OutFile("full_height_map.dds");
-        WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"));
+        WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"), ctx.HeightMapBlocks);
+        if (ctx.HeightMapBlocks is not null) notes.Add("full_height_map.dds: only the blocks the build asked for are encoded, the rest are zero");
         ctx.Cancel.ThrowIfCancellationRequested();
 
         ctx.Log("HeightShroud...");
@@ -84,8 +85,10 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         return (lo, hi);
     }
 
-    /// <summary>full_height_map.dds: BC6H_SF16, red = land, green = sea bed, bottom row first.</summary>
-    public static void WriteHeightMap(Raster<float> land, Raster<float> sea, string path, Action<double>? progress = null)
+    /// <summary>full_height_map.dds: BC6H_SF16, red = land, green = sea bed, bottom row first. <paramref name="blocks"/>
+    /// (block column, block row in file order) encodes only some blocks.</summary>
+    public static void WriteHeightMap(Raster<float> land, Raster<float> sea, string path, Action<double>? progress = null,
+                                      Func<int, int, bool>? blocks = null)
     {
         int w = land.Width, h = land.Height;
         var red = new float[w * h];
@@ -95,10 +98,10 @@ public sealed class HeightmapsStep : ICampaignBuildStep
             Array.Copy(land.Data, (h - 1 - y) * w, red, y * w, w);
             Array.Copy(sea.Data, (h - 1 - y) * w, green, y * w, w);
         });
-        var blocks = Bc6h.Encode(red, green, w, h, progress);
+        var data = Bc6h.Encode(red, green, w, h, progress, blocks);
         using var f = File.Create(path);
         f.Write(DdsHeader.BuildDx10(w, h, DdsHeader.DxgiBc6hSf16, true, Bc6h.BlockBytes));
-        f.Write(blocks);
+        f.Write(data);
     }
 
     /// <summary>shroud_heights.dds: R32_FLOAT, bottom row first.</summary>

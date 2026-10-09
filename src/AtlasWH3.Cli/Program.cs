@@ -100,7 +100,7 @@ switch (command)
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
         Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
-        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--river-geometry bob|wide] [--patch-mask fitted|vanilla] [--json]   native replacement for BOB's campaign actions (--river-geometry wide: wider game-valid river water instead of BOB's; --patch-mask vanilla: BOB's patch_mask.dds with its north-band bug)");
+        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--river-geometry bob|wide] [--patch-mask fitted|vanilla] [--devastated <map>|none] [--json]   native replacement for BOB's campaign actions (--river-geometry wide: wider game-valid river water instead of BOB's; --patch-mask vanilla: BOB's patch_mask.dds with its north-band bug; --devastated: the devastated project devastation_pieces also cuts, default <map>_devastate_1 when the kit has it)");
         Console.WriteLine("          diagnose-campaign [--out <dir>] [--json]              per-step input check");
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
         Console.WriteLine("                [--out <dir>] [--pack-output <file>] [--json]      a project's build (as the GUI's Build window)");
@@ -141,6 +141,7 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--accept-tilemap", out var accept);
     a = TakeOption(a, "--river-geometry", out var riverGeometry);
     a = TakeOption(a, "--patch-mask", out var patchMask);
+    a = TakeOption(a, "--devastated", out var devastated);
     var json = TakeFlag(ref a, "--json");
     var sw = Stopwatch.StartNew();
     var ctx = new CampaignBuildContext(paths, outDir, json ? Console.Error.WriteLine : Console.WriteLine)
@@ -148,6 +149,7 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
         AcceptedTileMapIssues = (accept ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(),
         RiverGeometry = riverGeometry ?? "bob",
         PatchMask = patchMask is null ? PatchMaskMode.Fitted : Enum.Parse<PatchMaskMode>(patchMask, ignoreCase: true),
+        DevastatedMap = CampaignBuildContext.DevastatedSetting(devastated),
     };
     var outcomes = new CampaignBuildPipeline().Run(ctx, steps?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     if (json)

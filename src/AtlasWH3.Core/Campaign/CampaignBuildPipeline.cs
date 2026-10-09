@@ -24,8 +24,7 @@ public sealed class CampaignBuildPipeline
             "the 2-vertex ribbon river models of the ECRiver splines (Phase 3.10; Atlas3K's RiversStep writes 3K's 5-vertex rivers)"),
         new PendingStep("global_props", "Terry file (global_props.bin, global_props_sound.bin, devastation types)", ["rivers"],
             "BMD v27 global props with culture-mask buckets, sound and devastation-type files (Phase 3.9; Atlas3K's GlobalPropsStep writes 3K's v35)"),
-        new PendingStep("devastation_pieces", "Devastation pieces", ["heightmaps", "tile_list", "trees", "global_map", "masks", "global_props"],
-            "pieces\\event_* for the main and devastated maps, from both Terry projects (Phase 3.6)"),
+        new DevastationPiecesStep(),
         new LookupStep(),
         new PendingStep("camera_heightmap", "Generate Camera Height Map (crashes in BOB)", ["heightmaps", "global_props"],
             "camera_heightmap.png from the logic heights and prop height patches (Phase 3.8; Atlas3K's CameraHeightmapStep samples 3K's global meshes)"),
@@ -86,7 +85,8 @@ public sealed class CampaignBuildPipeline
                 var stepCtx = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, Log)
                 {
                     AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
-                    PatchMask = ctx.PatchMask,
+                    PatchMask = ctx.PatchMask, CampaignMapName = ctx.CampaignMapName, HeightMapBlocks = ctx.HeightMapBlocks,
+                    DevastatedMap = ctx.DevastatedMap,
                 };
                 var problems = step.CheckInputs(stepCtx);
                 if (problems.Count > 0)

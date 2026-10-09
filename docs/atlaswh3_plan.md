@@ -116,8 +116,10 @@ is CA's shipped `wh3_main_combi_map_1` file, built from the decompiled vanilla p
   - only those 248 carry `objects_devastation_<type>` files; Old World's own 254 have none
 
   Explained by the user: BOB exports a piece for **every** event area in the DB, even those linked only to provinces
-  that aren't on the map. These extra pieces are harmless. The native step builds pieces only for event areas joined
-  to the map's own regions (`campaign_map_event_area_province_region_junctions`).
+  that aren't on the map. These extra pieces are harmless. **Checked 2026-10-09:** the 248 are byte-identical to IEE's
+  devastate pieces (IEE's 3200 × 1941 mask in their texture_info), so they are stale files in that working_data folder.
+  BOB does create a folder for every DB area, but leaves it empty when the area is not on the map (Old World 210). The
+  native step writes a piece for every area on the map's event mask, into an emptied folder.
 
 ## 3. Where things stand
 
@@ -336,6 +338,24 @@ byte-identical on both maps, fitted to the whole map by default). Left:
 - `lf_normal.dds` (NVTT, from the Heightmap action), still not native;
 - the overlays have the full mip chain as BOB writes it (15 on Old World), which BOB's Devastation pieces crash on
   (the `trim_mips` fix-up of Phase 2).
+Numbers in `docs/native_campaign_build.md`.
+
+**3.6 status (2026-10-09):** `DevastationPiecesStep` is in the pipeline, without the objects. Read off bob_terrain and
+measured on IEE's mod pack (both folders), Old World's working_data and a fresh BOB run: every piece texture (all mips),
+`texture_info` and `mask` cut from the same map textures are byte-identical (IEE 248, Old World 254 pieces); every
+road and tree list holds the same tiles and trees (Old World's tree lists and `event_trees` byte for byte);
+`event_tiles` is numbered in the order of a hash map keyed by addresses, so its indices cannot match. The devastated
+project is an input: its rasters, tile list and trees are built into the cache (no fake campaign_maps folder;
+full_height_map only where the pieces cut it), and its pieces match IEE's shipped devastate pieces the same way
+(full_height_map aside, AtlasWH3's BC6H). Found on the way: BOB's pieces action regenerates the trees from the kit's
+XML database, dropping the mods' tree types; Old World's extra devastate pieces are stale IEE copies (§2); and
+`!cr_oldworld_campaign.pack` (Oct 6) ships an `event_area_mask.dds` with every pixel 255, BOB's from before the event
+area TIF was painted (the devastate folder's is right). Left:
+- the objects and sounds (`objects`, `bmd_objects_sound`, `_devastation_<type>`, `.culture`): BMD v27 bodies, with 3.9;
+- the `rivers` files (lava river splines; IEE's main map has 2), with 3.10;
+- the devastated folder's `environment_collection.xml` (BOB's Terry file action) and `lf_normal.dds` (NVTT; cut from
+  working_data's for now);
+- the in-game check.
 Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:

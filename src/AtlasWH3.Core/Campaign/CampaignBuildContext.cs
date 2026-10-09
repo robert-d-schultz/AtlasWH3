@@ -21,6 +21,24 @@ public sealed class CampaignBuildContext
     /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
     public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
 
+    /// <summary>The map whose campaign_maps\ inputs (CAIME's map_data.esf) the build reads: the map itself, or for a
+    /// devastated project, its main map (so no fake campaign_maps\&lt;map&gt;_devastate_1 is needed).</summary>
+    public string CampaignMapName { get => _campaignMapName ?? MapName; init => _campaignMapName = value; }
+    private readonly string? _campaignMapName;
+
+    /// <summary>heightmaps step: encode only these full_height_map.dds blocks (column, row in file order), the rest
+    /// zero. The devastated map's build only needs the blocks its pieces cut.</summary>
+    public Func<int, int, bool>? HeightMapBlocks { get; init; }
+
+    /// <summary>devastation_pieces step: the devastated project whose pieces go into terrain\campaigns\&lt;it&gt;\pieces
+    /// (its raw_data folder next to the map's). Null: &lt;map without _1&gt;_devastate_1 when that project exists;
+    /// empty: none.</summary>
+    public string? DevastatedMap { get; init; }
+
+    /// <summary><see cref="DevastatedMap"/> from a setting: empty = automatic (null), "none" = none ("").</summary>
+    public static string? DevastatedSetting(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().Equals("none", StringComparison.OrdinalIgnoreCase) ? "" : value.Trim();
+
     public CampaignBuildContext(ProjectPaths paths, string? targetRoot = null, Action<string>? log = null)
     {
         Paths = paths;

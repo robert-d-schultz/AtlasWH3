@@ -322,6 +322,7 @@ public sealed class BuildRunner
     {
         AcceptedTileMapIssues = _project.Build.AcceptTileMap.ToHashSet(),
         PatchMask = _project.Build.PatchMask,
+        DevastatedMap = CampaignBuildContext.DevastatedSetting(_project.Build.DevastatedMap),
         Cancel = _cancel,
     };
 

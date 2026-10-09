@@ -15,6 +15,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
 | `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
 | `masks` | Color Overlay, Color Overlay (Sea), Snow Mask, Corruption Mask, Event Area Mask | 2026-10-09. `colour_overlay.dds`, `lf_sea_colour.dds`, `snow_mask.dds`, `corruption_mask.dds`, `event_area_mask.dds`: **byte-identical** on IEE (against the user's BOB output, which a fresh BOB run reproduced) and Old World (against a fresh BOB run in the scratch kit: its working_data overlays were trimmed to 14 mips by `trim_mips.py`, and its event area TIF is newer than that run), every mip level. IEE 7 s, Old World 12 s. Not yet checked in game |
+| `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. Objects, sounds and rivers not yet (3.9). Cutting: IEE 4 s, Old World 7 s; the devastated build IEE 207 s. Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -169,6 +170,45 @@ The six terrain-map actions of BOB's default group (`ACTION_PROCESS_TERRAIN_MAP`
     and more towards the north. `Vanilla` writes BOB's mask byte for byte. Not yet checked in game.
 - **lf_normal.dds** is not one of these: the GUI-only Campaign Heightmap writes it through NVTT 2.0.8 (header tag
   `NVTT`, DXT5 with DDPF_NORMAL). Not native yet.
+
+### pieces\ (WH3)
+
+BOB's Devastation pieces action (bob_terrain `ACTION_PROCESS_TERRAIN_DEVASTATION_PIECES`), read off bob_terrain
+(capstone, 2026-10-09) and measured on IEE's mod pack (both folders), Old World's working_data and devastate pack, and a
+fresh BOB run. The formats are in the decompiler's `docs/event-area-pieces.md`; `EventPieces` writes them.
+
+- **Areas:** a piece per index on the EventAreaMask map but black (palette colour 000000, the `_empty` area of
+  `campaign_map_event_areas`, which covers the outside), in `pieces/event_%06x/` named by the palette colour. The box
+  is the index's tight box in event-mask pixels. BOB creates a folder for every area in the database, empty when the
+  area is not on the map (IEE 6, Old World 210), and never deletes old pieces; the step empties `pieces\` and writes
+  only the areas on the map. Old World's devastate pack holds 248 more pieces: byte-identical copies of IEE's devastate
+  pieces left in that working_data folder, not a BOB rule.
+- **Textures:** each is a raw crop of the map texture, mip by mip, no re-encoding. For a texture of W × H over a mask
+  of Wm × Hm, s = W / Wm per axis (the snow mask's 3204 / 3200 included), the box is [trunc(s·x), trunc(s·(x + w − 1)) +
+  1); it is widened to a grid (64 px for a mipped block-compressed texture, 8 for a mipped R8, else one block), and for
+  full_height_map and tile_mask (rows from the south) flipped. Mipped textures get ⌊log2(min(W, H))⌋ + 1 levels; level
+  m starts at (x0 >> m) rounded down to a block and covers (x0 >> m) − start + (W >> m) pixels rounded up to
+  blocks. Rows are read linearly with no bounds check, so a crop past the map's right edge takes the next row's first
+  blocks, past the bottom the next mip's. The piece header is the map's with the crop's size and mip count and
+  MIPMAPCOUNT set (the pitch / linear size stays the map's).
+- **tile_list:** the records whose path contains `road` (strstr), in record order, whose footprint centre
+  trunc((x + w · 0.5) · sx + 0.5), trunc((y + h · 0.5) · sy + 0.5) (w, h swapped for rotations 0x20 / 0x80, rows from
+  the south) is in the area. `event_tiles` lists every road path with a record on the mask (any index, the outside
+  too), CRLF; BOB numbers it through a hash map keyed by the tile object's address (`(hi ^ lo) ^ 0x4a545eed`), so its
+  order changes from run to run. The step uses the path table's order.
+- **tree_list:** BOB does not read trees.campaign_tree_list here: it calls `generate_campaign_tree_list_for` with the
+  kit's database (raw_data XML), so the mods' tree types are dropped (a fresh IEE run lost the 20 khuresh, khosun and
+  mushroom types) and the heights are the loose logic map's (0 without one). A tree is in the area of event-mask pixel
+  (x · sx, z · sz), each rounded half away from zero, rows from the south, with sx = W / world_width and sz = W /
+  (world_width · 1.15476) in float (the .terry's world_width: IEE's tree list header says 1068.1111, its .terry 1068.11,
+  and 14 trees change area). `event_trees` is every type of the generated list, CRLF, and a record's index its type's
+  line; the records go type by type. The step takes the trees step's list, which is that list with the mods' types.
+- **Devastated map:** the same cut from the devastated project's own build. IEE's devastate pieces in the pack match a
+  native build of the devastated project in everything above (see the table), so its pieces need nothing from the
+  main map but the event mask layout, which is the same.
+- Not native yet: `objects` / `bmd_objects_sound` (+ `_devastation_<type>`, `.culture`), the `rivers` files (IEE's
+  main map has 2, from its lava rivers), the devastated folder's `environment_collection.xml`, and `lf_normal.dds`,
+  which is cut from working_data's (BOB's Campaign Heightmap, NVTT).
 
 ### full_height_map.dds (BC6H_SF16)
 

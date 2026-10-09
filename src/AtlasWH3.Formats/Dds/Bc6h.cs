@@ -197,8 +197,10 @@ public static class Bc6h
 
     // ------------------------------------------------------------------ encoding
 
-    /// <summary>Encodes a 2-channel image (red, green; blue 0), rows as stored, into BC6H_SF16 blocks.</summary>
-    public static byte[] Encode(float[] red, float[] green, int width, int height, Action<double>? progress = null)
+    /// <summary>Encodes a 2-channel image (red, green; blue 0), rows as stored, into BC6H_SF16 blocks.
+    /// <paramref name="encodeBlock"/> (block column, block row) limits the work to some blocks; the others stay zero.</summary>
+    public static byte[] Encode(float[] red, float[] green, int width, int height, Action<double>? progress = null,
+                                Func<int, int, bool>? encodeBlock = null)
     {
         int bw = (width + 3) / 4, bh = (height + 3) / 4;
         var output = new byte[bw * bh * BlockBytes];
@@ -208,6 +210,7 @@ public static class Bc6h
             Span<float> px = stackalloc float[48];
             for (var bx = 0; bx < bw; bx++)
             {
+                if (encodeBlock is not null && !encodeBlock(bx, by)) continue;
                 for (var j = 0; j < 4; j++)
                     for (var i = 0; i < 4; i++)
                     {

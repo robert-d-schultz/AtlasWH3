@@ -103,6 +103,8 @@ public static partial class InfoCards
             "Tile-map validator error codes to let through instead of stopping the build, comma-separated, e.g. layout.mesh_columns. Only for errors you know the game tolerates."),
         new("profile.patchMask", "Patch mask",
             "How tile_list writes patch_mask.dds, the per-patch mask the game hides the sea floor under land with. Fitted (default) spreads the cells over the whole tile map, as the game reads them. Vanilla is BOB's: its rows fall short of the north edge, so the sea floor pokes out under land, worst in the north."),
+        new("profile.devastatedMap", "Devastated project",
+            "The devastated version of the map whose event-area pieces devastation_pieces cuts too, by its raw_data folder name. Empty (default): {map}_devastate_1 when the kit has it. none: no devastated pieces. It is an input, not a second campaign: no campaign_maps folder or second compile is needed."),
         new("profile.clean", "Delete before compile",
             "Folders under terrain\\campaigns\\{map} in the output to delete before compiling, comma-separated, e.g. pieces. Clears stale files from an earlier, larger build."),
         new("profile.backup", "Terrain backup folder",

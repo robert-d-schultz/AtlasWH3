@@ -39,7 +39,8 @@ public sealed class TreesStep : ICampaignBuildStep
                 try { TerrainComposite.Inputs(project, map); }
                 catch (FileNotFoundException e) { missing.Add(e.Message); }
         }
-        if (MapDataPath(ctx) is null) missing.Add($"missing {Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf")} (CAIME's output)");
+        if (MapDataPath(ctx) is null)
+            missing.Add($"missing {Path.Combine(ctx.Paths.AkWorkingDir, "campaign_maps", ctx.CampaignMapName, "map_data.esf")} (CAIME's output)");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }
@@ -79,9 +80,11 @@ public sealed class TreesStep : ICampaignBuildStep
         return new StepResult(Name, [path], notes, sw.Elapsed);
     }
 
-    /// <summary>map_data.esf: the build output's, else the kit's working_data (CAIME writes it there).</summary>
+    /// <summary>map_data.esf: the build output's, else the kit's working_data (CAIME writes it there); of
+    /// <see cref="CampaignBuildContext.CampaignMapName"/>, the main map for a devastated project.</summary>
     public static string? MapDataPath(CampaignBuildContext ctx) =>
-        new[] { Path.Combine(ctx.CampaignMapOutDir, "map_data.esf"), Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf") }
+        new[] { Path.Combine(ctx.TargetRoot, "campaign_maps", ctx.CampaignMapName, "map_data.esf"),
+                Path.Combine(ctx.Paths.AkWorkingDir, "campaign_maps", ctx.CampaignMapName, "map_data.esf") }
             .FirstOrDefault(File.Exists);
 
     /// <summary>full_logic_map.compressed_map: this build's (step heightmaps), else the kit's working_data.</summary>
