@@ -281,7 +281,7 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 | 3.1 | `heightmaps` | `full_logic_map.compressed_map`, `full_height_map.dds` (BC6H, BCnEncoder.Net if its BC6H is good enough, else DirectXTex), `shroud_heights.dds` | survey: logic map rebuilt byte-identical with 3 rule changes; shroud is a flipped copy | 3–5 d |
 | 3.2 | `trees` | `trees.campaign_tree_list` v4 | 3K generator, height from `full_logic_map`, WH3 tree tables, 256-variant check (`tree_variants.py`) | 2–4 d |
 | 3.3 | `tile_list` | `tile_list.bin` v2, `tile_mask.dds` | 3K tile matching on the WH3 tile DB; verify against the fixtures. BOB takes about 5 min for this. Atlas3K's tile-map editor and validator come with it. | 1–2 w |
-| 3.4 | `global_map` (Global Tilemap) | 8-bit `global_blend.dds` (255 → 0), per-map `texture_arrays.xml`, subset `tile_list.bin` | survey | 1–2 d |
+| 3.4 | `global_map` (Global Tilemap) | 8-bit `global_blend.dds` (255 → 0), per-map `texture_arrays.xml` (from the asset db), subset `tile_list.bin` | survey | 1–2 d |
 | 3.5 | `masks` | `colour_overlay`, `lf_sea_colour` (BC1), `corruption_mask` (R8), `snow_mask` (BC4, with the bilinear stretch to whole blocks), `event_area_mask`, `patch_mask`, `terrain_visibility_mask`, `lf_normal` (DXT5nm) | TIF → DDS; mips as BOB writes them | ~1 w |
 | 3.6 | `devastation_pieces` | `pieces\event_*` for **both** the main and the devastate folder, plus the devastate folder's `environment_collection.xml`, `event_area_mask.dds`, `event_tiles`, `event_trees` (§2 table) | read the main **and** devastated projects directly (§2); the decompiler's `docs/event-area-pieces.md`; exactly the current event areas; also removes the 14-mip crash. Needs 3.9's BMD writer for the piece objects, so the piece rasters, tiles and trees come first, then the objects. | 1–2 w |
 | 3.7 | `lookup` | `*lookup*.tga/.dds`, `_minimap.tga` from CAIME's exported `*_lookup.bmp` | works as is (byte-identical on albion); fix palette alpha | ≤ 1 d |
@@ -310,6 +310,16 @@ Height/HeightSea (BOB reads the pack's) with the box mapped by multiplying with 
 tile byte, the path table sorted. Left: the in-game check. The validator's 3K hex rules and the tile-map editor are
 still 3K-shaped (Phase 5); the two findings that blocked the WH3 maps (no climate map, black off-map hexes) no longer
 do. Numbers in `docs/native_campaign_build.md`.
+
+**3.4 status (2026-10-09):** `GlobalMapStep` is in the pipeline. On Old World all three files are byte-identical to
+BOB's. On IEE `texture_arrays.xml` and `tile_list.bin` are byte-identical; `global_blend.dds` differs only in one area
+of the `iee` blend layer that was edited after its BOB run. IEE 5 s, Old World 7 s. The survey was right on the blend
+(255 → 0, not flipped) and the subset, but `texture_arrays.xml` is not a copy. It is generated from the merged asset
+variation db (`warscape_asset_variation_db\*.assetdb`) of the game **and the mod packs**: Old World's mod adds
+`mud_dry_darklands`, which shifts every later group index. So the map's mod pack has to be linked (`--pack`), as for
+trees. The step reports a blend whose palette disagrees with the group list. The pack round trip into Global Tilemap
+goes, since the step reads the build's own `tile_list.bin`. Left: the in-game check. Numbers in
+`docs/native_campaign_build.md`.
 
 Each step is done when:
 - it is native in the hybrid pipeline,

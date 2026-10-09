@@ -86,6 +86,17 @@ public sealed class DdsHeader
         return header;
     }
 
+    /// <summary>The 128-byte header of WH3's global_blend.dds: 8-bit luminance with every optional field 0 (no flags,
+    /// pitch, depth, mip count or caps), as BOB's Campaign Global Blendmap writes it.</summary>
+    public static byte[] BuildGlobalBlend(int width, int height)
+    {
+        var header = BuildUncompressed(width, height, 8, 0xFF, 0, 0, 0, 0x20000);   // DDPF_LUMINANCE
+        Array.Clear(header, 8, 4);    // dwFlags
+        Array.Clear(header, 20, 4);   // dwPitchOrLinearSize
+        Array.Clear(header, 108, 4);  // dwCaps
+        return header;
+    }
+
     public const uint DxgiR32Float = 41, DxgiBc6hSf16 = 96;
 
     /// <summary>A 148-byte DX10 header for one 2D texture with one mip, as WH3's BOB writes it: block-compressed formats

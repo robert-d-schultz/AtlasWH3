@@ -13,6 +13,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
 | `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. Not yet checked in game |
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
+| `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -84,6 +85,40 @@ Read off qttoolutility (capstone, 2026-10-08) and measured on the fixtures:
   BOB's entity matrix differs from `QtuTransform`'s by more than the angle text (not yet found). 457 trees beyond
   1e-3, not yet explained: some under patches (before the width fix, most of those sat under
   ogr_large_mountain_01 and def_mountain_volcano_01 props, where BOB is lower), the rest terrain-only.
+
+### global_map\ (WH3)
+
+Two GUI-only BOB actions write it: Campaign Global Blendmap (`global_blend.dds`, `texture_arrays.xml`) and Global
+Tilemap (`tile_list.bin`). Measured on the fixtures, with the source of `texture_arrays.xml` read off
+bob_terrain.modder.x64.dll's strings (2026-10-09):
+
+- **`global_blend.dds`:** the composited BlendCampaign map as is (not flipped), 255 (empty) written as 0. 8-bit
+  luminance (pixel format flags 0x20000, R mask 0xFF), with dwFlags, pitch, depth, mip count and caps all 0. The
+  size is the BlendCampaign map's (8 px per hex plus 4 rows: IEE 12800 × 7764, Old World 16384 × 14196). 3K's was
+  16-bit, with the climate in byte 1.
+- **`texture_arrays.xml`:** generated from the **asset variation db**, not copied. BOB (like the game) merges every
+  `warscape_asset_variation_db\*.assetdb` in the packs (format: campaign_tools' `docs/assetdb.md`; `AssetVariationDb`).
+  It writes one group per `campaign_base_colour` key, in ordinal key order, with that key's file in
+  `campaign_base_colour`, `campaign_material` and `campaign_normal`, an empty `normal_array` and an empty `<climate/>`
+  per group. Tabs, CRLF, no XML declaration. The kit's `raw_data\warscape_asset_variation_db\terrain_textures_campaign.xml`
+  holds only water-plane materials and is not the source.
+  - Vanilla has 172 groups, so IEE's file is byte-identical to vanilla's `wh3_main_combi_map_1` one. Old World's mod
+    pack `!cr_oldworld_campaign.pack` adds `oldworld_terrain_textures_campaign.assetdb` with `mud_dry_darklands`,
+    which sorts to index 99 and shifts every later group by one.
+  - So the step reads the vanilla packs and the **linked mod packs** (`--pack`, as for trees).
+  - Terry paints with the same list: a BlendCampaign TIF's palette is the groups' `display_r/g/b` in group order.
+    Old World's palette matches the 173 groups, IEE's the 172. The step checks the palette at every used index and
+    notes a blend painted with another group list (built without the right mod packs, Old World's has 50 wrong
+    values and one beyond the list).
+  - Not verified: which variation BOB uses when a key has several, or when two files define it. The step uses the
+    first and notes both cases (neither happens on the fixtures).
+- **`global_map\tile_list.bin`:** the root list cut to the tiles of `exclude_from_global_mesh` sets (roads,
+  roads_light, cliff_gen, cliff_gen_ends, sea_coast). The far zoom draws generic and sea ground from the global
+  blend, not from tiles. Records stay in root order and unchanged (flag 07). The path table keeps the paths still
+  used, in root order. Header, climates and trailer are the root's. IEE keeps 52,707 of 339,338 records, Old World
+  73,817 of 598,161. 3K kept every record and cleared the flag of base tiles.
+- BOB's Global Tilemap reads the tile list from the installed pack (the tilemap → global tilemap pack round trip).
+  The step reads this build's `tile_list.bin`, else the kit's working_data copy.
 
 ### full_height_map.dds (BC6H_SF16)
 

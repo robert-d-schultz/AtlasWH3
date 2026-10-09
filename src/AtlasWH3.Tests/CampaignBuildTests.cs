@@ -75,13 +75,11 @@ public class CampaignBuildTests
     }
 
     [Fact]
-    public void TileList_Vanilla_RoundTrips_AndGlobalMapCopyMatches()
+    public void TileList_Vanilla_RoundTrips()
     {
         if (!File.Exists(Vanilla("tile_list.bin"))) return;
         var root = File.ReadAllBytes(Vanilla("tile_list.bin"));
-        var list = TileList.Read(root);
-        Assert.Equal(root, list.ToBytes());
-        Assert.Equal(File.ReadAllBytes(Vanilla("global_map", "tile_list.bin")), list.ToGlobalMapCopy().ToBytes());
+        Assert.Equal(root, TileList.Read(root).ToBytes());
     }
 
     [Fact]
@@ -91,27 +89,6 @@ public class CampaignBuildTests
         if (!File.Exists(path)) return;
         var original = File.ReadAllBytes(path);
         Assert.Equal(original, HeightPatchCollection.Read(original).ToBytes());
-    }
-
-    [Fact]
-    public void GlobalBlend_FromVanillaBlendAndClimate_IsByteIdentical()
-    {
-        var blend = Vanilla("global_map", "global_blend.dds");
-        if (!File.Exists(blend)) return;
-        var (group, climate) = TerrainDds.ReadBlend(blend);
-        var cm = CompressedMap.Read(Vanilla("climate_map.cm")).Raster;
-        var rebuilt = new Raster<byte>(group.Width, group.Height);
-        for (var y = 0; y < group.Height; y++)
-        for (var x = 0; x < group.Width; x++)
-            rebuilt[x, y] = (byte)cm.GetClamped(x / 4, y / 4);
-        Assert.Equal(climate.Data, rebuilt.Data);
-        var temp = Path.GetTempFileName();
-        try
-        {
-            TerrainDds.WriteBlend(temp, group, rebuilt);
-            Assert.Equal(File.ReadAllBytes(blend), File.ReadAllBytes(temp));
-        }
-        finally { File.Delete(temp); }
     }
 
     [Fact]

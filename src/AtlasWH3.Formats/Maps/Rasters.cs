@@ -68,27 +68,6 @@ public static class TerrainDds
         fs.Write(MemoryMarshal.AsBytes(raster.Data.AsSpan()));
     }
 
-    /// <summary>global_blend.dds: DDPF_RGB (0x40), 16-bit, R mask 0xFF, G mask 0xFF00, header fields cleared as in
-    /// <see cref="WriteL16"/>. Byte 0 = texture group, byte 1 = climate index.</summary>
-    public static void WriteBlend(string path, Raster<byte> group, Raster<byte> climate)
-    {
-        if (group.Width != climate.Width || group.Height != climate.Height)
-            throw new ArgumentException("Blend group and climate rasters differ in size.");
-        var header = DdsHeader.BuildUncompressed(group.Width, group.Height, 16, 0xFF, 0xFF00, 0, 0, 0x40);
-        Array.Clear(header, 8, 4);
-        Array.Clear(header, 20, 4);
-        Array.Clear(header, 108, 4);
-        var pixels = new byte[group.Data.Length * 2];
-        for (var i = 0; i < group.Data.Length; i++)
-        {
-            pixels[i * 2] = group.Data[i];
-            pixels[i * 2 + 1] = climate.Data[i];
-        }
-        using var fs = File.Create(path);
-        fs.Write(header);
-        fs.Write(pixels);
-    }
-
     /// <summary>global_blend.dds: 2 x 8-bit channels. Channel 0 = texture group (0-31), channel 1 = climate index
     /// (0 cold, 1 arid, 2 temperate, 3 sub_tropical).</summary>
     public static (Raster<byte> Group, Raster<byte> Extra) ReadBlend(string path)

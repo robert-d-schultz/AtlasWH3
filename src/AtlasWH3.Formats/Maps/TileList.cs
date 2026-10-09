@@ -110,27 +110,33 @@ public sealed class TileList
     public void Write(string path) => File.WriteAllBytes(path, ToBytes());
 
     /// <summary>
-    /// The global_map\tile_list.bin copy: identical except that the flag byte is cleared (07 → 00) on every record
-    /// whose tile is a base tile (generic, generic_sea, sea_coast, mountains_*). Linear features — rivers, river
-    /// starts/mouths/crossings, roads, cliffs, canals — keep 07. The rule is strictly per path in vanilla.
+    /// WH3's global_map\tile_list.bin (BOB "Global Tilemap"): the records whose path <paramref name="keep"/> accepts, in
+    /// root order and otherwise unchanged (flag 07 included); the path table keeps the paths still used, in their root
+    /// order; header, climates and trailer as the root's. BOB keeps the tiles of exclude_from_global_mesh sets (roads,
+    /// cliffs, coasts): byte-identical on IEE and Old World. (3K's copy kept every record and cleared the flag of base
+    /// tiles.)
     /// </summary>
-    public TileList ToGlobalMapCopy()
+    public TileList GlobalMapSubset(Func<string, bool> keep)
     {
-        var copy = new TileList { Floats = (float[])Floats.Clone(), Ints = (int[])Ints.Clone(), Marker = Marker, Version = Version, Trailer = Trailer };
-        copy.Paths.AddRange(Paths);
-        copy.Climates.AddRange(Climates);
-        var clear = Paths.Select(IsBaseTile).ToArray();
-        copy.Records.Capacity = Records.Count;
+        var subset = new TileList { Floats = (float[])Floats.Clone(), Ints = (int[])Ints.Clone(), Marker = Marker, Version = Version, Trailer = Trailer };
+        subset.Climates.AddRange(Climates);
+        var kept = Paths.Select(keep).ToArray();
+        var used = new bool[Paths.Count];
+        foreach (var r in Records) if (kept[r.Path]) used[r.Path] = true;
+        var remap = new uint[Paths.Count];
+        for (var i = 0; i < Paths.Count; i++)
+            if (used[i])
+            {
+                remap[i] = (uint)subset.Paths.Count;
+                subset.Paths.Add(Paths[i]);
+            }
         foreach (var r in Records)
-        {
-            var record = r;
-            if (clear[r.Path]) record.Flag = 0;
-            copy.Records.Add(record);
-        }
-        return copy;
+            if (kept[r.Path]) subset.Records.Add(r with { Path = remap[r.Path] });
+        return subset;
     }
 
-    /// <summary>Tile category (the folder after "campaign\") is one whose global_map flag is cleared.</summary>
+    /// <summary>Tile category (the folder after "campaign\") is a 3K base tile (generic, generic_sea, sea_coast,
+    /// mountains_*), the ones whose flag 3K's global_map copy cleared.</summary>
     public static bool IsBaseTile(string path)
     {
         var parts = path.Split('\\', '/', StringSplitOptions.RemoveEmptyEntries);
