@@ -3,6 +3,38 @@
 Atlas3K rebuilds BOB's campaign-map outputs itself, straight from the assembly-kit sources. Intermediate files are
 read from disk, so no pack import is needed between steps. Plan: `~/.claude/plans/we-have-a-bob-snazzy-valiant.md`.
 
+## WH3 steps (AtlasWH3)
+
+AtlasWH3's per-step parity record on the WH3 fixtures (plan Phase 3). Everything from *Running it* on is Atlas3K's
+Three Kingdoms record, kept for the method and the 3K rules that still hold.
+
+| Step | Replaces BOB action | Parity (IEE `cr_combi_expanded_map_1`, Old World `cr_oldworld_map_1`) |
+|---|---|---|
+| `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
+
+### full_height_map.dds (BC6H_SF16)
+
+Error of the decoded texture against the composited Height (red) and HeightSea (green) sources, per texel:
+
+| Map | Encoder | Red RMS / max | Green RMS / max | Time |
+|---|---|---|---|---|
+| IEE (12800 × 7764) | AtlasWH3 | 0.0031 / 2.63 | 0.0019 / 1.08 | whole step 160 s |
+| IEE | BOB (AMD Compress) | 0.0063 / 2.55 | 0.0082 / 4.44 | |
+| Old World (16384 × 14196) | AtlasWH3 | 0.0052 / 1.25 | 0.0063 / 2.30 | whole step 307 s |
+| Old World | BOB (AMD Compress) | 0.0127 / 2.11 | 0.0126 / 4.13 | |
+
+Old World's composited Height has **one NaN texel** (composite x 16046, row 13162 from the bottom). BOB's BC6H writes
+0 there; AtlasWH3's fills it with its block's mean (4.90), so it does not drag the 15 other texels of the block.
+
+The largest errors are in blocks where a channel crosses 0: BC6H interpolates the half-float bits, so a gradient
+through 0 bends, and both encoders lose most there. Three encoder bugs were found by this comparison (2026-10-08):
+- a least-squares refit that was no better (or did not fit the mode) was kept with the old indices;
+- the vendored BCnEncoder.NET layout for mode 7 (8.6.5.5, `Type18`) stored bit 4 of the subset-1 red deltas where bit
+  5 goes;
+- the NaN texel entered the fit as 65504, and its block's other texels were off by up to 5.
+
+Before the first two fixes, about 900 IEE blocks decoded to values in the hundreds. `Bc6hTests` covers all three.
+
 ## Running it
 
 | Way | Command |

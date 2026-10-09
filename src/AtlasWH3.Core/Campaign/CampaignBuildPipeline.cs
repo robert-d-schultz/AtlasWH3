@@ -15,8 +15,7 @@ public sealed class CampaignBuildPipeline
     /// the basis of the re-port, but writes 3K formats, so it is not in the pipeline.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
-        new PendingStep("heightmaps", "Campaign Heightmap, Campaign Shroud Heights", [],
-            "full_logic_map.compressed_map, full_height_map.dds (BC6H) and shroud_heights.dds from the Height / HeightShroud TIFs (Phase 3.1)"),
+        new HeightmapsStep(),
         new PendingStep("tile_list", "Tilemap", ["heightmaps"],
             "tile_list.bin v2 from tile_map.png on the WH3 tile database (Phase 3.3; Atlas3K's TileListStep writes 3K's v1)"),
         new PendingStep("trees", "Campaign Trees", ["heightmaps"],
