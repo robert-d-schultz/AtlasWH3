@@ -331,7 +331,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         _strengthText.Text = $"strength {_strength.Value:0.00}";
         _softnessText.Text = $"softness {_softness.Value:0.00}";
         var ok = ushort.TryParse(_value.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var raw);
-        _valueWorld.Text = ok ? $"= world height {raw * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset:0.###}" : "not a 0-65535 value";
+        _valueWorld.Text = ok ? $"= world height {raw * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset:0.###}" : "not a 0-65535 value";
         if (_session is null) return;
         _session.RadiusWorld = RadiusWorld;
         var b = _session.HeightBrush;
@@ -520,7 +520,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         var parts = new List<string>();
         foreach (var t in new[] { KitTarget.Land, KitTarget.Sea })
             if (_session.RawAt(t, x, z) is { } raw)
-                parts.Add($"{t.ToString().ToLowerInvariant(),-4} {raw,5}  y {raw * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset,7:0.000}");
+                parts.Add($"{t.ToString().ToLowerInvariant(),-4} {raw,5}  y {raw * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset,7:0.000}");
         if (_session.Grid is { } g && x >= 0 && z >= 0 && x <= _session.WorldW && z <= _session.WorldH)
         {
             var (c, r) = _session.NearestHex(x, z);

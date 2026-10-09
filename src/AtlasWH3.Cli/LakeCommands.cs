@@ -177,8 +177,8 @@ static class LakeCommands
         var radius = double.Parse(Option(a, "--radius") ?? "20", I);
         var factor = double.Parse(Option(a, "--factor") ?? throw new ArgumentException("--factor f"), I);
         var raster = TiffMap.ReadGray16(tif);
-        double px = AtlasWH3.Core.Campaign.CameraHeightmapStep.PixelSizeX, pz = AtlasWH3.Core.Campaign.CameraHeightmapStep.PixelSizeZ;
-        double step = AtlasWH3.Core.Campaign.CameraHeightmapStep.HeightStep, off = AtlasWH3.Core.Campaign.CameraHeightmapStep.HeightOffset;
+        double px = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, pz = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ;
+        double step = AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep, off = AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
         double worldH = raster.Height * pz;
         double H(int c, int r) => raster[c, r] * step + off;
         int c0 = (int)Math.Floor(at[0] / px), r0 = (int)Math.Floor((worldH - at[1]) / pz);
@@ -267,8 +267,8 @@ static class LakeCommands
         var seaMap = project.Find("LowFrequencyHeightSea") ?? throw new InvalidOperationException("no LowFrequencyHeightSea map");
         var seaTif = project.LayerTifPath(seaMap);
         var sea = TiffMap.ReadGray16(seaTif);
-        double px = AtlasWH3.Core.Campaign.CameraHeightmapStep.PixelSizeX, pz = AtlasWH3.Core.Campaign.CameraHeightmapStep.PixelSizeZ;
-        double step = AtlasWH3.Core.Campaign.CameraHeightmapStep.HeightStep, off = AtlasWH3.Core.Campaign.CameraHeightmapStep.HeightOffset;
+        double px = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, pz = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ;
+        double step = AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep, off = AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
         var lfMap = project.Find("LowFrequencyHeight")!;
         var lfH = TiffMap.ReadGray16(project.LayerTifPath(lfMap)).Height;
         var lfW = TiffMap.ReadGray16(project.LayerTifPath(lfMap)).Width;

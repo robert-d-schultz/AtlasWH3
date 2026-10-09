@@ -71,8 +71,8 @@ public sealed class MapAudit
         if (project.Find("LowFrequencyHeight") is { } lf && File.Exists(project.LayerTifPath(lf)))
         {
             _lf = TiffMap.ReadGray16(project.LayerTifPath(lf));
-            _worldW = _lf.Width * CameraHeightmapStep.PixelSizeX;
-            _worldH = _lf.Height * CameraHeightmapStep.PixelSizeZ;
+            _worldW = _lf.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX;
+            _worldH = _lf.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ;
         }
         else Notes.Add("no LowFrequencyHeight map: height checks skipped");
         if (project.Find("LowFrequencyHeightSea") is { } sea && File.Exists(project.LayerTifPath(sea)))
@@ -92,7 +92,7 @@ public sealed class MapAudit
         int c0 = (int)col, r0 = (int)row;
         double fx = col - c0, fz = row - r0;
         var v = r[c0, r0] * (1 - fx) * (1 - fz) + r[c0 + 1, r0] * fx * (1 - fz) + r[c0, r0 + 1] * (1 - fx) * fz + r[c0 + 1, r0 + 1] * fx * fz;
-        return v * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
+        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
     }
 
     public ModelInfo? Model(string path)

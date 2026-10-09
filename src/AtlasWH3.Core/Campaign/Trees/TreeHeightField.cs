@@ -68,8 +68,9 @@ public sealed class TreeHeightField
 
     private int Cell(float v, int count) => Math.Clamp((int)MathF.Floor(v / _cellSize), 0, count - 1);
 
-    /// <summary>TerrainSurface::height at a world point.</summary>
-    public float Height(float x, float z)
+    /// <summary>TerrainSurface::height at a world point; patches for which <paramref name="skip"/> is true are left out
+    /// (seating a prop on the ground without its own patch).</summary>
+    public float Height(float x, float z, Func<Patch, bool>? skip = null)
     {
         var lf = Terrain(x, z);
         var result = lf;
@@ -78,7 +79,7 @@ public sealed class TreeHeightField
         var cz = (int)(z / _cellSize);
         if (cx >= _cellsX || cz >= _cellsZ || _cells[cz * _cellsX + cx] is not { } near) return result;
         foreach (var p in near)
-            if (p.Sample(x, z, lf) is { } h && h > result) result = h;
+            if (p.Sample(x, z, lf) is { } h && h > result && (skip is null || !skip(p))) result = h;
         return result;
     }
 
@@ -107,6 +108,8 @@ public sealed class TreeHeightField
         public required string Model { get; init; }
         public float ScaleY, PosY, A, B, C, D, Tx, Tz, MinX, MinZ, MaxX, MaxZ;
         public float AabbMinX, AabbMinZ, AabbMaxX, AabbMaxZ;
+        /// <summary>The entity's world position x and z.</summary>
+        public float X, Z;
         public bool AddTerrainHeight;
         public required float[] Values { get; init; }
         public int W, H;
@@ -131,7 +134,7 @@ public sealed class TreeHeightField
                 ScaleY = MathF.Sqrt(r11 * r11 + r01 * r01 + r21 * r21), PosY = py,
                 A = ia, B = ib, C = ic, D = id, Tx = -(ib * pz + ia * px), Tz = -(id * pz + ic * px),
                 MinX = map.Header[0], MinZ = map.Header[2], MaxX = map.Header[3], MaxZ = map.Header[5],
-                AddTerrainHeight = add,
+                AddTerrainHeight = add, X = px, Z = pz,
             };
             // world box of the model bounds (aabb_transformed_xz), only a prefilter: the model-bounds test decides
             float[] xs = new float[4], zs = new float[4];

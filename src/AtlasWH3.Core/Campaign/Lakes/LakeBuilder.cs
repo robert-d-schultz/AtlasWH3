@@ -57,9 +57,9 @@ public static class LakeBuilder
                                          Raster<ushort>? sea = null, Func<int, int, bool>? waterTile = null)
     {
         log ??= _ => { };
-        double px = CameraHeightmapStep.PixelSizeX, pz = CameraHeightmapStep.PixelSizeZ, worldH = lf.Height * pz;
-        double H(int c, int r) => lf[c, r] * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
-        ushort Raw(double h) => (ushort)Math.Clamp(Math.Round((h - CameraHeightmapStep.HeightOffset) / CameraHeightmapStep.HeightStep), 0, 65535);
+        double px = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, pz = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ, worldH = lf.Height * pz;
+        double H(int c, int r) => lf[c, r] * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
+        ushort Raw(double h) => (ushort)Math.Clamp(Math.Round((h - AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset) / AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep), 0, 65535);
         double CellX(int c) => (c + 0.5) * px;
         double CellZ(int r) => worldH - (r + 0.5) * pz;
         int Col(double x) => (int)Math.Floor(x / px);
@@ -178,9 +178,9 @@ public static class LakeBuilder
     /// </summary>
     public static int CarveSea(Raster<ushort> lf, HexRegionLookup hex, double x, double z, double radius, double depth = 0.35)
     {
-        double px = CameraHeightmapStep.PixelSizeX, pz = CameraHeightmapStep.PixelSizeZ, worldH = lf.Height * pz;
-        double H(int c, int r) => lf[c, r] * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
-        ushort Raw(double h) => (ushort)Math.Clamp(Math.Round((h - CameraHeightmapStep.HeightOffset) / CameraHeightmapStep.HeightStep), 0, 65535);
+        double px = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, pz = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ, worldH = lf.Height * pz;
+        double H(int c, int r) => lf[c, r] * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
+        ushort Raw(double h) => (ushort)Math.Clamp(Math.Round((h - AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset) / AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep), 0, 65535);
         var reach = radius + 2;
         int c0 = Math.Max(1, (int)Math.Floor((x - reach - 1) / px)), c1 = Math.Min(lf.Width - 2, (int)Math.Floor((x + reach + 1) / px));
         int r0 = Math.Max(1, (int)Math.Floor((worldH - z - reach - 1) / pz)), r1 = Math.Min(lf.Height - 2, (int)Math.Floor((worldH - z + reach + 1) / pz));
@@ -225,7 +225,7 @@ public static class LakeBuilder
     /// line, lower reaches a little onto the bank).</summary>
     public static bool InWater(IReadOnlyList<LakeResult> lakes, double x, double z, int lfHeight, float threshold = 0.5f)
     {
-        double px = CameraHeightmapStep.PixelSizeX, pz = CameraHeightmapStep.PixelSizeZ;
+        double px = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, pz = AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ;
         int c = (int)Math.Floor(x / px), r = (int)Math.Floor((lfHeight * pz - z) / pz);
         foreach (var l in lakes)
         {

@@ -226,61 +226,43 @@ public class PropToolsTests
     }
 
     [Fact]
-    public void SceneGround_SeatsVanillaTreesAndSkipsOwnPatch()
+    public void SceneGround_IsBobsTreeGround_OnIeeAndSkipsOwnPatch()
     {
-        // BOB's scene height: vanilla's tree props stand on it (on mountain props), not on the bare lf + tile hf.
+        // the scene ground is what BOB stands WH3's trees on: full_logic_map + the layers' height patches
+        var (map, pack) = CampaignTreeGeneratorTests.Fixtures[0];
         var tmp = Directory.CreateTempSubdirectory();
         try
         {
-            var paths = TestKits.VanillaPaths with { OutputRoot = tmp.FullName };
-            if (!Directory.Exists(paths.AkTerrainDir) || !Directory.Exists(paths.GameDataDir)
-                || !File.Exists(Path.Combine(paths.VanillaRoot, "terrain", "campaigns", paths.MapName, "tile_list.bin"))) return; // data not on this machine
-            var scene = GroundHeight.Scene(paths, paths.MapName, out var why);
+            var paths = new ProjectPaths
+            {
+                AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData, MapName = map, OutputRoot = tmp.FullName,
+                ModPacks = [Path.Combine(TestKits.Wh3GameData, pack)],
+            };
+            var treeList = Path.Combine(paths.AkWorkingCampaignMapDir, "display", "trees", "trees.campaign_tree_list");
+            if (!File.Exists(Path.Combine(paths.AkTerrainDir, map + ".terry")) || !File.Exists(treeList) || !File.Exists(paths.ModPacks[0])) return;
+            var scene = GroundHeight.Scene(paths, map, out var why);
             Assert.True(scene is not null, why);
-            var bare = GroundHeight.Built(paths, paths.MapName, null, out why)!;
-            var editor = new EntityEditor(paths);
-            var trees = editor.ReadAll().SelectMany(l => l.Entities)
-                .Where(e => e.Group is null && e.Component("ECPropMesh") is not null && (e.Component("ECMesh")?["model_path"] ?? "").Contains("/vegetation/", StringComparison.OrdinalIgnoreCase))
-                .Where((_, i) => i % 7 == 0)
-                .Select(e => e.Transform!.Value.Position).Select(p => new ClampProp("", "t", p[0], p[1], p[2], 1, 0, 0)).ToList();
-            static double Median(IEnumerable<double> v) { var l = v.OrderBy(x => x).ToList(); return l[l.Count / 2]; }
-            var onScene = Median(trees.Select(t => t.Y - scene!.For(t)));
-            var onBare = Median(trees.Select(t => t.Y - bare.At(t.X, t.Z)));
-            Assert.InRange(onScene, -0.5, 0.1);  // measured -0.24
-            Assert.True(onBare > 1, $"bare terrain median {onBare}"); // measured 1.94
-
-            // a mountain prop with a height patch: seating it ignores its own patch
-            var patched = editor.ReadAll().SelectMany(l => l.Entities)
-                .Where(e => e.Group is null && e.Component("ECPropHeightPatch")?["has_height_patch"] == "true" && e.Component("ECMesh")?["model_path"] is { Length: > 0 })
-                .Select(e => (Model: e.Component("ECMesh")!["model_path"]!, P: e.Transform!.Value.Position))
-                .Select(m => new ClampProp("", m.Model, m.P[0], m.P[1], m.P[2], 1, 0, 0))
-                .FirstOrDefault(m => scene!.At(m.X, m.Z) - scene.For(m) > 0.01);
-            Assert.True(patched is not null, "no prop whose own patch raises the scene height");
-        }
-        finally { tmp.Delete(true); }
-    }
-
-    [Fact]
-    public void BuiltGround_IsBobsTreeHeight_OnVanilla()
-    {
-        // Ground = the compiled lf + tile hf, as BOB's Campaign Trees samples it: vanilla's shipped tree list heights.
-        var tmp = Directory.CreateTempSubdirectory();
-        try
-        {
-            var paths = TestKits.VanillaPaths with { OutputRoot = tmp.FullName };
-            if (!File.Exists(paths.TreeList) || !Directory.Exists(paths.GameDataDir)) return; // data not on this machine
-            var ground = GroundHeight.Built(paths, paths.MapName, null, out var why);
-            Assert.True(ground is not null, why);
-            Assert.True(ground!.IsBuilt);
-            var trees = CampaignTreeList.Load(paths.TreeList).Types.SelectMany(t => t.Instances).Where((_, i) => i % 97 == 0).ToList();
-            var close = trees.Count(t => Math.Abs(ground.At(t.X, t.Z) - t.Y) < 1e-3);
+            Assert.StartsWith("scene", scene!.Description);
+            var trees = CampaignTreeList.Load(treeList).Types.SelectMany(t => t.Instances).Where((_, i) => i % 97 == 0).ToList();
+            var close = trees.Count(t => Math.Abs(scene.At(t.X, t.Z) - t.Y) < 1e-3);
             Assert.True(close >= trees.Count * 0.99, $"{close} of {trees.Count} tree heights match");
 
-            // a compiled terrain that does not match the project's own lf (another map, an old build) is skipped
-            var (w, h) = (1784 * Core.Campaign.Terrain.TileHfHeight.TileSize3K, 1405 * Core.Campaign.Terrain.TileHfHeight.TileSize3K * 1.15476);
-            var same = GroundHeight.Built(paths, paths.MapName, null, out _, ground.At, w, h);
-            Assert.Equal(0, same!.ReferenceDifference, 9);
-            Assert.Null(GroundHeight.Built(paths, paths.MapName, null, out var whyNot, (x, z) => ground.At(x, z) + 5, w, h));
+            // a height-patched prop: the scene is raised by its patch, seating it ignores that patch, and the bare
+            // terrain has none of it
+            var bare = GroundHeight.Built(paths, map, out why);
+            Assert.True(bare is not null, why);
+            var patched = new EntityEditor(paths).ReadAll().SelectMany(l => l.Entities)
+                .Where(e => e.Group is null && e.Component("ECPropHeightPatch")?["apply_height_patch"] == "true" && e.Component("ECMesh")?["model_path"] is { Length: > 0 })
+                .Select(e => (Model: e.Component("ECMesh")!["model_path"]!, P: e.Transform!.Value.Position))
+                .Select(m => new ClampProp("", m.Model, m.P[0], m.P[1], m.P[2], 1, 0, 0))
+                .FirstOrDefault(m => scene.At(m.X, m.Z) - scene.For(m) > 0.01);
+            Assert.True(patched is not null, "no prop whose own patch raises the scene height");
+            Assert.True(bare!.At(patched!.X, patched.Z) < scene.At(patched.X, patched.Z));
+
+            // a built terrain that does not match the project's own heights (another map, an old build) is skipped
+            var (w, h) = (1000.0, 700.0);
+            Assert.Equal(0, GroundHeight.Built(paths, map, out _, bare.At, w, h)!.ReferenceDifference, 9);
+            Assert.Null(GroundHeight.Built(paths, map, out var whyNot, (x, z) => bare.At(x, z) + 5, w, h));
             Assert.Contains("another map", whyNot);
         }
         finally { tmp.Delete(true); }

@@ -61,22 +61,21 @@ The y of a new prop is the ground at the click point (see *Ground* below), plus 
 
 ## Ground
 
-| Source | What it is | Vanilla tree props (median y − ground) |
-|---|---|---|
-| **Scene height** (default) | BOB's scene height provider (`CameraHeightField`, byte-identical camera height map): max of the global mesh and the height patches (rivers, the tiles' own props, the map's props). Tile terrain is the fallback. | −0.24 |
-| Built terrain only | lf + per-tile hf (`TileHfHeight`, bit-exact with BOB's Campaign Trees) | +1.94 |
-| Kit lf map | the kit's `LowFrequencyHeight` TIF, bilinear, with unbuilt edits | +2.49 |
+| Source | What it is |
+|---|---|
+| **Scene height** (default) | the ground BOB stands WH3's trees on (`TreeHeightField`): the nearest full_logic_map texel, raised by the height patches of the layers' props (`apply_height_patch`). On IEE it gives BOB's tree heights (99% within 1e-3). |
+| Built terrain only | the full_logic_map texel alone |
+| Kit lf map | the kit's `LowFrequencyHeight` TIF, bilinear, with unbuilt edits (3K-shaped: WH3 projects have none until the editors' port) |
 
-- **Why scene height is the default:** vanilla trees on mountains stand on the mountain *props'* height patches, not on the bare terrain. That makes scene height the ground the game shows.
+- **Why scene height is the default:** trees on mountains stand on the mountain *props'* height patches, not on the bare terrain. That makes scene height the ground the game shows.
 - **Own patch ignored:** when a prop is clamped, its own height patch is ignored (the patch with the same model at the same x/z). Otherwise a building with a patch would be seated on its own top.
 
-**Build needed.** Both built sources need a build of the map. They try these in order:
+**Build needed.** Both built sources need the map's `full_logic_map.compressed_map` (step `heightmaps`). They try these in order:
 1. the native build output (`output\compiled\<map>`);
 2. the kit's `working_data`;
-3. the compiled vanilla folder;
-4. the game packs.
+3. the game packs (the map's mod packs first).
 
-Each candidate is checked against the project's own lf. If its median difference over a 24 × 24 grid is more than 0.5 (0.25 for lf + hf), it is skipped as another map or an old build. This matters because vanilla and 190E share `3k_dlc07_main_map`. When nothing matches, the kit lf is used and the Props tab says why. A built ground shows the **last build**: rebuild after height edits, or switch to the kit lf.
+The patches' models come from the packs (vanilla plus the linked mod packs). With a reference height from the project, each candidate is checked against it: if its median difference over a 24 × 24 grid is more than 0.5 (0.25 for the bare terrain), it is skipped as another map or an old build. When nothing matches, the kit lf is used and the Props tab says why. A built ground shows the **last build**: rebuild after height edits, or switch to the kit lf.
 
 ## Unsaved edits
 

@@ -26,11 +26,6 @@ namespace AtlasWH3.Core.Campaign;
 /// </summary>
 public sealed class CameraHeightmapStep : ICampaignBuildStep
 {
-    /// <summary>World units per lf pixel (x, z) on 3K maps; used by the 3K-shaped editors until their port (Phase 5).</summary>
-    public const double PixelSizeX = 595.1 / 7136, PixelSizeZ = 541.78619 / 5620;
-    /// <summary>3K source u16 → world y (fitted exactly on the vanilla land meshes); for the 3K-shaped editors.</summary>
-    public const double HeightStep = 0.000218712, HeightOffset = -3.12725;
-
     /// <summary>Used when rules.bob has no cam_hmap_resolution_scale / cam_hmap_samples_per_wu.</summary>
     public const float DefaultResolutionScale = 0.25f;
     public const int DefaultSamplesPerUnit = 8;
@@ -82,7 +77,7 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
 
         var (w, h) = GridSize(tiles.Ints[1], tiles.Ints[2], settings.ResolutionScale);
         ctx.Log($"sampling {w}x{h}...");
-        var cells = Sample(field.Height, w, h, field.WorldWidth, field.WorldDepth, settings.SamplesPerUnit);
+        var cells = Sample((x, z) => field.Height(x, z), w, h, field.WorldWidth, field.WorldDepth, settings.SamplesPerUnit);
         var highest = cells.Max();
         var (raster, scale) = Encode(cells, w, h, highest);
         Directory.CreateDirectory(ctx.CampaignMapOutDir);

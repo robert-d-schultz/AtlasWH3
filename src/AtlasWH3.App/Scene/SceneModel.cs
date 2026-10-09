@@ -478,7 +478,7 @@ public sealed class SceneModel
             && File.Exists(Project.LayerTifPath(map)))
         {
             var raster = TiffMap.ReadGray16(Project.LayerTifPath(map));
-            Terrain = (raster, raster.Width * CameraHeightmapStep.PixelSizeX, raster.Height * CameraHeightmapStep.PixelSizeZ);
+            Terrain = (raster, raster.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, raster.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ);
         }
         if (TerrainBlend is null && Terrain is not null && Project.Find("BlendCampaign") is { } blend && File.Exists(Project.LayerTifPath(blend))
             && LoadTextureArrays() is { } arrays)
@@ -566,7 +566,7 @@ public sealed class SceneModel
         int c0 = (int)col, r0 = (int)row;
         double fx = col - c0, fz = row - r0;
         double v = h[c0, r0] * (1 - fx) * (1 - fz) + h[c0 + 1, r0] * fx * (1 - fz) + h[c0, r0 + 1] * (1 - fx) * fz + h[c0 + 1, r0 + 1] * fx * fz;
-        return v * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
+        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
     }
 
     /// <summary>A map file from the <c>--pack</c> mod packs (first that has it), with the pack's path.</summary>

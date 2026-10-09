@@ -625,7 +625,7 @@ public sealed partial class SceneWindow : Window
         if (_model.Terrain is not var (h, worldW, worldH)) return 0;
         var col = Math.Clamp((int)(x / worldW * h.Width), 0, h.Width - 1);
         var row = Math.Clamp((int)((1 - z / worldH) * h.Height), 0, h.Height - 1);
-        return Math.Round(h[col, row] * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset, 4);
+        return Math.Round(h[col, row] * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset, 4);
     }
 
     private void NewFileLayer()

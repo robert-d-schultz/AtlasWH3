@@ -663,10 +663,12 @@ Decompiled from `QTU::CampaignTreeGenerator` / `generate_campaign_tree_list_for`
 
 ### camera_heightmap.png (3K)
 
+Atlas3K's 3K step, kept as the record of 3K's BOB behaviour. Its code (`CameraHeightField`, `TileQuadtree`) is
+removed from AtlasWH3: WH3's step is above, and the editors' ground height uses WH3's tree ground.
+
 - **What the game needs:** `empirecampaign.dll` loads `campaign_maps\<map>\camera_heightmap.png` and requires the tEXt `height_scale`.
 - **Status:** byte-identical to BOB on vanilla 3k_dlc07 (2026-10-05; 2,195,093 bytes, MD5 `6c6353e4…`), every float cell of BOB's sample buffer bit-exact. Before this work the native step rasterised props (correlation 0.94); a BOB-faithful Python prototype reached 95.6% bit-exact cells.
-- **Settings:** `raw_data	errain\campaigns
-ules.bob` [Terrain] `cam_hmap_resolution_scale`, `cam_hmap_samples_per_wu`, `cam_hmap_apply_blur`, `cam_hmap_blur_kernel`, `cam_hmap_standard_drv`. Without them BOB's settings are 0 and it writes no usable map; the native step then uses 1 / 4 / no blur (the values the parity run used). BOB's blur is not ported (a note says so when it is on).
+- **Settings:** `raw_data\terrain\campaigns\rules.bob` [Terrain] `cam_hmap_resolution_scale`, `cam_hmap_samples_per_wu`, `cam_hmap_apply_blur`, `cam_hmap_blur_kernel`, `cam_hmap_standard_drv`. Without them BOB's settings are 0 and it writes no usable map; the native step then uses 1 / 4 / no blur (the values the parity run used). BOB's blur is not ported (a note says so when it is on).
 - **Grid and samples** (`TOOLDATABUILDER::generate_camera_height_map`, FUN_18006bf20): (tiles W × res) × (tiles H × res) cells over x 0..W·T, z 0..(H·128·(T/128))·1.15476. Cell (u, v) is centred at (u·step, v·step), half extents step·0.5. n = ceil(extent × samples per unit) per axis; the samples are accumulated from the min corner and BOB's inner loop also runs the z count; plus one sample at the centre. The cell keeps the max, starting from −1.
 - **Pixels:** highest = max cell; pixel = ceil(max(h / highest, 0) · 65535), PNG row 0 = the north edge (BOB's buffer row 0 is south); `height_scale` = "%f" of highest · (1/65535).
 - **PNG encoding** (`PngLib`, `ZlibDeflate`): IHDR, tEXt, IDAT in 8192-byte chunks, IEND; each row takes libpng's adaptive filter (lowest sum of |signed byte|, ties to the earlier filter); zlib level 6 with Z_FILTERED, ported from zlib 1.2.x deflate_slow + trees.c (.NET's ZLibStream is zlib-ng and differs). BOB's IDAT reproduced byte for byte.
@@ -692,6 +694,6 @@ Not needed for campaign maps. dlc07 ships none, and the game uses the file as th
   - `Models/WsModel.cs`
   - `Maps/TileList.cs`, `Maps/LookupTexture.cs`, `Maps/HeightPatchCollection.cs`, `Maps/Png16.cs`, `Maps/PngLib.cs` + `Maps/ZlibDeflate.cs` (libpng/zlib-exact PNG)
   - `TerrainDds.WriteBlend`
-- **Core** (`src/Atlas3K.Core/Campaign/`): `CampaignBuildPipeline`, `BuildSteps` (rasters, global_map, lookup, pending steps), `CameraHeightmapStep` (+ `Camera/CameraHeightField`, `Camera/TileQuadtree`), `Parity`.
+- **Core** (`src/Atlas3K.Core/Campaign/`): `CampaignBuildPipeline`, `BuildSteps` (rasters, global_map, lookup, pending steps), `CameraHeightmapStep`, `Parity`.
 - **Tests:** `src/Atlas3K.Tests/CampaignBuildTests.cs`.
 - **Research:** `research/derived_maps/` holds the camera heightmap and lf_normal analysis and the mesh study. Ghidra decompiles of the kit DLLs are in `research/bob_re/`. Ghidra and JDK 21 are installed portably in `Z:\Claude\Tools`.

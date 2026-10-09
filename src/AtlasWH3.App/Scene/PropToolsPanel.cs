@@ -72,8 +72,8 @@ public sealed class PropToolsPanel : ScrollViewer
         root.Children.Add(_place.Card("scene.props.place"));
 
         root.Children.Add(Theme.Header("Clamp to ground", 16).Card("scene.clamp"));
-        _ground.Items.Add("Scene height: terrain + tile and prop height patches (as BOB)");
-        _ground.Items.Add("Built terrain only: lf + tile hf");
+        _ground.Items.Add("Scene height: terrain + prop height patches (as BOB's trees)");
+        _ground.Items.Add("Built terrain only: full_logic_map");
         _ground.Items.Add("Kit lf height map (includes unbuilt edits)");
         _ground.SelectedIndex = 0;
         root.Children.Add(_ground.Card("scene.clamp.ground"));

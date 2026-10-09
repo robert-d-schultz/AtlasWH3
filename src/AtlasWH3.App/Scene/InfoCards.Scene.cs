@@ -29,7 +29,7 @@ public static partial class InfoCards
         new("scene.clamp", "Clamp to ground",
             "Move props up or down onto the terrain so none float or sink by accident. All moved props are one undoable edit."),
         new("scene.clamp.ground", "Ground height source",
-            "Scene height is what BOB's scene reports: the terrain plus the height patches of tiles, rivers and other props, so trees sit on mountain props as in vanilla. Built terrain is the bare lf + tile hf; both come from the last build, while the kit lf map includes unbuilt edits but no tile detail."),
+            "Scene height is the ground BOB stands trees on: the built full_logic_map plus the height patches of the layers' props, so trees sit on mountain props as in vanilla. Built terrain is the bare full_logic_map; both come from the last heightmaps build, while the kit lf map includes unbuilt edits."),
         new("scene.clamp.mode", "Clamp mode",
             "Origin puts the prop's pivot on the ground, as Terry and vanilla trees do; Model base puts its lowest point there. Vanilla sink buries big mountain and rock meshes by their usual vanilla depth so only the top shows."),
         new("scene.clamp.offset", "Clamp offset",

@@ -25,7 +25,7 @@ public class PrefabTests
     public void Transform_MatchesBuildConvention()
     {
         var t = new TerryTransform([1, 2, 3], [10, 20, 30], [1, 2, 3]);
-        var expected = Core.Campaign.Camera.CameraScene3K.Matrix(new Formats.Props.PropTransform(1, 2, 3, 10, 20, 30, 1, 2, 3));
+        var expected = new Formats.Props.PropTransform(1, 2, 3, 10, 20, 30, 1, 2, 3).Matrix();
         Assert.Equal(expected, t.Matrix(), (a, b) => Math.Abs(a - b) < 1e-12);
     }
 

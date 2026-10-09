@@ -104,7 +104,7 @@ public static class PropPreview
     {
         editor.Terrain(); // load once before the parallel loop
         double Sample(double x, double z) => editor.GroundY(x, z);
-        var d = Math.Max(1 / ppu, Campaign.CameraHeightmapStep.PixelSizeX); // gradient over at least one lf pixel
+        var d = Math.Max(1 / ppu, AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX); // gradient over at least one lf pixel
         Parallel.For(0, height, py =>
         {
             for (var px = 0; px < width; px++)

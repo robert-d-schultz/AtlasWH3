@@ -53,6 +53,30 @@ public readonly record struct PropTransform(float X, float Y, float Z, double Ro
         const double deg = 180 / Math.PI; // math.degrees() on the float result
         return new PropTransform(x, y, z, ex * deg, ey * deg, ez * deg, size[0], size[1], size[2]);
     }
+
+    /// <summary>Row-major 3x3 rotation * scale from the Euler angles (degrees) and scale: R = Rz * Ry * Rx, column i
+    /// scaled by scale i (the inverse of <see cref="FromColumns"/>).</summary>
+    public double[] Matrix()
+    {
+        const double rad = Math.PI / 180;
+        double ci = Math.Cos(RotX * rad), si = Math.Sin(RotX * rad);
+        double cj = Math.Cos(RotY * rad), sj = Math.Sin(RotY * rad);
+        double ch = Math.Cos(RotZ * rad), sh = Math.Sin(RotZ * rad);
+        double cc = ci * ch, cs = ci * sh, sc = si * ch, ss = si * sh;
+        // Blender eul_to_mat3: mat[col][row]
+        double[,] col =
+        {
+            { cj * ch, cj * sh, -sj },
+            { sj * sc - cs, sj * ss + cc, cj * si },
+            { sj * cc + ss, sj * cs - sc, cj * ci },
+        };
+        double[] s = [ScaleX, ScaleY, ScaleZ];
+        var m = new double[9];
+        for (var row = 0; row < 3; row++)
+            for (var c = 0; c < 3; c++)
+                m[row * 3 + c] = col[c, row] * s[c];
+        return m;
+    }
 }
 
 public sealed record PropRecord(string Path, PropTransform Transform, string Tags, string Seasons, bool IsDecal, bool ApplyToTerrain,

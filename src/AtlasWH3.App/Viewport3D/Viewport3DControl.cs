@@ -420,7 +420,7 @@ public sealed class Viewport3DControl : Grid
         int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
         double px = worldW / raster.Width, pz = worldH / raster.Height;
         float H(int c, int rr) => (float)(raster[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)]
-                                          * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset);
+                                          * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
         var v = new float[cols * rows * 6];
         Parallel.For(0, rows, j =>
         {
@@ -456,7 +456,7 @@ public sealed class Viewport3DControl : Grid
         int hw = raster.Width / hs, hh = raster.Height / hs;
         var raw = new ushort[hw * hh];
         Parallel.For(0, hh, y => { for (var x = 0; x < hw; x++) raw[y * hw + x] = raster[x * hs, y * hs]; });
-        r.SetTerrainHeight(raw, hw, hh, (float)worldW, (float)worldH, (float)CameraHeightmapStep.HeightStep, (float)CameraHeightmapStep.HeightOffset);
+        r.SetTerrainHeight(raw, hw, hh, (float)worldW, (float)worldH, (float)AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep, (float)AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
     }
 
     /// <summary>
@@ -649,7 +649,7 @@ public sealed class Viewport3DControl : Grid
                 wet[j * cols + i] = s > l;
                 var x = (sx + 0.5f) / sea.Width * worldW;
                 var z = worldH - (sy + 0.5f) / sea.Height * worldH;
-                verts[j * cols + i] = new LineVertex(new Vector3(x, (float)(s * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset), z), colour);
+                verts[j * cols + i] = new LineVertex(new Vector3(x, (float)(s * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset), z), colour);
             }
         });
         var idx = new List<uint>();
@@ -886,7 +886,7 @@ public sealed class Viewport3DControl : Grid
         var riverIdx = new List<uint>();
         var (_, _, cx, cz) = model.TileGrid;
         float sx = (float)(cx / 128), sz = (float)(cz / 128);
-        static float Lf(float v) => (float)(v * 65535 * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset);
+        static float Lf(float v) => (float)(v * 65535 * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
         var content = new Dictionary<string, (string? Mesh, string? River, List<(string Path, Matrix4x4 Local, bool OnTerrain, float Scale)> Props)>(StringComparer.OrdinalIgnoreCase);
         var water = new Vector4(0.13f, 0.30f, 0.43f, 0.85f);
         var result = new Dictionary<string, (List<InstanceData> I, List<Vector3> C, List<float> S)>(StringComparer.OrdinalIgnoreCase);
@@ -1778,7 +1778,7 @@ public sealed class Viewport3DControl : Grid
                 var col = (int)(p.X / worldW * raster.Width);
                 var row = (int)((1 - p.Z / worldH) * raster.Height);
                 if (col < 0 || row < 0 || col >= raster.Width || row >= raster.Height) { prev = p; continue; }
-                var ground = raster[col, row] * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
+                var ground = raster[col, row] * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
                 if (p.Y <= ground) return (prev + p) / 2;
                 prev = p;
             }

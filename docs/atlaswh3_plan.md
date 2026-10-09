@@ -375,7 +375,7 @@ plus every height-patched layer entity, `for_camera_height_map_only` included (t
 patches are in the map, unlike the hand-made files. The tile terrain is not modelled. There is no BOB output to match:
 CA's vanilla file is stale in places. Against the user's files: IEE correlation 0.986 (higher on the 3,040 patched
 props and along slopes, from BOB's max-sampling), Old World 0.997 (no patches). IEE 18 s, Old World 15 s. Atlas3K's 3K
-scene moved to `CameraScene3K` (the editors' ground height still uses it). Left:
+scene is gone: the editors' ground height now uses the same WH3 ground (`TreeHeightField`). Left:
 - the in-game check;
 - a BOB run with the `cam_hmap_*` keys added to rules.bob, which should make the GUI action work and give a reference;
 - BOB's tile terrain term and blur.

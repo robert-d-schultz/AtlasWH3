@@ -23,7 +23,7 @@ public sealed partial class SceneWindow
     private SceneView.ITool? _toolBeforePlacing;
     private readonly Random _rng = new();
 
-    // BOB's ground (scene height; lf + tile hf) per loaded model, built in the background on first use
+    // the built ground (scene height; full_logic_map) per loaded model, built in the background on first use
     private SceneModel? _groundFor;
     private readonly Dictionary<PropToolsPanel.GroundSource, Task<(GroundHeight? Ground, string Why)>> _builtGround = [];
 
@@ -170,7 +170,7 @@ public sealed partial class SceneWindow
 
     // ---------------------------------------------------------------- ground
 
-    /// <summary>The ground the Props tab asks for: BOB's scene height or lf + tile hf (both fall back to the kit lf
+    /// <summary>The ground the Props tab asks for: the scene height or the bare full_logic_map (both fall back to the kit lf
     /// when there is no matching build), or the kit lf.</summary>
     private async Task<GroundHeight> GroundAsync()
     {
@@ -192,7 +192,7 @@ public sealed partial class SceneWindow
             string why;
             var g = source == PropToolsPanel.GroundSource.Scene
                 ? GroundHeight.Scene(paths, paths.MapName, out why, reference, w, h)
-                : GroundHeight.Built(paths, paths.MapName, model.Models.Source, out why, reference, w, h);
+                : GroundHeight.Built(paths, paths.MapName, out why, reference, w, h);
             return (g, why);
         });
         if (ReferenceEquals(_groundFor, model)) _builtGround[source] = task;
@@ -200,7 +200,7 @@ public sealed partial class SceneWindow
     }
 
     private static string GroundName(GroundHeight g) =>
-        !g.IsBuilt ? "kit lf" : g.Description.StartsWith("scene", StringComparison.Ordinal) ? "scene height" : "lf + tile hf";
+        !g.IsBuilt ? "kit lf" : g.Description.StartsWith("scene", StringComparison.Ordinal) ? "scene height" : "full_logic_map";
 
     private async Task UpdateGroundNote()
     {
@@ -210,7 +210,7 @@ public sealed partial class SceneWindow
             PropTools.SetGroundNote(model.Terrain is null ? "This project has no lf height map." : "Kit lf height map: current edits, no tile detail (rivers, roads, mountain tiles).");
             return;
         }
-        PropTools.SetGroundNote("Loading the built terrain (tile list, lf, global meshes, height patches) …");
+        PropTools.SetGroundNote("Loading the built terrain (full_logic_map, height patches) …");
         var (g, why) = await BuiltGroundAsync(model, PropTools.Ground);
         if (!ReferenceEquals(model, _model)) return;
         PropTools.SetGroundNote(g is not null

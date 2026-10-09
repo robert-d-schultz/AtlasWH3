@@ -164,7 +164,7 @@ public sealed class PropEditor
         double fx = col - c0, fz = row - r0;
         double v = h[c0, r0] * (1 - fx) * (1 - fz) + h[c0 + 1, r0] * fx * (1 - fz)
                  + h[c0, r0 + 1] * (1 - fx) * fz + h[c0 + 1, r0 + 1] * fx * fz;
-        return v * CameraHeightmapStep.HeightStep + CameraHeightmapStep.HeightOffset;
+        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
     }
 
     public (Raster<ushort> Height, double WorldW, double WorldH) Terrain()
@@ -173,7 +173,7 @@ public sealed class PropEditor
         var project = TerryProject.Load(TerryPath);
         var map = project.Find("LowFrequencyHeight") ?? throw new InvalidDataException("no LowFrequencyHeight map in the .terry");
         var raster = TiffMap.ReadGray16(project.LayerTifPath(map));
-        _terrain = (raster, raster.Width * CameraHeightmapStep.PixelSizeX, raster.Height * CameraHeightmapStep.PixelSizeZ);
+        _terrain = (raster, raster.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, raster.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ);
         return _terrain.Value;
     }
 
