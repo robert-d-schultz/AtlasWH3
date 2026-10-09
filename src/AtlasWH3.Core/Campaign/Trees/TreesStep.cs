@@ -1,44 +1,46 @@
 using System.Diagnostics;
-using AtlasWH3.Core.Campaign.Terrain;
-using AtlasWH3.Formats.Packs;
 using AtlasWH3.Core.Exporters;
+using AtlasWH3.Formats.Esf;
 using AtlasWH3.Formats.Maps;
+using AtlasWH3.Formats.Packs;
 using AtlasWH3.Formats.Terry;
 using AtlasWH3.Formats.Trees;
 
 namespace AtlasWH3.Core.Campaign.Trees;
 
 /// <summary>
-/// campaign_maps\&lt;map&gt;\display\trees\trees.campaign_tree_list from the AK CampaignTree map
-/// (BOB "Campaign Trees", <see cref="CampaignTreeGenerator"/>).
-/// Heights: a tree whose regenerated (x, z) is bit-identical to the reference list's tree on that hex keeps the
-/// reference y (terrain unchanged there), so an unchanged map rebuilds byte for byte. Other trees take the lf height
-/// in BOB's tile space (x, z / 1.15476 over tiles × tile size) plus the per-tile hf of river/road/canal tiles
-/// (<see cref="TileHfHeight"/>, when a tile list exists): vanilla bit-exact ~61%, within 1e-5 on 99.87%.
+/// campaign_maps\&lt;map&gt;\display\trees\trees.campaign_tree_list (WH3 v4), BOB's "Campaign Trees":
+///  - the hex grid from map_data.esf's bounds and the composited CampaignTree map (2 px per hex; 255 = empty);
+///  - tree ids from campaign_tree_ids in the packs, the map's mod packs first (mods add their own trees);
+///  - placement, ids and rotations by <see cref="CampaignTreeGenerator"/>;
+///  - heights by <see cref="TreeHeightField"/>: the nearest full_logic_map texel, raised by the height patches of the
+///    layers' props (read from the packs, not working_data).
+/// Inputs are loose files and packs, so there is no pack round trip: BOB's action read the logic map through the
+/// game's file system, i.e. from the installed pack.
 /// </summary>
 public sealed class TreesStep : ICampaignBuildStep
 {
-    /// <summary>BOB divides z by this before querying campaign terrain (QTU TileMapProcessed surface).</summary>
-    public const float CampaignZScale = 1.15476f;
+    /// <summary>Palette index Terry leaves where no layer painted a tree.</summary>
+    public const byte EmptyIndex = 255;
 
     public string Name => "trees";
-    public string ReplacesBobAction => "Terrain / Campaign Trees";
-    // tile_list: only orders the two when both are selected (the hf terrain reads the fresh tile list)
-    public IReadOnlyList<string> DependsOn => ["rasters", "tile_list"];
-
-    /// <summary>Keep the reference list's heights where a tree lands on exactly the same spot.</summary>
-    public bool ReuseReferenceHeights { get; init; } = true;
-
-    /// <summary>How far (world units) a reference height may be from today's lf ground and still be reused.</summary>
-    public const float ReuseTolerance = 0.08f;
+    public string ReplacesBobAction => "Campaign Trees";
+    public IReadOnlyList<string> DependsOn => ["heightmaps"];
 
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)
     {
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
-        else if (TerryProject.Load(ctx.TerryFile).Find("CampaignTree") is null) missing.Add("no CampaignTree map in the .terry");
-        foreach (var tsv in new[] { ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv })
-            if (!File.Exists(tsv)) missing.Add($"missing {tsv}");
+        else
+        {
+            var project = TerryProject.Load(ctx.TerryFile);
+            if (project.Find("CampaignTree") is not { } map) missing.Add("no CampaignTree map in the .terry");
+            else
+                try { TerrainComposite.Inputs(project, map); }
+                catch (FileNotFoundException e) { missing.Add(e.Message); }
+        }
+        if (MapDataPath(ctx) is null) missing.Add($"missing {Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf")} (CAIME's output)");
+        if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }
 
@@ -46,91 +48,58 @@ public sealed class TreesStep : ICampaignBuildStep
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
-        var db = TreeDatabase.Load(ctx.Paths.TreeIdsTsv, ctx.Paths.TreeVariantsTsv);
-
         var project = TerryProject.Load(ctx.TerryFile);
-        var (map, palette) = TiffMap.ReadPalette8(project.LayerTifPath(project.Find("CampaignTree")!));
-        var tileSize = TileHfHeight.TileSize3K;
-        var grid = HexGrid.ForTreeMap(map.Width, map.Height, (float)(map.Width * (595.1 / 1784)));
-        var colours = CampaignTreeGenerator.ReadTreeMap(map, palette, grid, AkExporter.NoTreeIndex);
+        var bounds = MapDataBounds.Read(MapDataPath(ctx)!);
+        var (map, palette) = TerrainComposite.Indexed(project, "CampaignTree");
+        if (palette is null) throw new InvalidDataException("the CampaignTree map has no palette");
+        var grid = HexGrid.ForTreeMap(map.Width, map.Height, bounds.Width);
+        if (MathF.Abs(grid.WorldHeight - bounds.Height) > 1e-3f)
+            notes.Add($"the {grid.Columns}x{grid.Rows} tree grid is {grid.WorldHeight} deep, map_data.esf says {bounds.Height}");
 
-        var reference = ReuseReferenceHeights && ctx.ReuseTreeHeights ? ReferenceTrees(ctx, grid, notes) : null;
-        LfSampler? lf = null;
-        var lfPath = ctx.OutFile("lf_height_map.compressed_map");
-        if (File.Exists(lfPath))
-            lf = new LfSampler(CompressedMap.Read(lfPath), map.Width * tileSize, map.Height * tileSize, tileSize);
-        else notes.Add("no lf_height_map.compressed_map (run step 'rasters'); trees not in the reference list get y = 0");
-        var terrain = lf is null || !UseTileHf ? null : TileHeights(ctx, notes);
+        ctx.Log("tree tables and height patches (packs)...");
+        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var db = TreeDatabase.FromPacks(packs);
+        var colours = CampaignTreeGenerator.ReadTreeMap(map, palette, grid, EmptyIndex);
+        ReportUnknownColours(colours, db, ctx.Paths.ModPacks, notes);
 
-        int reused = 0, sampled = 0;
-        var list = CampaignTreeGenerator.Generate(colours, grid, db, (col, row, x, z) =>
-        {
-            var ground = terrain?.TreeHeight(x, z) ?? lf?.Height(x, z / CampaignZScale);
-            // reuse only where the terrain is unchanged: same spot AND the reference y still on today's ground (lake
-            // shaping / island flattening / terrain polish moved the ground under kept trees, 2026-10-04)
-            if (reference != null && reference.TryGetValue((col, row), out var r) &&
-                BitConverter.SingleToInt32Bits(r.X) == BitConverter.SingleToInt32Bits(x) &&
-                BitConverter.SingleToInt32Bits(r.Z) == BitConverter.SingleToInt32Bits(z) &&
-                (ground is null || Math.Abs(r.Y - ground.Value) <= ReuseTolerance))
-            {
-                reused++;
-                return r.Y;
-            }
-            sampled++;
-            return ground ?? 0f;
-        });
+        var logicPath = LogicMapPath(ctx);
+        if (logicPath is null) throw new FileNotFoundException("no full_logic_map.compressed_map (run step 'heightmaps')");
+        if (!logicPath.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"logic map from {logicPath}");
+        var patches = TreeHeightField.LoadPatches(project, packs, notes);
+        ctx.Cancel.ThrowIfCancellationRequested();
+        ctx.Log("placing trees...");
+        // the terrain provider's bounds are the project's world_width, not map_data.esf's (Old World: 1367.4 vs 1367.396)
+        var field = new TreeHeightField(CompressedMap.Read(logicPath), project.WorldWidth ?? bounds.Width, patches);
+        var list = CampaignTreeGenerator.Generate(colours, grid, db, (_, _, x, z) => field.Height(x, z));
 
         var path = Path.Combine(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName));
         list.Save(path);
-        notes.Add($"{list.TotalInstances} trees of {list.Types.Count} types on a {grid.Columns}x{grid.Rows} hex grid; " +
-                  $"heights: {reused} from the reference list, {sampled} computed ({(terrain is null ? "lf" : "lf + tile hf")})");
-        if (list.TotalInstances == 0) notes.Add("the CampaignTree map has no tree colours: the list is empty");
+        notes.Add($"{list.TotalInstances} trees of {list.Types.Count} types on a {grid.Columns}x{grid.Rows} hex grid " +
+                  $"({db.Ids.Count} tree ids)");
         return new StepResult(Name, [path], notes, sw.Elapsed);
     }
 
-    /// <summary>Add the per-tile hf of the tile list's tiles (rivers, roads, canals) to the lf height, as BOB does.</summary>
-    public bool UseTileHf { get; init; } = true;
-
-    /// <summary>BOB's tile-space terrain height (lf + per-tile hf) when a tile list and the game's tile database exist.</summary>
-    private static TileHfHeight? TileHeights(CampaignBuildContext ctx, List<string> notes)
-    {
-        // BOB's Campaign Trees reads the tile list through the game's file system (the packed/compiled one), not the
-        // kit's working copy: on vanilla the kit tile list (built from the kit tile map) moves 1,359 tree heights
-        var tl = new[] { ctx.OutFile("tile_list.bin"),
-                         Path.Combine(ctx.Paths.TerrainDir, "tile_list.bin"),
-                         Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "tile_list.bin") }.FirstOrDefault(File.Exists);
-        if (tl is null || !Directory.Exists(ctx.Paths.GameDataDir))
-        {
-            notes.Add("no tile_list.bin or game data folder: tree heights are lf only (no river/road/canal hf)");
-            return null;
-        }
-        var packs = PackSet.OpenVanilla(ctx.Paths.GameDataDir);
-        var prefix = PackFile.Normalize(TileDatabase.Folder);
-        var db = TileDatabase.Load(packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(prefix, StringComparison.Ordinal))
-            .Distinct().Select(k => packs.TryRead(k)).OfType<byte[]>());
-        var lfMap = CompressedMap.Read(ctx.OutFile("lf_height_map.compressed_map"));
-        notes.Add($"tree heights: lf + tile hf ({Path.GetFileName(Path.GetDirectoryName(tl))}/tile_list.bin)");
-        // Campaign Trees' provider (qttoolutility FUN_18011f1d0): the tiles registered at the point's cell, highest
-        // answering height (vanilla: all 205,767 trees bit-exact against BOB's own output)
-        return new TileHfHeight(TileList.Read(tl), db, packs.TryRead, lfMap, TileHfHeight.TileSize3K) { BobCells = true };
-    }
-
-    /// <summary>The reference list's trees by hex (compiled root, then working_data), if it is on the same grid.</summary>
-    private static Dictionary<(int, int), TreeInstance>? ReferenceTrees(CampaignBuildContext ctx, HexGrid grid, List<string> notes)
-    {
-        var path = new[] { ctx.Paths.TreeList, Path.Combine(ctx.Paths.AkWorkingDir, TreeExporter.PackPath(ctx.MapName)) }
+    /// <summary>map_data.esf: the build output's, else the kit's working_data (CAIME writes it there).</summary>
+    public static string? MapDataPath(CampaignBuildContext ctx) =>
+        new[] { Path.Combine(ctx.CampaignMapOutDir, "map_data.esf"), Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf") }
             .FirstOrDefault(File.Exists);
-        if (path is null) return null;
-        var list = CampaignTreeList.Load(path);
-        if (list.WorldWidth != grid.WorldWidth || list.WorldHeight != grid.WorldHeight)
-        {
-            notes.Add($"reference tree list {path} is {list.WorldWidth}x{list.WorldHeight}, not " +
-                      $"{grid.WorldWidth}x{grid.WorldHeight}; heights not reused");
-            return null;
-        }
-        var byHex = new Dictionary<(int, int), TreeInstance>();
-        foreach (var t in list.Types.SelectMany(type => type.Instances))
-            byHex.TryAdd(grid.HexAt(t.X, t.Z), t);
-        return byHex;
+
+    /// <summary>full_logic_map.compressed_map: this build's (step heightmaps), else the kit's working_data.</summary>
+    public static string? LogicMapPath(CampaignBuildContext ctx) =>
+        new[] { ctx.OutFile("full_logic_map.compressed_map"),
+                Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "full_logic_map.compressed_map") }
+            .FirstOrDefault(File.Exists);
+
+    /// <summary>Painted colours that no campaign_tree_ids row has: BOB places no tree there either, usually because the mod
+    /// pack that defines them is not linked.</summary>
+    private static void ReportUnknownColours(int[] colours, TreeDatabase db, IReadOnlyList<string> modPacks, List<string> notes)
+    {
+        var known = db.ColourGroups();
+        var unknown = colours.Where(c => c != CampaignTreeGenerator.NoTree && !known.ContainsKey((uint)c & 0xFFFFFF))
+            .GroupBy(c => c).OrderByDescending(g => g.Count()).ToList();
+        if (unknown.Count == 0) return;
+        notes.Add($"{unknown.Sum(g => g.Count())} hexes have a tree colour no campaign_tree_ids row has, so they get no tree: " +
+                  string.Join(", ", unknown.Take(8).Select(g => $"#{g.Key:X6} ({g.Count()})")) + (unknown.Count > 8 ? ", ..." : "") +
+                  (modPacks.Count == 0 ? ". No mod pack is linked: link the pack that defines these trees (--pack)" : ""));
     }
 }

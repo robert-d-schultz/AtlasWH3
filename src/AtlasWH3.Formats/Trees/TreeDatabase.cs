@@ -1,4 +1,5 @@
 using AtlasWH3.Formats.Db;
+using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Formats.Trees;
 
@@ -52,6 +53,50 @@ public sealed class TreeDatabase
             foreach (var row in t.Rows) cultures[t.Get(row, "culture")] = t.Get(row, "tree_type");
         }
         return new TreeDatabase(ids, variants, cultures);
+    }
+
+    /// <summary>
+    /// The tables from game packs (<paramref name="packs"/> highest priority first, e.g. the map's mod packs in front of
+    /// the vanilla db packs): every table file of each pack, a key from a higher-priority pack winning. Mods add their
+    /// own files (IEE's cr_iee_campaign_trees adds the khuresh, khosun, mushroom, yellow and amber trees; Old World's
+    /// cr_oldworld_campaign 34 more), and BOB placed those trees, so the map's packs belong in front of vanilla.
+    /// </summary>
+    public static TreeDatabase FromPacks(PackSet packs)
+    {
+        var ids = new Dictionary<string, TreeId>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (t, row) in Rows(packs, "campaign_tree_ids_tables"))
+        {
+            var id = (string)t.Get(row, "tree_id")!;
+            var colour = (uint)(Convert.ToInt32(t.Get(row, "colour_r")) << 16 | Convert.ToInt32(t.Get(row, "colour_g")) << 8 |
+                                Convert.ToInt32(t.Get(row, "colour_b")));
+            ids.TryAdd(id, new TreeId(id, t.Get(row, "can_be_removed") is true, colour));
+        }
+        var variants = new Dictionary<(string, string), Variant>();
+        foreach (var (t, row) in Rows(packs, "campaign_tree_variants_tables"))
+        {
+            var v = new Variant((string)t.Get(row, "tree_id")!, (string)t.Get(row, "tree_type")!, (string)t.Get(row, "tree_rigid")!);
+            variants.TryAdd((v.TreeId.ToLowerInvariant(), v.TreeType.ToLowerInvariant()), v);
+        }
+        var cultures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (t, row) in Rows(packs, "campaign_tree_type_cultures_tables"))
+            cultures.TryAdd((string)t.Get(row, "culture")!, (string)t.Get(row, "tree_type")!);
+        if (ids.Count == 0) throw new FileNotFoundException("no campaign_tree_ids_tables in the packs");
+        return new TreeDatabase(ids, [.. variants.Values], cultures);
+    }
+
+    /// <summary>The rows of every file of <paramref name="table"/>, highest-priority pack first (a file name shadowed by a
+    /// higher-priority pack is read from that pack only).</summary>
+    private static IEnumerable<(DbBinaryTable.Table Table, object?[] Row)> Rows(PackSet packs, string table)
+    {
+        var prefix = PackFile.Normalize($"db/{table}/");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pack in packs.Packs)
+        foreach (var file in pack.Entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            if (!seen.Add(file)) continue;
+            var t = DbBinaryTable.Read(table, pack.TryRead(file)!);
+            foreach (var row in t.Rows) yield return (t, row);
+        }
     }
 
     /// <summary>The model of <paramref name="treeId"/> for <paramref name="treeType"/>, else its BASE model, else any.</summary>

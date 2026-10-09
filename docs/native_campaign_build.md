@@ -11,6 +11,40 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | Step | Replaces BOB action | Parity (IEE `cr_combi_expanded_map_1`, Old World `cr_oldworld_map_1`) |
 |---|---|---|
 | `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
+| `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
+
+### trees.campaign_tree_list (WH3)
+
+Read off qttoolutility (capstone, 2026-10-08) and measured on the fixtures:
+
+- **Grid:** map_data.esf's CAMPAIGN_THEATRE bounds (`MapDataBounds`) and the composited CampaignTree map (2 px per hex;
+  255 = empty). Not the campaign_map_playable_areas row: Old World's row is IEE's 1068.1111 × 748.1, its map_data.esf
+  says 1367.396 × 1368.7428, as the tree list header does. IEE's map_data.esf is **CBAB** (CAAB with u32 string-table
+  lengths); `EsfTree` reads both.
+- **Placement:** 3K's rules (minstd_rand per hex; id, z jitter, x jitter, rotation) with one change:
+  z = row + (jitter − 0.2), where 3K had (row + jitter) − 0.2. Every IEE and Old World tree agrees.
+- **Tree ids:** BOB placed the mods' own trees, so `TreeDatabase.FromPacks` reads campaign_tree_ids from the linked mod
+  packs in front of vanilla db.pack (IEE's `cr_iee_campaign_trees` adds 28 ids, Old World's 34). The kit's
+  raw_data\db XML is vanilla only. Hexes painted with a colour no row has get no tree and are listed in the notes.
+- **Height** (`TreeHeightField`): `TerrainSurface::height` = `height_split`'s (hf, lf) → `sample_height_patches(lf) + hf`.
+  - The campaign provider (vtable 0x5fec10, +0x70) reads the nearest full_logic_map texel: z' = z / 1.15476,
+    texel (trunc(w · x / width), trunc(h · z' / depth)), row 0 south, value raw · (1/65535) · (hi − lo) + lo, hf = 0.
+    **width is the .terry's world_width** (Old World 1367.4, IEE 1068.11), not map_data.esf's; depth = h · (width / w).
+    With map_data's width Old World had 95.9% bit-exact; with the .terry's, 100%.
+  - Height patches (`sample_height_patches` 0x12f980, `add_height_patch` 0x12f090, record builder 0x135bc0, inverse
+    0xfea70): every entity of every layer file with apply_height_patch (and not camera-only); the x/z part of its QTU
+    world matrix inverted into model space; the patch's model bounds from its compressed-map header; bilinear sample
+    with f = (l − min) / (max − min) · size (not size − 1); v ≥ 0 only; height = v · |column 1| + position y, plus lf
+    when a material has add_terrain_height; the highest one wins over lf.
+  - Patch files come from the packs (vanilla plus the linked mod packs), not working_data, so campaign_tools'
+    height_patches.py export is no longer needed. add_terrain_height is read from each material's .xml.material.
+  - BOB's tree pass reads the logic map through the game's file system (the installed pack); the step reads the
+    build's own full_logic_map, so the heightmap → trees pack round trip is gone.
+- **Open (IEE):** 15,303 trees within 1e-3 but not bit-exact, almost all under height patches: a few to a few hundred
+  ulps, both signs, also on yaw-only unscaled props. Nudging a prop's yaw fixes some of its trees but never all, so
+  BOB's entity matrix differs from `QtuTransform`'s by more than the angle text (not yet found). 457 trees beyond
+  1e-3, not yet explained: some under patches (before the width fix, most of those sat under
+  ogr_large_mountain_01 and def_mountain_volcano_01 props, where BOB is lower), the rest terrain-only.
 
 ### full_height_map.dds (BC6H_SF16)
 

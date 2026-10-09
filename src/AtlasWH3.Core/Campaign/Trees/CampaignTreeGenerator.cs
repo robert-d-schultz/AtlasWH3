@@ -37,8 +37,9 @@ public readonly record struct HexGrid(int Columns, int Rows, float WorldWidth)
 
 /// <summary>
 /// BOB's campaign tree placement (QTU::CampaignTreeGenerator + generate_campaign_tree_list_for, decompiled from
-/// qttoolutility.modder.x64.dll), reproducing trees.campaign_tree_list byte for byte:
-///  - one tree per hex whose sampled tree-map colour matches a campaign_tree_ids colour_hex
+/// qttoolutility.modder.x64.dll), reproducing WH3's trees.campaign_tree_list (v4): ids, positions and rotations of
+/// every tree of the IEE and Old World lists:
+///  - one tree per hex whose sampled tree-map colour matches a campaign_tree_ids colour
 ///  - std::minstd_rand seeded with ((row &lt;&lt; 16) | col) % (2^31 − 1) (0 → 1) picks, in order: the tree id among
 ///    the ids of that colour (ordinal by id; uniform_int, no draw for a single id), the z jitter, the x jitter
 ///    (generate_canonical&lt;float&gt; · 0.4 − 0.2 each) and the rotation index (uniform_int 0..5)
@@ -73,7 +74,8 @@ public static class CampaignTreeGenerator
             var xj = rng.Canonical() * 0.4f;
             var rowZ = row * dz;
             if ((col & 1) != 0) rowZ += half;
-            var z = 0f + rowZ + zj - 0.2f;
+            // WH3 adds the jitter's −0.2 before the row (3K: (row + jitter) − 0.2); every IEE and Old World tree agrees
+            var z = rowZ + (zj - 0.2f);
             var x = xj - 0.2f + col * dx + 0f;
             var rotation = (byte)rng.UniformInt(0, 5);
             if (!instances.TryGetValue(id, out var list))

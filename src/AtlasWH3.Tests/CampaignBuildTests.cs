@@ -337,7 +337,7 @@ public class CampaignBuildTests
         var misses = new List<string>();
         foreach (var t in trees.Types.SelectMany(type => type.Instances))
         {
-            var y = terrain.Height(t.X, t.Z / AtlasWH3.Core.Campaign.Trees.TreesStep.CampaignZScale);
+            var y = terrain.Height(t.X, t.Z / AtlasWH3.Core.Campaign.Trees.TreeHeightField.ZScale);
             n++;
             if (BitConverter.SingleToInt32Bits(y) == BitConverter.SingleToInt32Bits(t.Y)) exact++;
             else if (misses.Count < 60) misses.Add(FormattableString.Invariant($"{t.X:R},{t.Z:R},{t.Y:R},{y:R}"));

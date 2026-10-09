@@ -57,6 +57,9 @@ Notes on what reads what:
   `.xml` in `working_data` (`campaign_tools/docs/height_patches.md`). So trees depend on the heightmap and on the
   layers' height-patched props. It is not yet known whether they read those props from the `.layer` files or from
   `global_props.bin`; Phase 2's file-read trace settles it.
+  **Settled 2026-10-08 (disassembly, 3.2):** the tree pass reads the props from the `.layer` files (every layer, visible
+  or not) and the logic map through the game's file system. The tree heights are the nearest full_logic_map texel plus
+  the patches; AtlasWH3 reads the patch files from the packs.
 
 That is two pack round trips:
 - the heightmap, before Tilemap and Trees
@@ -290,6 +293,12 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 byte-identical to BOB's on IEE and Old World; `full_height_map.dds` uses AtlasWH3's own BC6H encoder (neither
 BCnEncoder.NET's nor DirectXTex's was usable), with half BOB's RMS error on both maps. Left: the in-game check.
 Numbers in `docs/native_campaign_build.md`.
+
+**3.2 status (2026-10-08):** `TreesStep` is in the pipeline. Old World's list is byte-identical to BOB's. On IEE every
+tree id, position and rotation is identical, and 93.8% of heights are bit-exact (99.8% within 1e-3). The rest are ulps
+under height patches, plus 457 trees not yet explained. Found on the way: the grid comes from map_data.esf, the
+terrain width from the .terry's `world_width`, the tree ids from the mods' own tables as well, and the patches from
+the packs. IEE's map_data.esf is CBAB. Left: the in-game check. Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:
 - it is native in the hybrid pipeline,

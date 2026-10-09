@@ -8,8 +8,8 @@ THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline diffe
 retargeted to WH3 only.
 
 > **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
-> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 step, `heightmaps`, is in; the
-> other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps` and `trees`, are
+> in; the other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 

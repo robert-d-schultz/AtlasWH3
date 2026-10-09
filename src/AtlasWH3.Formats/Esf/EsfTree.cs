@@ -18,10 +18,13 @@ public sealed class EsfTree
 
     private readonly byte[] _b;
 
+    /// <summary>CBAB (0xABCB): CAAB with u32 string lengths in the string tables (the user's IEE map_data.esf).</summary>
+    public const uint CbabMagic = 0xABCB;
+
     private EsfTree(byte[] b)
     {
         _b = b;
-        if (BinaryPrimitives.ReadUInt32LittleEndian(b) != CaabFlat.Magic) throw new InvalidDataException("not a CAAB ESF");
+        if (BinaryPrimitives.ReadUInt32LittleEndian(b) is not (CaabFlat.Magic or CbabMagic)) throw new InvalidDataException("not a CAAB / CBAB ESF");
         var p = (int)BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(12));
         var names = new List<string>();
         int n = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(p)); p += 2;
@@ -31,17 +34,25 @@ public sealed class EsfTree
             names.Add(Encoding.Latin1.GetString(b, p, l)); p += l;
         }
         RecordNames = names;
+        // CBAB stores the string tables' lengths as u32, CAAB as u16
+        var wide = BinaryPrimitives.ReadUInt32LittleEndian(b) == CbabMagic;
+        int Length(ref int at)
+        {
+            var l = wide ? (int)BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(at)) : BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(at));
+            at += wide ? 4 : 2;
+            return l;
+        }
         var c16 = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p)); p += 4;
         for (var i = 0; i < c16; i++)
         {
-            int l = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(p)); p += 2;
+            var l = Length(ref p);
             var s = Encoding.Unicode.GetString(b, p, 2 * l); p += 2 * l;
             Utf16[BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p))] = s; p += 4;
         }
         var c8 = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p)); p += 4;
         for (var i = 0; i < c8; i++)
         {
-            int l = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(p)); p += 2;
+            var l = Length(ref p);
             var s = Encoding.Latin1.GetString(b, p, l); p += l;
             Ascii[BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p))] = s; p += 4;
         }

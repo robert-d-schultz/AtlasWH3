@@ -11,15 +11,14 @@ public sealed class CampaignBuildPipeline
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
     /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phase 3). A <see cref="PendingStep"/> is
-    /// not native yet: Atlas3K's 3K version of it (TileListStep, Trees.TreesStep, Props.GlobalPropsStep, …) is kept as
+    /// not native yet: Atlas3K's 3K version of it (TileListStep, Props.GlobalPropsStep, …) is kept as
     /// the basis of the re-port, but writes 3K formats, so it is not in the pipeline.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
         new HeightmapsStep(),
         new PendingStep("tile_list", "Tilemap", ["heightmaps"],
             "tile_list.bin v2 from tile_map.png on the WH3 tile database (Phase 3.3; Atlas3K's TileListStep writes 3K's v1)"),
-        new PendingStep("trees", "Campaign Trees", ["heightmaps"],
-            "trees.campaign_tree_list v4 with heights from full_logic_map and the WH3 tree tables (Phase 3.2; Atlas3K's TreesStep writes 3K's v5)"),
+        new Trees.TreesStep(),
         new PendingStep("global_map", "Global Tilemap, Campaign Global Blendmap", ["tile_list"],
             "global_map\\: 8-bit global_blend.dds, texture_arrays.xml and the subset tile_list.bin (Phase 3.4)"),
         new PendingStep("masks", "Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask", [],
@@ -88,7 +87,7 @@ public sealed class CampaignBuildPipeline
                     Progress?.Invoke(new StepEvent(step.Name, StepEventKind.Log, m));
                 }
                 var stepCtx = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, Log)
-                    { AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel, ReuseTreeHeights = ctx.ReuseTreeHeights };
+                    { AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel };
                 var problems = step.CheckInputs(stepCtx);
                 if (problems.Count > 0)
                 {

@@ -100,7 +100,7 @@ switch (command)
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
         Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
-        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--fresh-trees] [--river-geometry bob|wide] [--json]   native replacement for BOB's campaign actions (--fresh-trees: compute every tree height, no reference reuse; --river-geometry wide: wider game-valid river water instead of BOB's)");
+        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--river-geometry bob|wide] [--json]   native replacement for BOB's campaign actions (--river-geometry wide: wider game-valid river water instead of BOB's)");
         Console.WriteLine("          diagnose-campaign [--out <dir>] [--json]              per-step input check");
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
         Console.WriteLine("                [--out <dir>] [--pack-output <file>] [--json]      a project's build (as the GUI's Build window)");
@@ -140,13 +140,11 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--steps", out var steps);
     a = TakeOption(a, "--accept-tilemap", out var accept);
     a = TakeOption(a, "--river-geometry", out var riverGeometry);
-    var freshTrees = TakeFlag(ref a, "--fresh-trees");
     var json = TakeFlag(ref a, "--json");
     var sw = Stopwatch.StartNew();
     var ctx = new CampaignBuildContext(paths, outDir, json ? Console.Error.WriteLine : Console.WriteLine)
     {
         AcceptedTileMapIssues = (accept ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(),
-        ReuseTreeHeights = !freshTrees,
         RiverGeometry = riverGeometry ?? "bob",
     };
     var outcomes = new CampaignBuildPipeline().Run(ctx, steps?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
