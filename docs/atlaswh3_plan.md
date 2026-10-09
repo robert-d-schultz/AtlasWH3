@@ -207,9 +207,10 @@ Phases 1 and 2 overlap.
 
 The editors, the build and parity all need this foundation.
 
-- [ ] **Packs:** zstd entries in `PackFile` (u32 size + zstd frame) with a managed library (ZstdSharp.Port). Confirm
-  the header variant on the current game build (PFH5 expected).
-- [ ] **DB schemas:** this addresses the schema-drift concern. WH3 is still being updated, so table versions change.
+- [x] **Packs:** zstd entries in `PackFile` (u32 size + zstd frame) with a managed library (ZstdSharp.Port). Confirm
+  the header variant on the current game build (PFH5 expected). Done 2026-10-08: every pack is PFH5; some tile meshes
+  are LZ4 (K4os).
+- [x] **DB schemas:** this addresses the schema-drift concern. WH3 is still being updated, so table versions change.
   `DbBinaryTable` looks layouts up in RPFM's `schema_wh3.ron` (plain file, parsed directly) when present, falls back to
   an embedded snapshot, and reports an unknown version clearly instead of misreading it. Tables needed:
   - `campaigns`, `campaign_map_playable_areas`
@@ -218,19 +219,20 @@ The editors, the build and parity all need this foundation.
   - `campaign_map_event_areas`
   - `region_to_province_junctions`
   - the battle tables the Campaign battles window uses
-- [ ] **Terry:** `.terry` project v26 / scene v41; the WH3 TerrainMap types (Height / HeightSea float32, HeightShroud,
+- [x] **Terry:** `.terry` project v26 / scene v41; the WH3 TerrainMap types (Height / HeightSea float32, HeightShroud,
   BlendCampaign, ColorOverlay(Sea), CampaignTree, CorruptionMask, SnowMask, EventAreaMask, PatchVisibilityMask,
   BorderMask); regenerate `component_schema.json` / `entity_configuration.xml` from the WH3 kit; layer compositing
   rules (add, replace-unless-255, hard light, `dst + src·(1−dst)`, AND), from the decompiler's colour-overlay
   measurements.
-- [ ] **map.hex v20** (extra table plus the trailing bit array; 40 climates), from `campaign_tools/shared/map_hex.py`.
+- [x] **map.hex v20** (extra table plus the trailing bit array; 40 climates), from `campaign_tools/shared/map_hex.py`.
 - [ ] **Tile DB:** `_settings.bin` v12, tile `.bin` v6 / variation v11 (climate texture set), CHMF `hf_height_map.data`,
-  RMV2 v7 tile meshes. Copy from the decompiler's `Tiles/`.
+  RMV2 v7 tile meshes. Copy from the decompiler's `Tiles/`. Tiles, variations and `_settings.bin` done (2026-10-08);
+  CHMF and the RMV2 v7 tile meshes not yet checked on WH3.
 - [ ] **Compiled readers** for parity and the editors:
-  - `tile_list.bin` v2
-  - `trees.campaign_tree_list` v4
+  - `tile_list.bin` v2 (done: read and write, byte-identical)
+  - `trees.campaign_tree_list` v4 (done: read and write, byte-identical)
   - BMD v27 bodies, `global_props(_sound).bin` and `.culture` (copy from the decompiler's `Bmd/`)
-  - BC6H `full_height_map.dds`
+  - BC6H `full_height_map.dds` (done: decoder and encoder, `Bc6h`)
   - `map_data.esf` with `REGION_AREA_INDEX`
   - hlp/spd v1 (read only)
 - [ ] **Fixtures:** freeze one source + BOB-output snapshot per fixture map outside the kit (`%LocalAppData%\AtlasWH3\
@@ -246,20 +248,22 @@ The editors, the build and parity all need this foundation.
 
 This is the first user-visible win. It fixes the 20-minute problem before any step is native.
 
-- [ ] Confirm the §2 sequence by instrumenting one run of each action (file reads, as `bob_mcp`'s file filter does):
-  - exactly which pack entries Tilemap, Trees and Global Tilemap read
-  - **which pack BOB reads** (the game's `data` folder? which mod packs, in what priority?)
-  - what Devastation pieces reads
-- [ ] A `BobStep` step kind that runs one or more BOB actions headless (batch config with `<silent>1</silent>` and
-  `<selected_actions>`, verified from `bob.log`), ported from `tools/bob_mcp` to C#. Group consecutive BOB actions
-  into **one BOB launch**, so the startup cost is paid once.
-- [ ] Automatic pack round trips (the two in §2): after Heightmap, and after Tilemap, write a minimal temporary pack
-  from `working_data` with `PackWriter`, put it where BOB reads it with top priority, run, and remove it. The user never
-  packs by hand. This is temporary: it goes away once Phase 3.1–3.4 are native.
+**Found 2026-10-08 ([`bob_wh3.md`](bob_wh3.md)):** WH3's BOB has no `<selected_actions>`. A silent run of the map's
+`.terry` always runs the same 8 default actions (Terry file, the six terrain-map masks, Devastation pieces) and opens
+no game pack. Campaign Heightmap, Shroud Heights, Tilemap, Trees, Global Tilemap and the camera height map exist only in
+the GUI's action popup, so they have **no headless fallback**: 3.1–3.4 must be native. The pack round trips of §2 come
+from those GUI actions alone, so they go away with 3.1–3.4 and are not automated.
+
+- [x] Confirm the §2 sequence by instrumenting a run (Frida file-read trace, `research/bob_re/`): the default group reads
+  the kit only; the GUI-only actions are not instrumented, since they are replaced rather than driven.
+- [x] Headless BOB: `ScratchKit` (an isolated copy of the kit, so BOB never writes into the user's) and `BobRunner`
+  (silent run of the default group, `bob.log` guard, one launch). CLI `bob-scratch`, `bob-run`, `bob-actions`.
+- [ ] ~~Automatic pack round trips~~: dropped, see above.
 - [ ] Devastated builds without the fake campaign: work out the minimum BOB needs for Devastation pieces, so the
   hybrid build can make the pieces without the user keeping a fake `campaign_maps\<map>_devastate_1`.
-- [ ] Hybrid pipeline: each step resolves to native when it is ported and enabled, otherwise to BOB. Per-step override
-  in the project file. Native steps run in parallel as they do now.
+- [ ] Hybrid pipeline: each step resolves to native when it is ported and enabled, otherwise to the BOB default group
+  (one group, run after the native `tile_list` and `trees` are written into the scratch kit, or its pieces lose them).
+  Per-step override in the project file. Native steps run in parallel as they do now.
 - [ ] Pack and install segments retargeted to WH3 (`data` folder, `Warhammer3.exe` running check).
 - [ ] The `trim_mips` fix-up is built in as a step before Devastation pieces, while that action is still BOB's.
 - [ ] Timing report per step, so the next native step can be chosen by measured time saved.
@@ -281,6 +285,11 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 | 3.8 | `camera_heightmap` | `camera_heightmap.png` (0.5 px/hex on IE; tEXt `height_scale`, 8192-byte IDAT chunks, Atlas3K's byte-exact PNG/zlib writer) | logic heights + prop height patches (`height_patches.py`). BOB crashes on this action (§2), so this replaces hand editing. Check it against CA's shipped vanilla IE file, and against the user's hand-made IEE and Old World files. Worth moving earlier if the hand editing costs more than the BOB steps. | ~1 w |
 | 3.9 | `global_props` | `global_props.bin`, `global_props_sound.bin`, `global_props[_sound]_devastation_<type>.bin` for every `bmd_export_type`, custom ones included (BMD v27, culture-mask buckets) | the decompiler's reader is the spec; region lookup from map.hex v20 + map_data bounds; IEE fixture | 2–3 w |
 | 3.10 | `rivers` (part of BOB's props action) | `models/river_<id>` RMV2 v8 2-vertex ribbon + `.wsmodel` | the decompiler's `docs/river-splines.md` (tessellation rules already measured). Only `ECRiver` splines are baked; a prop that references a river mesh is an ordinary prop. | 1–2 w |
+
+**3.1 status (2026-10-08):** `HeightmapsStep` is in the pipeline. `full_logic_map` and `shroud_heights.dds` are
+byte-identical to BOB's on IEE and Old World; `full_height_map.dds` uses AtlasWH3's own BC6H encoder (neither
+BCnEncoder.NET's nor DirectXTex's was usable), with half BOB's RMS error on both maps. Left: the in-game check.
+Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:
 - it is native in the hybrid pipeline,

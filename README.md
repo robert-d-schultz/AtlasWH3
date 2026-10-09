@@ -7,9 +7,9 @@ AtlasWH3 is a standalone fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3
 THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline differs a lot from 3K's, so AtlasWH3 is
 retargeted to WH3 only.
 
-> **Status: early port.** Phase 0 (fork housekeeping) is done: the code builds on .NET 10 as AtlasWH3, the 3K-only
-> parts are cut, and the build pipeline lists the WH3 steps, all but `lookup` still pending. Nothing builds a WH3 map
-> yet. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
+> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 step, `heightmaps`, is in; the
+> other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -40,7 +40,9 @@ The goal is **one command that rebuilds the whole map from loose files**, with n
 | `global_props` + `rivers` | `global_props.bin`, `global_props_sound.bin`, devastation-type BMDs, `models\river_*` | the props / Terry export action |
 | `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation (last) |
 
-Until a step is native, the build runs that BOB action headless and handles the pack round trips itself.
+Only BOB's default actions can run headless (the Terry file, the mask textures and Devastation pieces, as one group;
+see [`docs/bob_wh3.md`](docs/bob_wh3.md)). Until those steps are native, the hybrid build (Phase 2) will run that group in
+an isolated copy of the kit. Heightmap, Tilemap, Trees and Global Tilemap can't run headless, so they go native first.
 - **The aim:** files that work correctly in game first, then byte-identical to BOB's output wherever that is
   practical.
 - **Inputs, not outputs:** `map.hex`, `map_data.esf`, `pathfinding.ppd` and the lookup `.bmp` come from CAIME, as
