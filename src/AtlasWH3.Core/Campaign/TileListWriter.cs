@@ -8,25 +8,26 @@ public sealed record PlacedTile(CampaignTile Tile, int X, int Y, int Rotation, i
 /// <summary>A float height field like BOB's SCALAR_FIELD: row 0 is the north row.</summary>
 public sealed record HeightField(float[] Data, int Width, int Height)
 {
-    /// <summary>A u16 height TIF as BOB loads it (value / 65535).</summary>
-    public static HeightField FromRaster(Raster<ushort> r) =>
-        new(r.Data.Select(v => v / 65535f).ToArray(), r.Width, r.Height);
+    /// <summary>A composited Terry height map (TerrainComposite.Heights), as is.</summary>
+    public static HeightField FromRaster(Raster<float> r) => new(r.Data, r.Width, r.Height);
 
     public static HeightField Constant(float value) => new([value], 1, 1);
 }
 
 /// <summary>
-/// Turns BOB's placed tiles into terrain\campaigns\&lt;map&gt;\tile_list.bin, the way BOB's Tilemap action finishes
-/// (decompiled, see docs/bob_re_tile_placement.md):
+/// Turns BOB's placed tiles into terrain\campaigns\&lt;map&gt;\tile_list.bin, the way WH3's Tilemap action finishes
+/// (warscape.modder.x64.dll; Atlas3K's 3K notes in docs/bob_re_tile_placement.md):
 ///  - WARSCAPE::TILE_MAP::calculate_flow: breadth-first from every river_mouth tile along river links. Each newly
 ///    reached river tile gets flow = is_entry of its link pointing back into the previous tile; river junctions
 ///    (3+ river links) whose back link is an entry are swapped for the first same-layout tile whose back link is an
-///    exit, or removed if there is none.
-///  - TILE_MAP::calculate_lf_min_maxs: low/high = min/max of the lf field (alt/sea field for use_alt_lf tiles) over
-///    [anchor - 2, anchor + max(w, h) + 2) in tile-map units, mapped with float divisions.
+///    exit, or removed if there is none. Neither fixture map has river tiles, so this is 3K's rule unchecked.
+///  - TILE_MAP::calculate_lf_min_maxs (0x1805b62b0): low/high = min/max of the composited Height map (HeightSea for
+///    use_alt_lf tiles: the sea set) over [anchor − 2, anchor + max(w, h) + 2) tile-map units. The box is mapped by
+///    multiplying with 1/W and 1/H, not dividing (BATTLE_TILE_MAP's copy divides): on a map height that is not a
+///    power of two that sometimes takes one more texel row. A NaN texel counts as 0.
 ///  - TILE_MAP::build_battle_field + BATTLE_TILE_MAP::add_tile and the serializer: records cell by cell (rows from the
 ///    south, then columns) at each instance's first covered cell, layer 1 before layer 2; orientation = rotation |
-///    0x04 when flowing; flag 7; path and climate tables in first-use order; map_area = bounds of anchor ± max(w, h).
+///    0x04 when flowing; flag 7; the path table sorted (ordinal), climates in first-use order.
 /// </summary>
 public static class TileListWriter
 {
@@ -60,8 +61,11 @@ public static class TileListWriter
                 }
     }
 
+    /// <param name="width">Tile map width (2 points per hex).</param>
+    /// <param name="height">Tile map height (2 points per hex, plus 1).</param>
+    /// <param name="tileMask">tile_mask.dds (<see cref="TileMask"/>).</param>
     public static TileList Build(CampaignTileDatabase db, int width, int height, IEnumerable<PlacedTile> placed,
-                                 HeightField lf, HeightField altLf, Func<CampaignTile, bool> useAltLf)
+                                 HeightField land, HeightField sea, out byte[] tileMask)
     {
         var instances = placed.Select(p => new Instance(p)).ToList();
         var grids = new Dictionary<int, int[]> { [1] = new int[width * height], [2] = new int[width * height] };
@@ -80,58 +84,84 @@ public static class TileListWriter
 
         CalculateFlow(db, instances, grids, width, height);
 
-        foreach (var inst in instances)
-            (inst.Low, inst.High) = MinMax(useAltLf(inst.Tile) ? altLf : lf, inst, width, height);
+        Parallel.ForEach(instances, inst => (inst.Low, inst.High) = MinMax(inst.Tile.UseAltLf ? sea : land, inst, width, height));
 
-        var list = new TileList();
-        var pathIndex = new Dictionary<string, uint>(StringComparer.Ordinal);
-        var climateIndex = new Dictionary<int, byte>();
-        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        var first = true;
+        var order = new List<Instance>(instances.Count);
         for (var cell = 0; cell < width * height; cell++)
             foreach (var layer in new[] { 1, 2 })
             {
                 var id = grids[layer][cell];
-                if (id <= 0) continue;
-                var inst = instances[id - 1];
-                if (inst.Removed) continue;
-                var location = inst.Tile.Variations[0].Location;
-                if (!pathIndex.TryGetValue(location, out var path))
-                {
-                    pathIndex[location] = path = (uint)list.Paths.Count;
-                    list.Paths.Add(location);
-                }
-                if (!climateIndex.TryGetValue(inst.Climate, out var climate))
-                {
-                    climateIndex[inst.Climate] = climate = (byte)list.Climates.Count;
-                    list.Climates.Add(db.Climates[inst.Climate].Name);
-                }
-                var size = Math.Max(inst.Tile.Width, inst.Tile.Height);
-                if (first) { x0 = inst.X - size; y0 = inst.Y - size; x1 = inst.X + size; y1 = inst.Y + size; first = false; }
-                x0 = Math.Min(x0, inst.X - size); y0 = Math.Min(y0, inst.Y - size);
-                x1 = Math.Max(x1, inst.X + size); y1 = Math.Max(y1, inst.Y + size);
-                list.Records.Add(new TileList.Record
-                {
-                    Version = 1, Path = path, Climate = climate, X = (ushort)inst.X, Y = (ushort)inst.Y,
-                    Orientation = (byte)(inst.Rotation | (inst.Flow ? 4 : 0)), Flag = 7,
-                    LowHeight = inst.Low, HighHeight = inst.High,
-                });
+                if (id > 0 && !instances[id - 1].Removed) order.Add(instances[id - 1]);
             }
-        list.Floats = [0, 0, 1, 1, 500, 1.333f];
-        // two empty strings (lf height / normal map), battle size, battle centre, origin offset, map_area
-        list.Ints = [0, width, height, width / 2, height / 2, 0, 0, x0, y0, x1, y1];
+
+        var list = new TileList();
+        list.Paths.AddRange(order.Select(i => i.Tile.Variations[0].Location).Distinct().Order(StringComparer.Ordinal));
+        var pathIndex = list.Paths.Select((p, i) => (p, i)).ToDictionary(x => x.p, x => (uint)x.i);
+        var climateIndex = new Dictionary<int, byte>();
+        int x0 = 0, y0 = 0;
+        foreach (var inst in order)
+        {
+            if (!climateIndex.TryGetValue(inst.Climate, out var climate))
+            {
+                climateIndex[inst.Climate] = climate = (byte)list.Climates.Count;
+                list.Climates.Add(db.Climates[inst.Climate].Name);
+            }
+            var size = Math.Max(inst.Tile.Width, inst.Tile.Height);
+            x0 = Math.Min(x0, inst.X - size);
+            y0 = Math.Min(y0, inst.Y - size);
+            list.Records.Add(new TileList.Record
+            {
+                Version = 1, Path = pathIndex[inst.Tile.Variations[0].Location], Climate = climate,
+                X = (ushort)inst.X, Y = (ushort)inst.Y, Orientation = (byte)(inst.Rotation | (inst.Flow ? 4 : 0)), Flag = 7,
+                LowHeight = inst.Low, HighHeight = inst.High,
+            });
+        }
+        list.Floats = [0, 0, 0, 0, 500, 1.333f];
+        // the tile map, the hex grid, then the map area: from the lowest anchor − max(w, h) to the tile map + 2
+        list.Ints = [0, width, height, width / 2, height / 2, 0, 0, x0, y0, width + 2, height + 2];
         list.Marker = 1;
+        tileMask = TileMask(db, instances, grids, width, height);
         return list;
     }
 
+    /// <summary>
+    /// tile_mask.dds, written by the Tilemap action with the tile list: one byte per tile-map point, rows from the south,
+    /// as an 8-bit luminance DDS. Each tile on the point (both layers) adds 16 for a land tile and 32 for a use_alt_lf
+    /// (sea) tile, nothing when its set is exclude_from_global_mesh (roads, cliffs, coasts); a point with no tile is 64.
+    /// Byte-identical to BOB's on IEE and Old World given BOB's placement.
+    /// </summary>
+    private static byte[] TileMask(CampaignTileDatabase db, List<Instance> instances, Dictionary<int, int[]> grids, int width, int height)
+    {
+        var header = AtlasWH3.Formats.Dds.DdsHeader.BuildL8(width, height);
+        var mask = new byte[header.Length + width * height];
+        header.CopyTo(mask, 0);
+        for (var cell = 0; cell < width * height; cell++)
+        {
+            int value = 0, tiles = 0;
+            foreach (var grid in grids.Values)
+            {
+                var id = Math.Abs(grid[cell]);
+                if (id == 0 || instances[id - 1].Removed) continue;
+                tiles++;
+                var tile = instances[id - 1].Tile;
+                if (db.TileSet(tile.TileSet) is { ExcludeFromGlobalMesh: true }) continue;
+                value |= tile.UseAltLf ? 32 : 16;
+            }
+            mask[header.Length + cell] = (byte)(tiles == 0 ? 64 : value);
+        }
+        return mask;
+    }
+
+    /// <summary>TILE_MAP::calculate_lf_min_maxs for one instance.</summary>
     private static (float Low, float High) MinMax(HeightField f, Instance inst, int width, int height)
     {
-        var size = Math.Max(inst.Tile.Width, inst.Tile.Height);
         static float Clamp(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
-        var u0 = Clamp((inst.X - 2) / (float)width);
-        var v0 = Clamp((inst.Y - 2) / (float)height);
-        var u1 = Clamp(((float)inst.X + size + 2f) / width);
-        var v1 = Clamp(((float)inst.Y + size + 2f) / height);
+        float size = Math.Max(inst.Tile.Width, inst.Tile.Height);
+        float rw = 1f / width, rh = 1f / height;
+        var u0 = Clamp((inst.X - 2) * rw);
+        var v0 = Clamp((inst.Y - 2) * rh);
+        var u1 = Clamp((inst.X + size + 2f) * rw);
+        var v1 = Clamp((inst.Y + size + 2f) * rh);
         var colEnd = u1 * f.Width;
         var rowEnd = v1 * f.Height;
         float low = float.MaxValue, high = -float.MaxValue;
@@ -141,6 +171,7 @@ public static class TileListWriter
             for (var col = (int)(u0 * f.Width); col < colEnd; col++)
             {
                 var v = f.Data[baseIndex + col];
+                if (float.IsNaN(v)) v = 0f;
                 if (v <= low) low = v;
                 if (high <= v) high = v;
             }

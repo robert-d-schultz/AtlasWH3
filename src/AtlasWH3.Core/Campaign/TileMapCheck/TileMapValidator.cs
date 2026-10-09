@@ -327,7 +327,9 @@ public static class TileMapValidator
         var files = ClimateFiles(dir);
         if (files.Length == 0)
         {
-            add("climate.missing", TileMapFinding.Error, $"no climate_map.png / climate_map_g.png in {dir}", null, null);
+            // WH3's campaign tile database has one climate ("default") and its maps have no climate map
+            if (db.Climates.Count > 1)
+                add("climate.missing", TileMapFinding.Error, $"no climate_map.png / climate_map_g.png in {dir}", null, null);
             return;
         }
         var quarter = files.FirstOrDefault(f => f.W == map.PixelWidth && f.H == map.PixelHeight);
@@ -466,7 +468,8 @@ public static class TileMapValidator
                 $"{stray.Count} hexes hold stray off-palette pixels (rare or near-miss colours; no tile goes there): repaint with the nearest colour, e.g. {string.Join(", ", strayColours)}",
                 map.HasHexLayout ? stray : null, stray.Count);
         if (black.Count > 0)
-            add("palette.black", TileMapFinding.Error, $"{black.Count:N0} hexes are black (no tile set): they get no tile", black, null);
+            // a warning, not an error: WH3 maps leave everything off the playable area black (no tile, as in BOB)
+            add("palette.black", TileMapFinding.Warning, $"{black.Count:N0} hexes are black (no tile set): they get no tile", black, null);
         return groups;
     }
 

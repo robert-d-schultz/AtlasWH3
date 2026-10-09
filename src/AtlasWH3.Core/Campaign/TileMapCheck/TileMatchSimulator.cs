@@ -37,11 +37,11 @@ public sealed record TileMatchResult(TileMatchSummary Summary, IReadOnlyList<(in
 /// points; each pixel's exact RGB picks a placement group (tile set, tile or variation colour). Passes large,
 /// transition, junction, link target, linked and all place tiles whose sub-tiles all fall in one group, whose
 /// links (TLT_EQUALS / TLT_NOT_EQUALS) agree with the neighbours and with the link map earlier tiles left.
-/// Same database order, introsort, xoroshiro128+ seed and quirks as BOB. Checked against BOB runs: vanilla per-pass
-/// counts large/transition/junction/link-target are exact, linked/all within 0.05%, and the uncovered points are
-/// BOB's (vanilla 175 of 176, main190 all 54 plus 4). Which of several equally ranked edge tiles BOB tries first is
-/// not reproduced yet (~12% of records differ in variant or rotation), and with it BobFailedMessages, which depends on
-/// the last candidate of the final pass, is approximate.
+/// Same database order, introsort, xoroshiro128+ seed and quirks as BOB. WH3's BOB differs from 3K's in two places,
+/// both read off warscape.modder.x64.dll: passes 2-5 visit scan_tile_areas' point list (<see cref="ScanPoints"/>), and
+/// the junction pass's 2×2 strip rule also skips a tile whose neighbour points fall off the map
+/// (<see cref="TwoHighStripBeside"/>). With them every placement on the WH3 fixtures (IEE, Old World) is BOB's.
+/// BobFailedMessages, which depends on the last candidate of the final pass, is approximate.
 /// </summary>
 public sealed class TileMatchSimulator
 {
@@ -64,6 +64,10 @@ public sealed class TileMatchSimulator
         public string Variation0 = "";
         public (int Set, int Lx, int Ly, int Tx, int Ty)[] LinkEntries = [];   // EDITOR_TILE_MAP this+0x68
         public bool[] MatchesGroup = [];  // TILE_PLACEMENT_GROUPS::matches(group, variation(0))
+        public (int Dx, int Dy)[][] Offsets = [];   // per rotation, the valid sub-tiles' offsets in space_free's order
+        public (int Dx, int Dy)[][] LinkOffsets = [];       // per rotation, per link
+        public (int Dx, int Dy)[][] TargetOffsets = [];     // per rotation, per target
+        public int[] LinkAsSets = [];                       // per link: the set its set links as (Invalid if none)
 
         public bool SubtileValid(int col, int row)
         {
@@ -123,8 +127,19 @@ public sealed class TileMatchSimulator
             t.MatchesGroup = new bool[_groups.Length];
             for (var g = 0; g < _groups.Length; g++)
                 t.MatchesGroup[g] = _groups[g].Sets.Contains(t.Set) || _groups[g].VariationKeys.Contains(VariationKey(t.Source, 0));
+            t.LinkOffsets = Enumerable.Range(0, 4).Select(r => t.Links.Select(l => Rotate(t.W, t.H, r, l.X, t.H - l.Y - 1)).ToArray()).ToArray();
+            t.TargetOffsets = Enumerable.Range(0, 4).Select(r => t.Targets.Select(x => Rotate(t.W, t.H, r, x.X, t.H - x.Y - 1)).ToArray()).ToArray();
+            t.LinkAsSets = t.Links.Select(l => l.Set >= 0 ? SetIndex(_setLinkAs[l.Set]) : Invalid).ToArray();
         }
+        var names = _setLinkAs.Distinct().ToList();
+        _linkAsId = _setLinkAs.Select(n => names.IndexOf(n)).ToArray();
+        _matchesLinkAs = new bool[_groups.Length * _setCount];
+        for (var g = 0; g < _groups.Length; g++)
+            for (var set = 0; set < _setCount; set++) _matchesLinkAs[g * _setCount + set] = MatchesLinkAs(g, set);
     }
+
+    private readonly int[] _linkAsId;          // per set: its link_as name, as an id
+    private readonly bool[] _matchesLinkAs;    // MatchesLinkAs(group, set), [group * set count + set]
 
     private int SetIndex(string name) => _setByName.TryGetValue(name, out var i) ? i : Invalid;
 
@@ -143,6 +158,11 @@ public sealed class TileMatchSimulator
         for (var r = 0; r < tile.H; r++)
             for (var c = 0; c < tile.W; c++)
                 if (tile.SubtileValid(c, r)) tile.ValidCount++;
+        tile.Offsets = Enumerable.Range(0, 4).Select(rot =>
+            (from row in Enumerable.Range(0, tile.H)
+             from col in Enumerable.Range(0, tile.W)
+             where tile.SubtileValid(col, row)
+             select Rotate(tile.W, tile.H, rot, col, tile.H - row - 1)).ToArray()).ToArray();
         return tile;
     }
 
@@ -239,6 +259,9 @@ public sealed class TileMatchSimulator
     private Xoroshiro _rng;
     private readonly List<SimulatedTile> _placed = [];
     private readonly Dictionary<(int Group, int Tile), List<int>> _matching = new();
+    private int[][] _groupPoints = [];     // per group, its points in scan order
+    private int[] _scanPoints = [];        // passes 2-5: scan_tile_areas' point list (this+0xe0)
+    private readonly Dictionary<string, int[]> _pointsByGroups = new();
 
     private sealed class LinkState
     {
@@ -322,6 +345,13 @@ public sealed class TileMatchSimulator
                 _group[P(x, y)] = _groupByRgb.TryGetValue(map.Pixels[image], out var g) ? g : Invalid;
                 _climate[P(x, y)] = image < climate.Length ? climate[image] : (byte)0;
             }
+        var counts = new int[_groups.Length];
+        foreach (var g in _group) if (g != Invalid) counts[g]++;
+        _groupPoints = counts.Select(c => new int[c]).ToArray();
+        Array.Clear(counts);
+        for (var p = 0; p < n; p++) if (_group[p] is var g && g != Invalid) _groupPoints[g][counts[g]++] = p;
+        _pointsByGroups.Clear();
+        _scanPoints = ScanPoints();
         _layer1 = new int[n];
         _layer2 = new bool[n];
         _links.Clear();
@@ -417,6 +447,10 @@ public sealed class TileMatchSimulator
         var list = SelectTiles(pass);
         if (list.Length == 0) return 0;
         var placed = 0;
+        // An unmasked tile fails test_final_tile_position at once, before any random draw, where the point's own group
+        // does not match it. So a point only tries the masked candidates and the unmasked ones its group matches, and in
+        // the last pass an unmasked tile only visits the points of matching groups. Same placements, a fraction of the
+        // work.
         if (pass == 0)
         {
             for (var i = 0; i < list.Length; i++)
@@ -424,6 +458,22 @@ public sealed class TileMatchSimulator
                 var t = list[i];
                 var last = i == list.Length - 1;
                 Cancel.ThrowIfCancellationRequested();
+                if (!t.Masked && !last)
+                {
+                    foreach (var p in PointsMatching(t))
+                    {
+                        int x = p % _w, y = p / _w;
+                        if (_layer1[p] != 0 && AlsoPlace(t) < 0) continue;
+                        if (!InBox(t, x, y)) continue;
+                        int climate = _climate[p];
+                        if (TestFinalPosition(t, x, y, out var rot, ref climate, out var group))
+                        {
+                            PlaceChosen(t, x, y, rot, climate, group);
+                            placed++;
+                        }
+                    }
+                    continue;
+                }
                 for (var y = 0; y < _h; y++)
                     for (var x = 0; x < _w; x++)
                     {
@@ -441,41 +491,78 @@ public sealed class TileMatchSimulator
             }
             return placed;
         }
-        for (var y = 0; y < _h; y++)
+        // candidates per point group (index group + 1; 0 = no group), in the pass order
+        var byGroup = new Tile[_groups.Length + 1][];
+        for (var g = -1; g < _groups.Length; g++)
+            byGroup[g + 1] = list.Where(t => t.Masked || g >= 0 && t.MatchesGroup[g]).ToArray();
+        // the large pass scans every point, passes 2-5 scan_tile_areas' list
+        var lastRow = -1;
+        foreach (var p in pass == 1 ? Enumerable.Range(0, _w * _h) : _scanPoints)
         {
-            Cancel.ThrowIfCancellationRequested();
-            for (var x = 0; x < _w; x++)
+            int x = p % _w, y = p / _w;
+            if (y != lastRow) { Cancel.ThrowIfCancellationRequested(); lastRow = y; }
+            int climate = _climate[p];
+            foreach (var t in byGroup[_group[p] + 1])
             {
-                var p = P(x, y);
-                int climate = _climate[p];
-                foreach (var t in list)
-                {
-                    if (!(pass == 3 || t.Masked || !Occupied(t, p))) continue;
-                    if (!InBox(t, x, y)) continue;
-                    if (!TestFinalPosition(t, x, y, out var rot, ref climate, out var group)) continue;
-                    if (pass == 3 && t.W == 2 && t.H == 2 && TwoHighStripBeside(x, y)) continue;
-                    PlaceChosen(t, x, y, rot, climate, group);
-                    placed++;
-                    if (pass == 5) break;
-                }
+                if (!(pass == 3 || t.Masked || !Occupied(t, p))) continue;
+                if (!InBox(t, x, y)) continue;
+                if (!TestFinalPosition(t, x, y, out var rot, ref climate, out var group)) continue;
+                if (pass == 3 && t.W == 2 && t.H == 2 && TwoHighStripBeside(x, y)) continue;
+                PlaceChosen(t, x, y, rot, climate, group);
+                placed++;
+                if (pass == 5) break;
             }
         }
         return placed;
     }
 
-    /// <summary>The campaign junction-pass rule for 2×2 tiles: skip when the column left (x-1) or right (x+2)
-    /// holds a run of the same group exactly 2 points tall (y, y+1, not y-1 or y+2).</summary>
+    /// <summary>
+    /// scan_tile_areas' point list, which passes 2-5 visit on a campaign map (WH3; 3K scanned every point): the points
+    /// with a group that have, in [x − 3, x + 3) × [y − 3, y + 3), a point whose group is linked (group_is_linked: it
+    /// holds a tile set, whose tile_set_to_link_as is never empty). Rows from the south, then columns. So no tile is
+    /// placed there with its origin on a black point, nor on a lone tile- or variation-colour group.
+    /// </summary>
+    private int[] ScanPoints()
+    {
+        var linked = _group.Select(g => g != Invalid && _groups[g].Sets.Length > 0).ToArray();
+        var points = new List<int>();
+        for (var y = 0; y < _h; y++)
+            for (var x = 0; x < _w; x++)
+            {
+                if (_group[P(x, y)] == Invalid) continue;
+                var near = false;
+                for (var j = Math.Max(0, y - 3); j < Math.Min(_h, y + 3) && !near; j++)
+                    for (var i = Math.Max(0, x - 3); i < Math.Min(_w, x + 3); i++)
+                        if (linked[P(i, j)]) { near = true; break; }
+                if (near) points.Add(P(x, y));
+            }
+        return [.. points];
+    }
+
+    /// <summary>The points whose group matches <paramref name="t"/>, in scan order (rows from the south, then
+    /// columns).</summary>
+    private int[] PointsMatching(Tile t)
+    {
+        var groups = Enumerable.Range(0, _groups.Length).Where(g => t.MatchesGroup[g] && _groupPoints[g].Length > 0).ToArray();
+        var key = string.Join(",", groups);
+        if (_pointsByGroups.TryGetValue(key, out var points)) return points;
+        points = groups.Length == 1 ? _groupPoints[groups[0]] : groups.SelectMany(g => _groupPoints[g]).Order().ToArray();
+        return _pointsByGroups[key] = points;
+    }
+
+    /// <summary>The campaign junction-pass rule for 2×2 tiles (scan_for_tiles, after test_final_tile_position and its
+    /// random draws): skip when the column left (x-1) or right (x+2) holds a run of the same group exactly 2 points tall
+    /// (y, y+1, not y-1 or y+2). BOB indexes the 8 points linearly (rows wrap), and WH3 also skips the tile when any of
+    /// them falls outside the map (unsigned index ≥ W·H: the south row, the top rows, the corners).</summary>
     private bool TwoHighStripBeside(int x, int y)
     {
-        int G(int px, int py)
-        {
-            var i = py * _w + px;                // BOB indexes linearly (rows wrap)
-            return i >= 0 && i < _group.Length ? _group[i] : int.MinValue;
-        }
-        var g = G(x, y);
-        foreach (var cx in new[] { x - 1, x + 2 })
-            if (G(cx, y) == g && G(cx, y + 1) == g && G(cx, y - 1) != g && G(cx, y + 2) != g) return true;
-        return false;
+        Span<int> left = [y * _w + x - 1, (y + 1) * _w + x - 1, (y - 1) * _w + x - 1, (y + 2) * _w + x - 1];
+        Span<int> right = [y * _w + x + 2, (y + 1) * _w + x + 2, (y - 1) * _w + x + 2, (y + 2) * _w + x + 2];
+        foreach (var i in left) if ((uint)i >= (uint)_group.Length) return true;
+        foreach (var i in right) if ((uint)i >= (uint)_group.Length) return true;
+        var g = _group[y * _w + x];
+        return Strip(left) || Strip(right);
+        bool Strip(Span<int> c) => _group[c[0]] == g && _group[c[1]] == g && _group[c[2]] != g && _group[c[3]] != g;
     }
 
     /// <summary>collect_matching_tiles + random pick + place_tile + add_tile_to_link_map.</summary>
@@ -605,22 +692,19 @@ public sealed class TileMatchSimulator
     {
         var seen = Invalid;
         var also = AlsoPlace(t) >= 0;
-        for (var row = 0; row < t.H; row++)
-            for (var col = 0; col < t.W; col++)
-            {
-                if (t.Masked && !t.SubtileValid(col, row)) continue;
-                var (rx, ry) = Rotate(t.W, t.H, rot, col, t.H - row - 1);
-                int px = x + rx, py = y + ry;
-                if ((uint)px >= (uint)_w || (uint)py >= (uint)_h) return false;
-                var p = P(px, py);
-                if (anchor < 0) anchor = p;
-                var g = _group[p];
-                if (g == Invalid || !t.MatchesGroup[g]) return false;
-                if (seen != Invalid && seen != g) return false;
-                if (also ? _layer2[p] : _layer1[p] != 0) return false;
-                groupOut = g;
-                seen = g;
-            }
+        foreach (var (rx, ry) in t.Offsets[rot])
+        {
+            int px = x + rx, py = y + ry;
+            if ((uint)px >= (uint)_w || (uint)py >= (uint)_h) return false;
+            var p = P(px, py);
+            if (anchor < 0) anchor = p;
+            var g = _group[p];
+            if (g == Invalid || !t.MatchesGroup[g]) return false;
+            if (seen != Invalid && seen != g) return false;
+            if (also ? _layer2[p] : _layer1[p] != 0) return false;
+            groupOut = g;
+            seen = g;
+        }
         return true;
     }
 
@@ -628,19 +712,21 @@ public sealed class TileMatchSimulator
     /// checked against the link map) or must not (TLT_NOT_EQUALS). Off-map links are ignored.</summary>
     private bool LinksMatch(Tile t, int x, int y, int rot)
     {
-        foreach (var l in t.Links)
+        var offsets = t.LinkOffsets[rot];
+        for (var i = 0; i < t.Links.Length; i++)
         {
-            var (rx, ry) = Rotate(t.W, t.H, rot, l.X, t.H - l.Y - 1);
+            var l = t.Links[i];
+            var (rx, ry) = offsets[i];
             int px = x + rx, py = y + ry;
             if (px < 0 || py < 0 || px >= _w || py >= _h) continue;     // no transition tile sets on campaign
             var p = P(px, py);
             var g = _group[p];
-            var s = l.Set >= 0 ? SetIndex(_setLinkAs[l.Set]) : Invalid;
+            var s = t.LinkAsSets[i];
             if (g == Invalid || s == Invalid) return false;
             bool eq;
             var placed = _layer1[p];
-            if (placed == 0) eq = MatchesLinkAs(g, s);
-            else eq = _setLinkAs[s] == _setLinkAs[_tiles[placed - 1].Set];
+            if (placed == 0) eq = _matchesLinkAs[g * _setCount + s];
+            else eq = _linkAsId[s] == _linkAsId[_tiles[placed - 1].Set];
             _links.TryGetValue(p, out var state);
             if (l.EqualsTest)
             {
@@ -652,11 +738,8 @@ public sealed class TileMatchSimulator
                 foreach (var q in pts)
                 {
                     if (q == (0, 0)) continue;
-                    foreach (var target in t.Targets)
-                    {
-                        var (tx, ty) = Rotate(t.W, t.H, rot, target.X, t.H - target.Y - 1);
+                    foreach (var (tx, ty) in t.TargetOffsets[rot])
                         if (x + tx == q.X && y + ty == q.Y) { found = true; break; }
-                    }
                 }
                 if (!found) return false;
             }

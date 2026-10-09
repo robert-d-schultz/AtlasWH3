@@ -75,6 +75,17 @@ public sealed class DdsHeader
         return header;
     }
 
+    /// <summary>The 128-byte header of an 8-bit luminance texture with one mip, as WH3's BOB writes tile_mask.dds:
+    /// PITCH and MIPMAPCOUNT set, depth 1.</summary>
+    public static byte[] BuildL8(int width, int height)
+    {
+        var header = BuildUncompressed(width, height, 8, 0xFF, 0, 0, 0, 0x20000);   // DDPF_LUMINANCE
+        BitConverter.GetBytes(0x1u | 0x2 | 0x4 | 0x8 | 0x1000 | 0x20000).CopyTo(header, 8);
+        BitConverter.GetBytes(1u).CopyTo(header, 24);
+        BitConverter.GetBytes(1u).CopyTo(header, 28);
+        return header;
+    }
+
     public const uint DxgiR32Float = 41, DxgiBc6hSf16 = 96;
 
     /// <summary>A 148-byte DX10 header for one 2D texture with one mip, as WH3's BOB writes it: block-compressed formats

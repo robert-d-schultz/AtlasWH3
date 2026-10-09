@@ -168,7 +168,8 @@ public sealed class CampaignTileDatabase
     ///  - i32 variation count, variations; [v8+ 2 bytes]; i32 link-target count, targets (u16, set, x, y); i32 link
     ///    count, links (u16, set, x, y, base x, base y, entry, i32 blend-quad count (0 on every WH3 tile), blend size,
     ///    no_offline_blend, test);
-    ///  - barbarian, use_alt_lf, then 1 (v5) or 4 (v6-v8) or 5 (v9) bytes of unknown flags.</summary>
+    ///  - v5: 1 unknown byte, barbarian, use_alt_lf; v6+: barbarian, use_alt_lf, the 4 geometry_blend_edge flags, and
+    ///    1 more unknown byte in v9.</summary>
     public static CampaignTile ReadTile(string file, ReadOnlySpan<byte> data)
     {
         if (data.Length < 10 || !data[..8].SequenceEqual("FASTBIN0"u8)) throw new InvalidDataException("not FASTBIN0");
@@ -216,9 +217,13 @@ public sealed class CampaignTileDatabase
             var noOffline = r.Bool();
             links.Add(new TileLink(linkSet, x, y, bx, by, entry, blendSize, noOffline, r.Str()));
         }
+        // v5 has one more byte in front; v6+ follow with geometry_blend_edge_left/top/right/bottom (+1 byte in v9). Field
+        // order from the XML names in warscape (barbarian, use_alt_lf, geometry_blend_edge_*); measured: only the v5 sea
+        // tiles set use_alt_lf, and BOB takes their tile_list heights from HeightSea.
+        if (version == 5) r.O++;
         var barbarian = r.Bool();
         var useAltLf = r.Bool();
-        r.O += version switch { 5 => 1, 9 => 5, _ => 4 };
+        r.O += version == 9 ? 5 : version == 5 ? 0 : 4;
         if (r.O != r.Length) throw new InvalidDataException($"{r.Length - r.O} bytes left over");
         return new CampaignTile(file, version, name, set, mask, w, h, cr, cg, cb, rotatable, variations, targets, links, barbarian, useAltLf, headerByte);
     }

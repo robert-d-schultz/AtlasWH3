@@ -7,6 +7,21 @@ BOB's *Terrain / Tilemap* action turns `tile_map.png` into `tile_list.bin`. It i
 - Port: `src/Atlas3K.Core/Campaign/TileMapCheck/TileMatchSimulator.cs`.
 - Run it with `validate-tilemap --simulate`, or with the terry MCP tool `validate_tilemap(simulate=True)`.
 
+## WH3 (AtlasWH3, 2026-10-09)
+
+WH3's BOB (`warscape.modder.x64.dll`, which exports the EDITOR_TILE_MAP functions by name) runs the same algorithm with
+two changes, and the port reproduces every placement of the user's IEE and Old World tile maps:
+- **Passes 2-5 visit a point list** (`scan_tile_areas`, stored at `this+0xe0`): row by row, the points with a group that
+  have a linked group (`group_is_linked`: the group holds a tile set) in [x − 3, x + 3) × [y − 3, y + 3). The large pass
+  and the final pass still scan every point. In effect no tile gets its origin on a black point.
+- **The junction pass's 2×2 strip rule** skips the tile when any of its 8 neighbour points is outside the map (the
+  unsigned linear index ≥ W·H), after `test_final_tile_position` has drawn.
+- Not reproduced (no fixture meets it): `space_free_for_tile` rejects x ≥ W and y ≥ H but not negative coordinates.
+- WH3 has one climate (`default`) and no climate map; heights, header and `tile_mask.dds` are in
+  `docs/native_campaign_build.md`.
+
+The rest of this document is Atlas3K's 3K record.
+
 ## How well the port matches BOB
 
 Measured against the BOB run in `output/bob_runs/20260927_191115_step2`, which used the vanilla tile map:

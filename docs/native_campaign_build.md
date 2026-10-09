@@ -11,7 +11,46 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | Step | Replaces BOB action | Parity (IEE `cr_combi_expanded_map_1`, Old World `cr_oldworld_map_1`) |
 |---|---|---|
 | `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
+| `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. Not yet checked in game |
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
+
+### tile_list.bin and tile_mask.dds (WH3)
+
+Read off warscape.modder.x64.dll (capstone, 2026-10-09; its EDITOR_TILE_MAP / TILE_MAP functions are exported by name)
+and measured on the fixtures:
+
+- **Format** (`TileList`, v2): the path table sorted (ordinal), not in first-use order as in 3K; one climate,
+  `default`; floats (0, 0, 0, 0, 500, 1.333); ints (0, W, H, W/2, H/2, 0, 0, x0, y0, W + 2, H + 2) with W × H the tile map
+  and (x0, y0) the lowest anchor − max(w, h); records cell by cell from the south, layer 1 before layer 2, flag 7; one
+  trailing 0 byte.
+- **Heights:** `TILE_MAP::calculate_lf_min_maxs` (0x1805b62b0; bob_terrain imports this one, not BATTLE_TILE_MAP's)
+  takes min/max over [anchor − 2, anchor + max(w, h) + 2) of the composited Height map, HeightSea for use_alt_lf tiles.
+  The box is mapped by **multiplying with 1/W and 1/H**: 1/4096 is exact, 1/3549 is not, so on Old World about a fifth
+  of the boxes take one more texel row at the north end (dividing, as BATTLE_TILE_MAP does, gets 82% right). A NaN
+  texel counts as 0 (Old World has one). Values are world units straight from the float TIFs. BOB's Tilemap reads the
+  heightmap from the installed pack; the step reads the sources, so that round trip is gone too.
+- **use_alt_lf** is the byte after barbarian, which follows the links: v5 tiles have one more byte in front of the
+  two, v6+ end with geometry_blend_edge_left/top/right/bottom (+1 byte in v9). Set on the 20 sea tiles (and
+  sea_coastx1_straight).
+- **tile_mask.dds:** L8, one byte per tile-map point, rows from the south. Each tile on the point (both layers) adds 16
+  (land) or 32 (use_alt_lf), nothing when its set is exclude_from_global_mesh (roads, cliffs, coasts); no tile = 64.
+- **Matching:** Atlas3K's `TileMatchSimulator` with two WH3 changes, read off `EDITOR_TILE_MAP::scan_for_tiles`
+  (0x1805f1540) and `scan_tile_areas` (0x1805f3ef0):
+  - passes 2-5 (transition, junction, link target, linked) visit a point list, not every point: the points with a
+    group that have, in [x − 3, x + 3) × [y − 3, y + 3), a point of a group holding a tile set (`group_is_linked`;
+    `tile_set_to_link_as` is never empty), row by row. So no tile has its origin on a black point: before, the masked
+    `*_tri` tiles were placed there 270 (IEE) and 543 (Old World) times, and the random draws drifted from there.
+  - the junction pass's 2×2 strip rule (after `test_final_tile_position` and its draws) also skips the tile when any of
+    its 8 neighbour points (columns x − 1 and x + 2, rows y − 1 .. y + 2, indexed linearly) is outside the map. 3K's port
+    counted those as another group; on IEE's south edge that placed cliffs BOB does not.
+  The rest is 3K's: `TILE_DATABASE::sort` (area, the +0x11c count, name) and `std::sort` (32-element insertion sort,
+  1.5·log2 N budget), the tile files from tiles_campaign.pack (already in ordinal order), `test_final_tile_position`,
+  `links_match` (off-map links skipped), the xoroshiro128+ draws. Not reproduced, and not met on the fixtures:
+  `space_free_for_tile` checks x ≥ W and y ≥ H but not negative coordinates, which then index linearly (a wrapped row,
+  or memory before the group array). The simulator rejects them.
+- **Speed:** a point only tries the masked candidates and the unmasked ones its group matches (an unmasked tile fails
+  at once, before any draw, on a foreign group); the final pass visits only matching points; sub-tile, link and target
+  offsets are precomputed per rotation. Same placements, matching IEE 34 s (was 110 s), Old World 85 s (was 293 s).
 
 ### trees.campaign_tree_list (WH3)
 

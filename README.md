@@ -8,8 +8,8 @@ THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline diffe
 retargeted to WH3 only.
 
 > **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
-> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps` and `trees`, are
-> in; the other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list` and
+> `trees`, are in; the other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -31,9 +31,9 @@ The goal is **one command that rebuilds the whole map from loose files**, with n
 |---|---|---|
 | `heightmaps` | `full_height_map.dds`, `full_logic_map.compressed_map`, `shroud_heights.dds` | Campaign Heightmap, Campaign Shroud Heights |
 | `trees` | `trees.campaign_tree_list` | Campaign Trees |
-| `tile_list` | `tile_list.bin` | Tilemap |
+| `tile_list` | `tile_list.bin`, `tile_mask.dds` | Tilemap |
 | `global_map` | `global_map\` (blend, texture arrays, tile list) | Global Tilemap, Campaign Global Blendmap |
-| `masks` | colour overlays, corruption, snow, event area, patch and tile masks, `lf_normal` | Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask |
+| `masks` | colour overlays, corruption, snow, event area and patch masks, `lf_normal` | Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask |
 | `devastation_pieces` | `pieces\event_*` for the main and devastated maps | Devastation pieces, without a fake campaign |
 | `lookup` | `*_lookup.tga` / `.dds`, `_minimap.tga` | Convert lookup texture |
 | `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map (crashes in BOB) |
