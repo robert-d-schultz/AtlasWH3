@@ -101,6 +101,8 @@ public static partial class InfoCards
             "Where Compile writes, laid out like working_data (terrain\\campaigns\\{map}, campaign_maps\\{map}). The default {ak}\\working_data replaces the kit's compiled files in place, as BOB did."),
         new("profile.acceptTileMap", "Accepted tile-map errors",
             "Tile-map validator error codes to let through instead of stopping the build, comma-separated, e.g. layout.mesh_columns. Only for errors you know the game tolerates."),
+        new("profile.patchMask", "Patch mask",
+            "How tile_list writes patch_mask.dds, the per-patch mask the game hides the sea floor under land with. Fitted (default) spreads the cells over the whole tile map, as the game reads them. Vanilla is BOB's: its rows fall short of the north edge, so the sea floor pokes out under land, worst in the north."),
         new("profile.clean", "Delete before compile",
             "Folders under terrain\\campaigns\\{map} in the output to delete before compiling, comma-separated, e.g. pieces. Clears stale files from an earlier, larger build."),
         new("profile.backup", "Terrain backup folder",

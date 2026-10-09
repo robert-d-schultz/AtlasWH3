@@ -11,7 +11,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | Step | Replaces BOB action | Parity (IEE `cr_combi_expanded_map_1`, Old World `cr_oldworld_map_1`) |
 |---|---|---|
 | `heightmaps` | Campaign Heightmap, Campaign Shroud Heights | 2026-10-08, against the user's BOB output. `full_logic_map.compressed_map`: byte-identical on IEE and Old World. `shroud_heights.dds`: byte-identical on IEE and Old World. `full_height_map.dds`: header byte-identical; the BC6H blocks are AtlasWH3's own encode (`Bc6h`), not AMD Compress's, see below. Not yet checked in game |
-| `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. `patch_mask.dds` (2026-10-09): byte-identical on both, from BOB's placement. Not yet checked in game |
+| `tile_list` | Tilemap | 2026-10-09, against the user's BOB lists. Old World: `tile_list.bin` and `tile_mask.dds` **byte-identical** (598,161 records). IEE: `tile_mask.dds` byte-identical; every record identical (339,338) but 473 low/high pairs (452 on sea tiles, x 2814-3068, y 412-730), where the user edited the height layers after that BOB run. The same 12 IEE points left without a tile as BOB. IEE 61 s, Old World 139 s. `patch_mask.dds` (2026-10-09): `--patch-mask vanilla` byte-identical on both, from BOB's placement; the default `fitted` fixes BOB's north-band bug (see Masks). Not yet checked in game |
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
 | `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
 | `masks` | Color Overlay, Color Overlay (Sea), Snow Mask, Corruption Mask, Event Area Mask | 2026-10-09. `colour_overlay.dds`, `lf_sea_colour.dds`, `snow_mask.dds`, `corruption_mask.dds`, `event_area_mask.dds`: **byte-identical** on IEE (against the user's BOB output, which a fresh BOB run reproduced) and Old World (against a fresh BOB run in the scratch kit: its working_data overlays were trimmed to 14 mips by `trim_mips.py`, and its event area TIF is newer than that run), every mip level. IEE 7 s, Old World 12 s. Not yet checked in game |
@@ -159,8 +159,14 @@ The six terrain-map actions of BOB's default group (`ACTION_PROCESS_TERRAIN_MAP`
     set, 16 for a land tile, 32 for a use_alt_lf tile (warscape tile +0x1a2; +0x3c must be 0). R8_UINT, rows from the
     south.
   - **BOB's bug:** the rows cover only 77 · 25 = 1,925 of IEE's 1,941 tile-map rows (Old World 110 · 32 = 3,520 of
-    3,549), so the north band is in no cell. The user sees the sea-floor mask poke out under land, worst in the north,
-    and fixes the mask by hand. The step writes BOB's mask for now; the fix is open (see the plan).
+    3,549), but the game stretches the mask over the whole map, so the rows drift north of the area they describe and
+    the top band is in no cell. The sea-floor mask pokes out under land, worst in the north; the user used to fix it by
+    hand (a duplicated row near the middle, making the mask one pixel taller).
+  - **Fix** (`PatchMaskMode`, project setting "Patch mask", CLI `--patch-mask fitted|vanilla`): `Fitted`, the default,
+    keeps BOB's grid and window shape but puts each cell on its true share of the map, sx = w / 128 and sy = h / rows:
+    [⌊(x − 1)·sx⌋, ⌈(x + 1)·sx⌉] × [⌊(y − 1)·sy⌋, ⌈(y + 1)·sy⌉]. Where the cell size divides the map (both fixtures'
+    columns) that is BOB's window. Against BOB's mask: IEE 625 of 9,856 cells change, Old World 1,298 of 14,080, more
+    and more towards the north. `Vanilla` writes BOB's mask byte for byte. Not yet checked in game.
 - **lf_normal.dds** is not one of these: the GUI-only Campaign Heightmap writes it through NVTT 2.0.8 (header tag
   `NVTT`, DXT5 with DDPF_NORMAL). Not native yet.
 

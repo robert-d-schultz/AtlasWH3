@@ -321,6 +321,7 @@ public sealed class BuildRunner
     private CampaignBuildContext Context() => new(_paths, _project.OutputDir(_paths), _ => { })
     {
         AcceptedTileMapIssues = _project.Build.AcceptTileMap.ToHashSet(),
+        PatchMask = _project.Build.PatchMask,
         Cancel = _cancel,
     };
 

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using AtlasWH3.Core;
 using AtlasWH3.Core.Build;
+using AtlasWH3.Core.Campaign;
 using Microsoft.Win32;
 
 namespace AtlasWH3.App;
@@ -55,6 +56,7 @@ public sealed class BuildProfileEditor : ScrollViewer
         form.Children.Add(Field("Output folder", () => b.Output, v => b.Output = v, Browse.Folder, "profile.output"));
         form.Children.Add(Field("Accepted tile-map errors", () => string.Join(", ", b.AcceptTileMap), v => b.AcceptTileMap = Split(v, ','),
                                 key: "profile.acceptTileMap"));
+        form.Children.Add(Combo("Patch mask", Enum.GetValues<PatchMaskMode>(), () => b.PatchMask, v => b.PatchMask = v, "profile.patchMask"));
         form.Children.Add(Field("Delete before compile", () => string.Join(", ", b.Clean), v => b.Clean = Split(v, ','),
                                 key: "profile.clean"));
         form.Children.Add(Field("Terrain backup folder", () => b.Backup, v => b.Backup = v, Browse.Folder, "profile.backup"));

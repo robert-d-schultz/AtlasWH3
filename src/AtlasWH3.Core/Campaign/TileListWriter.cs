@@ -65,8 +65,10 @@ public static class TileListWriter
     /// <param name="height">Tile map height (2 points per hex, plus 1).</param>
     /// <param name="tileMask">tile_mask.dds (<see cref="TileMask"/>).</param>
     /// <param name="patchMask">patch_mask.dds (<see cref="PatchMask"/>).</param>
+    /// <param name="patchMode">How patch_mask.dds maps its cells onto the tile map.</param>
     public static TileList Build(CampaignTileDatabase db, int width, int height, IEnumerable<PlacedTile> placed,
-                                 HeightField land, HeightField sea, out byte[] tileMask, out byte[] patchMask)
+                                 HeightField land, HeightField sea, out byte[] tileMask, out byte[] patchMask,
+                                 PatchMaskMode patchMode = PatchMaskMode.Fitted)
     {
         var instances = placed.Select(p => new Instance(p)).ToList();
         var grids = new Dictionary<int, int[]> { [1] = new int[width * height], [2] = new int[width * height] };
@@ -122,7 +124,7 @@ public static class TileListWriter
         list.Ints = [0, width, height, width / 2, height / 2, 0, 0, x0, y0, width + 2, height + 2];
         list.Marker = 1;
         tileMask = TileMask(db, instances, grids, width, height);
-        patchMask = PatchMask(db, instances, grids, width, height);
+        patchMask = PatchMask(db, instances, grids, width, height, patchMode);
         return list;
     }
 
@@ -173,11 +175,19 @@ public static class TileListWriter
 
     /// <summary>
     /// patch_mask.dds, written by the Tilemap action after tile_mask.dds (bob_terrain 0x180004636): R8_UINT, one byte per
-    /// cell of <see cref="PatchGrid"/>, rows from the south. A cell of side s = ⌊w / grid width⌋ (both axes) ORs, over the
-    /// tile-map points of [x·s − s, x·s + s] × [y·s − s, y·s + s] on the map: 64 for a point with no tile or with a tile
-    /// of an exclude_from_global_mesh set, 16 for a land tile, 32 for a use_alt_lf tile.
+    /// cell of <see cref="PatchGrid"/>, rows from the south. A cell ORs, over the tile-map points of its window on the
+    /// map: 64 for a point with no tile or with a tile of an exclude_from_global_mesh set, 16 for a land tile, 32 for a
+    /// use_alt_lf tile. The window is the cell and the one before it, on both axes:
+    ///  - <see cref="PatchMaskMode.Vanilla"/>, BOB's: [x·s − s, x·s + s] × [y·s − s, y·s + s] with s = ⌊w / grid width⌋ on
+    ///    both axes. The grid is s · 77 = 1,925 of IEE's 1,941 rows tall (Old World 3,520 of 3,549), but the game
+    ///    stretches the mask over the whole map, so the rows drift north of the area they describe and the top band is in
+    ///    no cell: the sea-floor mask pokes out under land, worst in the north.
+    ///  - <see cref="PatchMaskMode.Fitted"/>: the same window on each cell's true share of the map, sx = w / grid width and
+    ///    sy = h / grid height: [⌊(x − 1)·sx⌋, ⌈(x + 1)·sx⌉] × [⌊(y − 1)·sy⌋, ⌈(y + 1)·sy⌉]. Where s divides the map (IEE's
+    ///    and Old World's columns) it is BOB's window.
     /// </summary>
-    private static byte[] PatchMask(CampaignTileDatabase db, List<Instance> instances, Dictionary<int, int[]> grids, int width, int height)
+    private static byte[] PatchMask(CampaignTileDatabase db, List<Instance> instances, Dictionary<int, int[]> grids, int width, int height,
+                                    PatchMaskMode mode)
     {
         var (pw, ph) = PatchGrid(width, height);
         var s = width / pw;
@@ -196,18 +206,30 @@ public static class TileListWriter
             }
             point[cell] = (byte)(tiles == 0 ? 64 : value);
         }
+        // the window of cell i on an axis of n points: vanilla [i·s − s, i·s + s], fitted on the true cell size n / cells
+        (int First, int Last) Window(int i, int n, int cells)
+        {
+            if (mode == PatchMaskMode.Vanilla) return (Math.Max(0, i * s - s), Math.Min(n - 1, i * s + s));
+            var size = (double)n / cells;
+            return (Math.Max(0, (int)Math.Floor((i - 1) * size)), Math.Min(n - 1, (int)Math.Ceiling((i + 1) * size)));
+        }
+
         var header = AtlasWH3.Formats.Dds.DdsHeader.BuildDx10(pw, ph, AtlasWH3.Formats.Dds.DdsHeader.DxgiR8Uint, false, 1);
         var mask = new byte[header.Length + pw * ph];
         header.CopyTo(mask, 0);
         for (var py = 0; py < ph; py++)
+        {
+            var (y0, y1) = Window(py, height, ph);
             for (var px = 0; px < pw; px++)
             {
+                var (x0, x1) = Window(px, width, pw);
                 byte v = 0;
-                for (var y = Math.Max(0, py * s - s); y <= Math.Min(height - 1, py * s + s); y++)
-                    for (var x = Math.Max(0, px * s - s); x <= Math.Min(width - 1, px * s + s); x++)
+                for (var y = y0; y <= y1; y++)
+                    for (var x = x0; x <= x1; x++)
                         v |= point[y * width + x];
                 mask[header.Length + py * pw + px] = v;
             }
+        }
         return mask;
     }
 

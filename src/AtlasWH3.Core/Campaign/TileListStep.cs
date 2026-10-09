@@ -70,7 +70,7 @@ public sealed class TileListStep : ICampaignBuildStep
         var sea = HeightField.FromRaster(TerrainComposite.Heights(project, "HeightSea"));
         ctx.Cancel.ThrowIfCancellationRequested();
         ctx.Log("flow, records...");
-        var list = TileListWriter.Build(db, map.PixelWidth, map.PixelHeight, placed, land, sea, out var tileMask, out var patchMask);
+        var list = TileListWriter.Build(db, map.PixelWidth, map.PixelHeight, placed, land, sea, out var tileMask, out var patchMask, ctx.PatchMask);
 
         Directory.CreateDirectory(ctx.TerrainOutDir);
         var path = ctx.OutFile("tile_list.bin");
@@ -80,6 +80,7 @@ public sealed class TileListStep : ICampaignBuildStep
         var patchPath = ctx.OutFile("patch_mask.dds");
         File.WriteAllBytes(patchPath, patchMask);
         notes.Add($"{list.Records.Count} records ({sim.Tiles.Count} placed), {list.Paths.Count} tiles used");
+        notes.Add($"patch_mask.dds: {ctx.PatchMask.ToString().ToLowerInvariant()}");
         if (sim.NoTile.Count > 0) notes.Add($"{sim.NoTile.Count} tile-map points got no tile (holes in game)");
         return new StepResult(Name, [path, maskPath, patchPath], notes, sw.Elapsed);
     }

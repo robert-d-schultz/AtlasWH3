@@ -18,6 +18,9 @@ public sealed class CampaignBuildContext
     /// bytes BOB leaves uninitialised); "wide" = the wider game-valid water that also covers the land-mesh river holes.</summary>
     public string RiverGeometry { get; init; } = "bob";
 
+    /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
+    public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
+
     public CampaignBuildContext(ProjectPaths paths, string? targetRoot = null, Action<string>? log = null)
     {
         Paths = paths;
@@ -32,6 +35,17 @@ public sealed class CampaignBuildContext
 
     public string OutFile(params string[] relative) =>
         System.IO.Path.Combine([TerrainOutDir, .. relative]);
+}
+
+/// <summary>How patch_mask.dds maps its cells onto the tile map.</summary>
+public enum PatchMaskMode
+{
+    /// <summary>Each cell from its true share of the map (the grid stretched over the whole tile map, as the game reads
+    /// it). Identical to BOB's wherever the cell size divides the map.</summary>
+    Fitted,
+    /// <summary>BOB's: whole cells of ⌊w / 128⌋ points on both axes, from the south, so the north band (IEE 16 rows, Old
+    /// World 29) is in no cell and the sea-floor mask pokes out under land there.</summary>
+    Vanilla,
 }
 
 /// <summary>Result of one build step.</summary>

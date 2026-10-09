@@ -325,12 +325,13 @@ goes, since the step reads the build's own `tile_list.bin`. Left: the in-game ch
 World, every mip level (Old World against a fresh BOB run in the scratch kit; its working_data overlays had been through
 `trim_mips.py`). BOB saves them through a statically linked old DirectXTex, now ported (`DirectXTex`: linear mip
 filter, R8 truncating and RGBA8 rounding stores, BC1, BC4 with MSVC's folded palette). IEE 7 s, Old World 12 s. The
-mask union truncates (it rounded). `patch_mask.dds` turned out to be the Tilemap action's: `TileListStep` writes it,
-byte-identical on both maps. Left:
+mask union truncates (it rounded). `patch_mask.dds` turned out to be the Tilemap action's: `TileListStep` writes it (BOB's mode
+byte-identical on both maps, fitted to the whole map by default). Left:
 - the in-game check;
-- the **patch_mask bug** (the user's report): BOB's 128 × 77 grid covers 1,925 of IEE's 1,941 tile-map rows (Old World
-  3,520 of 3,549), so the sea-floor mask pokes out under land in the north and the user fixes it by hand. The step
-  still writes BOB's mask; the fix needs the user's manual adjustment (or the game's reading of the grid) to aim at;
+- the in-game check of the **patch_mask fix** (the user's report): BOB's 128 × 77 grid covers 1,925 of IEE's 1,941
+  tile-map rows (Old World 3,520 of 3,549), and the game stretches it over the whole map, so the sea-floor mask pokes
+  out under land, worst in the north. `TileListStep` now writes it fitted to the whole map by default (project setting
+  "Patch mask", `--patch-mask vanilla` for BOB's);
 - BOB's Patch Visibility Mask with a painted PatchVisibilityMask (no fixture has layers);
 - `lf_normal.dds` (NVTT, from the Heightmap action), still not native;
 - the overlays have the full mip chain as BOB writes it (15 on Old World), which BOB's Devastation pieces crash on

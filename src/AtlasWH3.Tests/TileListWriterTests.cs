@@ -39,6 +39,37 @@ public class TileListWriterTests
     }
 
     /// <summary>
+    /// The fitted patch mask against BOB's (vanilla) on BOB's placement: same grid and header; columns are whole cells on
+    /// both maps (3200 / 128, 4096 / 128), so only rows can change, more and more towards the north. 2026-10-09: IEE 625
+    /// of 9,856 cells, Old World 1,298 of 14,080. Printed: how many cells change, by row.
+    /// </summary>
+    [Theory]
+    [InlineData("cr_oldworld_map_1")]
+    [InlineData("cr_combi_expanded_map_1")]
+    public void FittedPatchMask_CoversTheNorthBand(string map)
+    {
+        var reference = CompiledFormatTests.Built(map, "tile_list.bin");
+        if (!File.Exists(reference) || !File.Exists(Terry(map))) return;
+        var db = TileMapValidator.LoadDatabase(Paths(map));
+        var bob = TileList.Read(File.ReadAllBytes(reference));
+        var project = TerryProject.Load(Terry(map));
+        var land = HeightField.FromRaster(TerrainComposite.Heights(project, "Height"));
+        var sea = HeightField.FromRaster(TerrainComposite.Heights(project, "HeightSea"));
+        int width = bob.Ints[1], height = bob.Ints[2];
+        TileListWriter.Build(db, width, height, BobPlacement(db, bob), land, sea, out _, out var vanilla, PatchMaskMode.Vanilla);
+        TileListWriter.Build(db, width, height, BobPlacement(db, bob), land, sea, out _, out var fitted);
+
+        Assert.Equal(vanilla.Length, fitted.Length);
+        Assert.True(vanilla.AsSpan(0, 148).SequenceEqual(fitted.AsSpan(0, 148)));
+        var (pw, ph) = TileListWriter.PatchGrid(width, height);
+        Assert.Equal(0, width % pw);
+        var changed = Enumerable.Range(0, ph).Select(y => Enumerable.Range(0, pw).Count(x => vanilla[148 + y * pw + x] != fitted[148 + y * pw + x])).ToList();
+        Console.WriteLine($"{map}: {changed.Sum()} of {pw * ph} cells changed; by row from the south: {string.Join(" ", changed)}");
+        // BOB's rows drift north of their area as they go, so the changes grow towards the north edge
+        Assert.True(changed.Skip(ph / 2).Sum() > 2 * changed.Take(ph / 2).Sum());
+    }
+
+    /// <summary>
     /// 2026-10-08. Old World: tile_list.bin and tile_mask.dds byte-identical (patch_mask.dds too, 2026-10-09, also on IEE). IEE: tile_mask.dds byte-identical, every
     /// record identical but 473 low/high pairs (452 on sea tiles), in the east (x 2814-3068, y 412-730), where the user
     /// edited the height layers after that BOB run (the .tif files are newer than tile_list.bin).
@@ -57,7 +88,8 @@ public class TileListWriterTests
         var project = TerryProject.Load(Terry(map));
         var land = HeightField.FromRaster(TerrainComposite.Heights(project, "Height"));
         var sea = HeightField.FromRaster(TerrainComposite.Heights(project, "HeightSea"));
-        var built = TileListWriter.Build(db, bob.Ints[1], bob.Ints[2], BobPlacement(db, bob), land, sea, out var mask, out var patch);
+        var built = TileListWriter.Build(db, bob.Ints[1], bob.Ints[2], BobPlacement(db, bob), land, sea, out var mask, out var patch,
+                                         PatchMaskMode.Vanilla);
 
         var referencePatch = CompiledFormatTests.Built(map, "patch_mask.dds");
         if (File.Exists(referencePatch)) Assert.Equal(File.ReadAllBytes(referencePatch), patch);

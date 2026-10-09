@@ -124,6 +124,8 @@ public sealed class BuildProfile
     public List<string> Steps { get; set; } = [];
     /// <summary>Tile-map pre-flight error codes accepted for this map (e.g. layout.mesh_columns).</summary>
     public List<string> AcceptTileMap { get; set; } = [];
+    /// <summary>patch_mask.dds: fitted to the whole map (default) or BOB's, with its north-band bug.</summary>
+    public Campaign.PatchMaskMode PatchMask { get; set; } = Campaign.PatchMaskMode.Fitted;
     /// <summary>Folders under the compiled terrain folder deleted before Compile (stale generated files).</summary>
     public List<string> Clean { get; set; } = [];
     /// <summary>When set, a rolling copy of the kit's raw terrain and the compiled terrain is kept here before Compile.</summary>

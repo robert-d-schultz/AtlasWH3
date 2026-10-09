@@ -84,7 +84,10 @@ public sealed class CampaignBuildPipeline
                     Progress?.Invoke(new StepEvent(step.Name, StepEventKind.Log, m));
                 }
                 var stepCtx = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, Log)
-                    { AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel };
+                {
+                    AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
+                    PatchMask = ctx.PatchMask,
+                };
                 var problems = step.CheckInputs(stepCtx);
                 if (problems.Count > 0)
                 {
