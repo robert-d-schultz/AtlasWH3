@@ -358,6 +358,14 @@ area TIF was painted (the devastate folder's is right). Left:
 - the in-game check.
 Numbers in `docs/native_campaign_build.md`.
 
+**3.7 status (2026-10-09):** `LookupStep` works as is on WH3: IEE's `.tga` and `.dds` are byte-identical to BOB's and
+to the shipped pack's, the minimap differs along region borders (BOB samples up to one pixel off [::4, ::4]; good
+enough, the user's call). There is no palette-alpha fix to make: the alpha-0 elector_counts palette the survey saw is a
+different source image. Old World's shipped lookup has the same colour in every pixel, but **the user reordered its
+palette by hand** (`lookup_tweak.py`): the game reads only 1024 palette entries and Old World has more settlement
+regions than that. **Circle back:** build that reorder into the step instead of the hand-kept colour list. Left: the
+in-game check. Numbers in `docs/native_campaign_build.md`.
+
 Each step is done when:
 - it is native in the hybrid pipeline,
 - the game loads every fixture map and shows no visible difference from BOB's build,

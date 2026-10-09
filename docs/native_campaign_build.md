@@ -16,6 +16,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
 | `masks` | Color Overlay, Color Overlay (Sea), Snow Mask, Corruption Mask, Event Area Mask | 2026-10-09. `colour_overlay.dds`, `lf_sea_colour.dds`, `snow_mask.dds`, `corruption_mask.dds`, `event_area_mask.dds`: **byte-identical** on IEE (against the user's BOB output, which a fresh BOB run reproduced) and Old World (against a fresh BOB run in the scratch kit: its working_data overlays were trimmed to 14 mips by `trim_mips.py`, and its event area TIF is newer than that run), every mip level. IEE 7 s, Old World 12 s. Not yet checked in game |
 | `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. Objects, sounds and rivers not yet (3.9). Cutting: IEE 4 s, Old World 7 s; the devastated build IEE 207 s. Not yet checked in game |
+| `lookup` | Texture / Convert lookup texture | 2026-10-09, against the user's BOB output (IEE) and the shipped packs (both). IEE: `.tga` and `.dds` **byte-identical** to BOB's and to `!cr_immortal_empires_expanded.pack`'s; `_minimap.tga` differs in 1,545 of 388,000 pixels, along region borders (see below). Old World: every pixel the same colour as the pack's, but the palette is ordered differently on purpose (see below). IEE 0.2 s, Old World 2.5 s |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -209,6 +210,25 @@ fresh BOB run. The formats are in the decompiler's `docs/event-area-pieces.md`; 
 - Not native yet: `objects` / `bmd_objects_sound` (+ `_devastation_<type>`, `.culture`), the `rivers` files (IEE's
   main map has 2, from its lava rivers), the devastated folder's `environment_collection.xml`, and `lf_normal.dds`,
   which is cut from working_data's (BOB's Campaign Heightmap, NVTT).
+
+### Lookup textures (WH3)
+
+`LookupTexture` is unchanged from Atlas3K (format under *Format notes*); the step converts every `*lookup*.bmp` of
+the map's working_data and EmpireDesignData folders.
+- **Minimap:** BOB's is not exactly `indices[::4, ::4]`. On IEE (3200 × 1941 → 800 × 485) 1,545 pixels differ, and
+  every one of BOB's values sits within one source pixel of the [::4, ::4] sample, so BOB's sample point is off by up to
+  a pixel along region borders. No simple coordinate formula (floor/round of y·H/h, centre sampling, (H−1)/(h−1)) or
+  block mode reproduces it. Left as is: the regions are the right colours in the right places.
+- **The game reads only the first 1024 palette entries** (the user's finding). Old World has more than 1024 settlement
+  regions, so BOB's first-appearance palette leaves random regions without a colour. The shipped Old World `.tga` and
+  `_minimap.tga` are BOB's output reordered by the user's `lookup_tweak.py` (`Desktop\tw modding\projects\WH3
+  campaign_scripts`): a hand-kept list of colours (black, the Chaos Wastes and Realm of Chaos regions, small and
+  island regions) moved to the end of the palette, with the indices remapped. The shipped `.dds` holds the same
+  remapped indices (the script itself rewrites only the two TGAs). The native
+  step writes BOB's order; **open:** build the reorder into the step (or a profile option) so the 1024 that show are
+  chosen on purpose, not by a hand-kept list.
+- The other lookups (`elector_counts_small`, `wh3_main_hef_court_small`) shipped in the IEE and Old World packs come
+  from other sources than the kit's BMPs (different sizes or palettes); not compared further.
 
 ### full_height_map.dds (BC6H_SF16)
 

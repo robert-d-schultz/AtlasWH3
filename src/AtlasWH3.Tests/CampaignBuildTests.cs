@@ -115,6 +115,23 @@ public class CampaignBuildTests
     }
 
     [Fact]
+    public void LookupTexture_Iee_MatchesBobTgaAndDds()
+    {
+        const string map = "cr_combi_expanded_map_1";
+        var bmp = Path.Combine(TestKits.Wh3Kit, "raw_data", "EmpireDesignData", "campaign_maps", map, "cr_combi_expanded_lookup.bmp");
+        var stem = Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "cr_combi_expanded_lookup");
+        if (!File.Exists(bmp) || !File.Exists(stem + ".tga")) return;
+        var lookup = LookupTexture.FromBmp(bmp);
+        Assert.Equal(File.ReadAllBytes(stem + ".tga"), lookup.ToTga());
+        Assert.Equal(File.ReadAllBytes(stem + ".dds"), lookup.ToDds());
+        // BOB's minimap samples up to one source pixel off indices[::4, ::4] along region borders (1,545 of 388,000)
+        var bob = File.ReadAllBytes(stem + "_minimap.tga");
+        var ours = lookup.Minimap().ToTga();
+        Assert.Equal(bob.Length, ours.Length);
+        Assert.InRange(bob.Where((b, i) => b != ours[i]).Count(), 0, 2500);
+    }
+
+    [Fact]
     public void CameraHeightmap_Matrix_InvertsFromColumns()
     {
         var rng = new Random(3);
