@@ -181,8 +181,25 @@ static class AiPathfindingCommands
                 MaxThreads = threads,
                 WrapLikeGame = a.Contains("--wrap-like-game"),
             };
+            if (Option(a, "--edges") is { } eh) // research: the A* grid's edges around hexes
+            {
+                var ag = new AiPathGrid(ppd, regions, settings);
+                foreach (var cell in eh.Split(';'))
+                {
+                    var v = cell.Split(',').Select(int.Parse).ToArray();
+                    var h = ag.Index(v[0], v[1]);
+                    Console.WriteLine($"({v[0]},{v[1]}) type {ag.Types[h]} slot {ag.Slot[h]} area {regions.AreaMap[h] & MapDataRegions.RegionMask},{regions.AreaMap[h] >> MapDataRegions.AreaShift}: " + string.Join("  ", Enumerable.Range(0, 6).Select(d =>
+                    {
+                        var nb = ag.Neighbour[h * 6 + d];
+                        var e = ag.EdgesPlain[h * 6 + d];
+                        var nav = (e & 0x80) != 0 ? "nav" : "---";
+                        return nb < 0 ? $"d{d} -" : $"d{d}->({nb % ag.Width},{nb / ag.Width}) {nav} {ag.CostTable[e & 0x7F]} [{e:x2}]";
+                    })));
+                }
+            }
             var hlp = HlpBuilder.Build(ppd, regions, settings, refHlp?.Timestamp ?? ts, Console.WriteLine, opt);
             if (refHlp is not null) hlp.Magic = refHlp.Magic;
+            if (refHlp is not null && a.Contains("--categories")) Console.WriteLine(HlpCompare.AreaCategories(hlp, refHlp, 12));
             if (refHlp is not null && a.Contains("--tables-from-ref")) // research: the region tables from CA's own transitions
             {
                 var copy = HlpData.Read(refPath!);
@@ -358,6 +375,33 @@ public static class SpdCompare
 /// <summary>Field-level comparison of two hlp_data.esf files.</summary>
 public static class HlpCompare
 {
+    /// <summary>Research: why each non-identical area differs (first failing check).</summary>
+    public static string AreaCategories(HlpData mine, HlpData reference, int examples)
+    {
+        var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
+        var cats = new Dictionary<string, List<string>>();
+        foreach (var a in mine.Nodes.SelectMany(n => n.Areas))
+        {
+            var r = refAreas[a.Area];
+            string? cat = null;
+            var mk = a.Transitions.Select(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area)).ToList();
+            var rk = r.Transitions.Select(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area)).ToList();
+            if (mk.Count != rk.Count) cat = $"transition count ({mk.Count} vs {rk.Count})";
+            else if (!mk.Order().SequenceEqual(rk.Order())) cat = "transition hexes";
+            else if (!a.Transitions.Select(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area, t.Cost)).Order().SequenceEqual(r.Transitions.Select(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area, t.Cost)).Order()))
+                cat = a.Transitions.Zip(r.Transitions).Any(p => p.First.Flag1 && p.First.Cost != p.Second.Cost) ? "cost (land-sea)" : "cost (same medium)";
+            else if (!a.Transitions.Select(t => (t.X, t.Y, t.Flag1, t.Flag2)).Order().SequenceEqual(r.Transitions.Select(t => (t.X, t.Y, t.Flag1, t.Flag2)).Order())) cat = "flags";
+            else if (!mk.SequenceEqual(rk)) cat = "order only";
+            else if (!a.Transitions.Select(t => t.Index).SequenceEqual(r.Transitions.Select(t => t.Index))) cat = "index";
+            else if (!a.Costs.SequenceEqual(r.Costs)) cat = "matrix";
+            else if (a.B != r.B) cat = "b";
+            if (cat is null) continue;
+            if (!cats.TryGetValue(cat, out var l)) cats[cat] = l = [];
+            l.Add(a.Area.ToString());
+        }
+        return string.Join(Environment.NewLine, cats.OrderByDescending(c => c.Value.Count).Select(c => $"  {c.Value.Count,5} {c.Key}: {string.Join(" ", c.Value.Take(examples))}"));
+    }
+
     public static string RegionTables(HlpData mine, HlpData reference)
     {
         int cost = 0, costAll = 0, hops = 0, hopsAll = 0;
@@ -396,9 +440,9 @@ public static class HlpCompare
             a += ma.A == ra.A ? 1 : 0;
             b += ma.B == ra.B ? 1 : 0;
             trTotal += ra.Transitions.Count;
-            var mineByPq = ma.Transitions.GroupBy(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target)).ToDictionary(g => g.Key, g => g.First());
+            var mineByPq = ma.Transitions.GroupBy(t => (t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area)).ToDictionary(g => g.Key, g => g.First());
             foreach (var t in ra.Transitions)
-                if (mineByPq.TryGetValue((t.X, t.Y, t.OtherX, t.OtherY, t.Target), out var m))
+                if (mineByPq.TryGetValue((t.X, t.Y, t.OtherX, t.OtherY, t.Target.Region, t.Target.Area), out var m))
                 {
                     trPq++;
                     if (m.Cost == t.Cost) trCost++;
