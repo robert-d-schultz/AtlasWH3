@@ -79,7 +79,7 @@ public static class HlpBuilder
             {
                 var a = R.Areas[i];
                 if (a.Type is not (0 or 3 or 4)) continue;
-                var aid = r | i << 9;
+                var aid = MapDataRegions.AreaKey(r, i);
                 var centre = a.Centre;
                 if (R.Settlement is { } s && regions.AreaMap[s.Y * W + s.X] == aid) centre = s;
                 var e = new Entry { Region = r, Aid = aid, Centre = centre.Y * W + centre.X, Type = a.Type, A = (uint)a.Id };
@@ -335,7 +335,7 @@ public static class HlpBuilder
                     {
                         remaining.Remove(h);
                         return remaining.Count == 0 ? AiSearch.Visit.Stop : AiSearch.Visit.Continue;
-                    }, blocked: BlockedExcept(blocked, others), regionOf: regions.AreaMap, region: e.Aid, regionMask: 0xFFFF);
+                    }, blocked: BlockedExcept(blocked, others), regionOf: regions.AreaMap, region: e.Aid, regionMask: -1);
                 for (var j = 0; j < n; j++)
                     if (j != i) e.Matrix.Add(byIdx[i].P == byIdx[j].P ? 0 : search.Cost(byIdx[j].P));
             }
@@ -349,16 +349,17 @@ public static class HlpBuilder
             {
                 var area = new HlpData.HlpArea
                 {
-                    AreaId = (ushort)e.Aid, CentreX = (ushort)(e.Centre % W), CentreY = (ushort)(e.Centre / W), A = e.A, B = e.B,
+                    Area = MapDataRegions.ToRegionArea(e.Aid), CentreX = (ushort)(e.Centre % W), CentreY = (ushort)(e.Centre / W), A = e.A, B = e.B,
                 };
                 foreach (var t in e.Ordered)
                     area.Transitions.Add(new HlpData.HlpTransition((ushort)(t.P % W), (ushort)(t.P / W), (ushort)(t.Q % W), (ushort)(t.Q / W),
-                                                                    t.Cost, (ushort)t.Target, (byte)t.Idx, t.F1, t.F2));
+                                                                    t.Cost, MapDataRegions.ToRegionArea(t.Target), (byte)t.Idx, t.F1, t.F2));
                 area.Costs.AddRange(e.Matrix);
                 node.Areas.Add(area);
             }
             hlp.Nodes.Add(node);
         }
+        HlpRegionTables.Fill(hlp, options.MaxThreads);
         return hlp;
     }
 

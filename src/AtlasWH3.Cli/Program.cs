@@ -116,6 +116,7 @@ switch (command)
         Console.WriteLine("                                         frozen map sources + BOB outputs + mod packs for the parity tests [--store dir]");
         Console.WriteLine("          hlp-spd [--in <dir: pathfinding.ppd + map_data.esf>] [--out <dir>] [--compare <dir with reference hlp/spd>] [--only hlp|spd] [--legacy-stl]");
         Console.WriteLine("                                         campaign AI pathfinding data (hlp_data.esf / spd_data.esf) without the game");
+        Console.WriteLine("          esf-roundtrip <file.esf>..       rewrite CAAB/CBAB files through EsfTree + CaabWriter; report the first differing byte");
         Console.WriteLine("          validate-tilemap [--tilemap <png>] [--climate-dir <dir>] [--db <_tile_database>] [--simulate] [--overlay <png>] [--tilemap-only] [--json]");
         Console.WriteLine("                                         pre-flight check of tile_map.png before Tilemap (exit 1 on errors)");
         Console.WriteLine("          validate-tilemap --pass-order <db|0-5|tile:<name>>   tile-matching diagnostics (candidate order, tile links)");

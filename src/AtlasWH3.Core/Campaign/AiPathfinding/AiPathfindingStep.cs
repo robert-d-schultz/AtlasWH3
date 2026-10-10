@@ -1,5 +1,6 @@
 using System.Diagnostics;
-using System.Xml.Linq;
+using System.Globalization;
+using AtlasWH3.Formats.Db;
 using AtlasWH3.Formats.Maps;
 
 namespace AtlasWH3.Core.Campaign.AiPathfinding;
@@ -37,14 +38,12 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
         var regions = MapDataRegions.Read(Input(ctx, "map_data.esf")!);
         var settings = DbSettings(ctx.Paths, notes);
         ctx.Log($"grid {ppd.Width}x{ppd.Height}, {regions.Regions.Count} region slots, road {settings.RoadCost}, beach {settings.LandToSeaCost}/{settings.SeaToLandCost}");
-        if (ppd.Width > SpdBuilder.SparseMapSize || ppd.Height > SpdBuilder.SparseMapSize)
-            notes.Add($"map is {ppd.Width}x{ppd.Height}: the game's spd table (CAI_SPARSE_MAP<1024>) folds hexes beyond 1023 onto the last 32 columns/rows; written the same way");
         var grid = new CampaignPathGrid(ppd, regions, settings);
         var timestamp = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Directory.CreateDirectory(ctx.CampaignMapOutDir);
 
         var t = Stopwatch.StartNew();
-        var spd = SpdBuilder.Build(grid, timestamp, ctx.Log);
+        var spd = SpdBuilder.Build(grid, regions, timestamp, ctx.Log);
         var spdPath = Path.Combine(ctx.CampaignMapOutDir, "spd_data.esf");
         File.WriteAllBytes(spdPath, spd.ToBytes());
         written.Add(spdPath);
@@ -59,45 +58,36 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 
-    /// <summary>Road cost (campaign_map_roads: lowest threshold among the campaigns played on this map) and the beach
-    /// costs (campaign_variables) from the kit's raw_data\db; CA's defaults when the tables are missing.</summary>
+    /// <summary>Road cost (campaign_map_roads: the lowest threshold's movement_cost among the campaigns of this map's
+    /// campaign_map_playable_areas rows) and the beach costs (campaign_variables), from the map's mod packs and the
+    /// vanilla db packs (a higher-priority pack winning), as the game reads them; CA's defaults when a row is missing.
+    /// (The kit's raw_data\db is not used: its combi rows name campaign wh3_main_combi_old, which has no road rows.)</summary>
     public static CampaignPathGrid.Settings DbSettings(ProjectPaths paths, List<string>? notes = null)
     {
-        var db = Path.Combine(paths.AssemblyKitRoot, "raw_data", "db");
         var s = new CampaignPathGrid.Settings();
-        try
+        if (!Directory.Exists(paths.GameDataDir))
         {
-            var campaigns = new HashSet<string>();
-            var playable = Path.Combine(db, "campaign_map_playable_areas.xml");
-            if (File.Exists(playable))
-                foreach (var r in XDocument.Load(playable).Root!.Elements("campaign_map_playable_areas"))
-                    if ((string?)r.Element("mapname") == paths.MapName && (string?)r.Element("campaign_key") is { } key)
-                        campaigns.Add(key);
-            var roads = Path.Combine(db, "campaign_map_roads.xml");
-            if (File.Exists(roads))
-            {
-                var best = XDocument.Load(roads).Root!.Elements("campaign_map_roads")
-                    .Where(r => campaigns.Contains((string?)r.Element("campaign") ?? ""))
-                    .OrderBy(r => float.Parse((string?)r.Element("threshold") ?? "0", System.Globalization.CultureInfo.InvariantCulture))
-                    .FirstOrDefault();
-                if (best is not null) s = s with { RoadCost = uint.Parse((string)best.Element("movement_cost")!) };
-                else notes?.Add($"no campaign_map_roads row for {paths.MapName}'s campaigns ({string.Join(", ", campaigns)}); road cost {s.RoadCost}");
-            }
-            var vars = Path.Combine(db, "campaign_variables.xml");
-            if (File.Exists(vars))
-                foreach (var r in XDocument.Load(vars).Root!.Elements("campaign_variables"))
-                {
-                    var key = (string?)r.Element("variable_key");
-                    var value = (string?)r.Element("value");
-                    if (value is null) continue;
-                    var v = (uint)float.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
-                    if (key == "pathfinding_land_to_sea_beach_transition_action_point_cost") s = s with { LandToSeaCost = v };
-                    if (key == "pathfinding_sea_to_land_beach_transition_action_point_cost") s = s with { SeaToLandCost = v };
-                }
+            notes?.Add($"no game data folder ({paths.GameDataDir}); CA's default road and beach costs");
+            return s;
         }
-        catch (Exception e)
+        var packs = GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var campaigns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_playable_areas_tables"))
+            if (string.Equals((string?)t.Get(row, "mapname"), paths.MapName, StringComparison.OrdinalIgnoreCase) && t.Get(row, "campaign_key") is string key)
+                campaigns.Add(key);
+        var roads = new Dictionary<string, (float Threshold, uint Cost)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_roads_tables"))
+            if (t.Get(row, "key") is string key && !roads.ContainsKey(key) && t.Get(row, "campaign") is string campaign && campaigns.Contains(campaign))
+                roads[key] = (Convert.ToSingle(t.Get(row, "threshold"), CultureInfo.InvariantCulture), Convert.ToUInt32(t.Get(row, "movement_cost"), CultureInfo.InvariantCulture));
+        if (roads.Count > 0) s = s with { RoadCost = roads.Values.MinBy(r => r.Threshold).Cost };
+        else notes?.Add($"no campaign_map_roads row for {paths.MapName}'s campaigns ({string.Join(", ", campaigns)}); road cost {s.RoadCost}");
+        var seen = new HashSet<string>();
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_variables_tables"))
         {
-            notes?.Add($"DB values unreadable ({e.Message}); CA defaults used");
+            if (t.Get(row, "variable_key") is not string key || !seen.Add(key) || t.Get(row, "value") is not { } value) continue;
+            var v = (uint)Convert.ToSingle(value, CultureInfo.InvariantCulture);
+            if (key == "pathfinding_land_to_sea_beach_transition_action_point_cost") s = s with { LandToSeaCost = v };
+            if (key == "pathfinding_sea_to_land_beach_transition_action_point_cost") s = s with { SeaToLandCost = v };
         }
         return s;
     }

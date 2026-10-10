@@ -333,7 +333,7 @@ public sealed class AiSearch
     /// <paramref name="target"/>). Returns the target's cost (uint.MaxValue if not reached; search stops when the
     /// target is settled).</summary>
     public uint Run(int source, byte[] edges, int target = -1, Func<int, uint, Visit>? visit = null, bool[]? blocked = null,
-                    (float X, float Y)? lineFrom = null, (float X, float Y)? lineTo = null, ushort[]? regionOf = null, int region = -1, int regionMask = 0x1FF)
+                    (float X, float Y)? lineFrom = null, (float X, float Y)? lineTo = null, int[]? regionOf = null, int region = -1, int regionMask = MapDataRegions.RegionMask)
     {
         _gen++;
         _heap.Clear();

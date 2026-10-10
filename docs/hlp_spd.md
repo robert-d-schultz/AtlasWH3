@@ -1,5 +1,98 @@
 # hlp_data.esf / spd_data.esf: native generation
 
+## WH3 (AtlasWH3, Phase 6)
+
+WH3 maps ship `campaign_maps/<map>/hlp_data.esf` and `spd_data.esf`, which the game builds offline from
+`pathfinding.ppd` and `map_data.esf`. The `hlp_spd` step and `hlp-spd` CLI build them natively, on top of Atlas3K's
+3K generator (below), changed where WH3 differs. The reference files are the vanilla packs' 11 maps and the user's
+IEE and Old World maps (all four inputs and outputs per map). `extract_refs.py` in `research/hlp_spd_wh3` pulls them
+out through rpfm_server.
+
+### Formats (`Formats/Esf/CampaignAiData.cs`, `CaabWriter`, `CaabReader`)
+
+- **CAAB / CBAB with child records.** The game's current files have magic `CB AB` (combi maps 5 and 7, IEE); older
+  ones `CA AB`. Without strings the two are the same bytes. `CaabWriter` writes child records (short header
+  `0x80 | 0x40 nested | version << 1 | name bit 8`, then the name's low byte), nested groups and typed arrays.
+  - A size takes CA's shortest uleb128 unless the size field and the end of what it measures fall in different
+    1 MiB blocks of the file; then it takes the 5-byte form, and so does a nested record's group count. All 126
+    sizes of 1,000 and more in the 30 reference files fit; a size threshold does not (303,967 padded, 458,488 not).
+  - All 30 reference hlp/spd files round-trip byte for byte (`esf-roundtrip`).
+- **hlp** (`CAI_HIGH_LEVEL_PATHFINDER` v1):
+  - `TRANSITION_DATA` (nested, one group): 3K's stream, with `REGION_AREA_INDEX` records (u16 region, u16 area) in
+    place of 3K's packed u16 area ids.
+  - A u32 array of 1024 × 1024: region-to-region costs, upper triangle only.
+  - A u8 array of 1024 × 1024: region-to-region hop counts, symmetric.
+  - `OTHER_CONSTANTS` (nested): the largest cost in the table.
+- **spd** (`CAI_SIMPLE_PATH_DIRECTORY` v1):
+  - Header: hex box, cell count, landmark set count, area count.
+  - Per cell: 8 costs to the cell's landmark set, 8 costs to its own area's landmarks, u32 set index
+    (`FFFFFFFF` = none), u16 region, u16 area.
+  - `REFERENCE_POINTS` (nested): group 0 holds 8 landmarks per set; group 1 holds per area its (region, area) and 8
+    landmarks (`FFFF` where it has none).
+- **map_data.esf**: WH3 keeps 3K's layout with records in place of packed ids.
+  - The per-hex area map is `MASKED_REGIONS_DATA/REGION_AREA_INDEX_OVERRIDE`: one group per run, holding
+    `REGION_AREA_INDEX` and a u16 length. 3K's run-length u16 array is empty.
+  - `REGION_AREA_DATA`'s two link lists are `REGION_AREA_INDEX` lists.
+  - Packed area keys are `region | area << 16`: Old World has 1,465 regions, and the chaos maps have regions with
+    over 32 areas.
+
+### spd
+
+- **Landmark sets** are the connected pieces of the movement grid, numbered in the order their first hex comes,
+  scanning x outer and y inner. Each set gets 3K's 8 landmarks (corners and edge midpoints of its box, nearest hex)
+  and 8 searches. Every map has its sets and landmarks exactly, except Old World Classic (below).
+- **Areas** are every map_data area, in region order and then area order.
+  - The landmark targets come from the box of all the area's hexes; the landmarks are its nearest passable hexes.
+    The passable hexes' box gives 3,432 of 3,440 on combi map 1, against 3,440.
+  - The 8 searches run over the whole grid, not inside the area. A path may leave and come back; prologue has
+    1,036 such costs.
+  - Only the area's own hexes are recorded. A search stops once it has settled every hex of the area it can reach.
+- **Stored costs** are rounded down to a multiple of 4 (steps of 75 store 72, 148, 224, 300). The search runs on the
+  exact sums.
+- **DB values** come from the mod packs and vanilla's db packs, the rows the game reads. The kit's raw_data\db names
+  `wh3_main_combi_old` for combi map 1, a campaign with no road rows.
+  - Defaults are road 80 and beaches 2100: every vanilla campaign's lowest road is 80. The old combi and chaos maps'
+    rows now name `*_old` campaigns.
+- **Settlement slots**:
+  - Edges to land, sea and other slot hexes cost 0 and bypass the hex-type gate. WH3's ppd types slot hexes as plain
+    terrain; Arnheim's port slot reaches the sea at 0.
+  - Edges to bridge decks (type 5) cost 0 where the type pair allows the move: Isle of Wight's and Fu Chow's land
+    slots step onto their bridges at their own cost; Lothern's type-3 slot does not.
+
+Parity (2026-10-10, `hlp-spd --compare`; Old World in 9 s):
+
+| map | spd |
+|---|---|
+| prologue | byte-identical |
+| chaos 1–4, combi 4, 5, 7, IEE, Old World, Darklands | every landmark; set costs 100 %; area costs 99.99 % |
+| combi 1–3 | every landmark; set costs 99.96 %; area costs 99.99 % |
+| Old World Classic | one extra set: a 2-hex sea strip on the east edge (x 2039–2040, portal sea regions) that CA leaves out; set costs 95.4 % |
+
+Open on spd:
+- Matorca's river slot (combi 1–3) reaches a type-3 hex at the edge's 80, which no type rule above gives.
+- A few hundred cells per map (mostly of map_data area type 6) have no area in CA's file.
+- Classic's sea strip.
+
+### hlp
+
+- The transition data is 3K's generator. On the prologue map it is byte-identical, region tables included.
+- **Region tables** (`HlpRegionTables`):
+  - Per region pair (from < to), the cheapest path over the transitions. Crossing costs the transition's cost, and
+    moving on inside an area costs that area's matrix value.
+  - The hop count is the number of region changes on that path; crossings between areas of one region don't count.
+  - Pairs with no path are `FFFFFFFF` and 255. Regions without areas, the diagonal and the costs' lower triangle are
+    `FFFFFFFE` and 0.
+  - From CA's own transitions on combi map 1: 99.95 % of costs and 97 % of hops. The hop misses are equal-cost
+    paths the game settles in another order.
+- **Combi map 1**: 549–551 of 695 areas identical, 5,049 of 5,280 transitions with CA's cost. The gaps are ports and
+  bridges:
+  - Flag 2 is no longer "flag 1 and cost 0". CA marks transitions that use a ppd beach, which then cost only their
+    land step (112 against my 2,100).
+  - 3K's hlp cost code still treats type 5 as 3K's port hexes. In WH3, type 5 is a bridge deck, and a crossing costs
+    500 against my 820.
+
+## Three Kingdoms (Atlas3K)
+
 Three Kingdoms campaign maps ship two offline AI pathfinding files in `campaign_maps/<map>/`:
 
 | file | record | contents |

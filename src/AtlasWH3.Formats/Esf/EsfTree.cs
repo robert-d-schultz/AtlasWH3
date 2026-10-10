@@ -24,7 +24,7 @@ public sealed class EsfTree
     private EsfTree(byte[] b)
     {
         _b = b;
-        if (BinaryPrimitives.ReadUInt32LittleEndian(b) is not (CaabFlat.Magic or CbabMagic)) throw new InvalidDataException("not a CAAB / CBAB ESF");
+        if (BinaryPrimitives.ReadUInt32LittleEndian(b) is not (CaabWriter.MagicCaab or CbabMagic)) throw new InvalidDataException("not a CAAB / CBAB ESF");
         var p = (int)BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(12));
         var names = new List<string>();
         int n = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(p)); p += 2;

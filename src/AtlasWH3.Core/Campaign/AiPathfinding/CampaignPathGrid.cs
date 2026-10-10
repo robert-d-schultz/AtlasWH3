@@ -28,6 +28,8 @@ public sealed class CampaignPathGrid
     public int Height { get; }
     /// <summary>Hex type (byte 7 high nibble) per hex.</summary>
     public byte[] Types { get; }
+    /// <summary>The ppd's high-level connectivity index (HLCI) per hex, from its tile group (0 without one).</summary>
+    public ushort[] Hlci { get; }
     /// <summary>Cost of leaving hex h in direction d: Forward[h*6+d] (NoEdge when the move is not allowed).</summary>
     public uint[] Forward { get; }
     /// <summary>The game's HEX edge bytes after roads / slots (cost index in the low 7 bits).</summary>
@@ -61,7 +63,9 @@ public sealed class CampaignPathGrid
         return m;
     }
 
-    public sealed record Settings(uint RoadCost = 100, uint LandToSeaCost = 1250, uint SeaToLandCost = 1250);
+    /// <summary>Defaults: WH3's values (every vanilla campaign's lowest-threshold road costs 80; both beach costs 2100). The old
+    /// combi and chaos maps' playable-areas rows now name *_old campaigns with no road rows, so they get the default.</summary>
+    public sealed record Settings(uint RoadCost = 80, uint LandToSeaCost = 2100, uint SeaToLandCost = 2100);
 
     public int Index(int x, int y) => y * Width + x;
 
@@ -73,6 +77,13 @@ public sealed class CampaignPathGrid
         var n = Width * Height;
         var edges = new byte[n * 6];
         Types = new byte[n];
+        Hlci = new ushort[n];
+        for (var y = 0; y < Height; y++)
+        for (var x = 0; x < Width; x++)
+        {
+            var tg = ppd.TileGroup(x, y);
+            Hlci[y * Width + x] = tg < ppd.TileGroups.Count ? ppd.TileGroups[tg].Hlci : (ushort)0;
+        }
         for (var h = 0; h < n; h++)
         {
             for (var d = 0; d < 6; d++)
@@ -118,6 +129,9 @@ public sealed class CampaignPathGrid
                 }
             }
 
+        // edges a settlement slot opens (slot hex to land, sea or slot, both ways): WH3's ppd types slot hexes as plain
+        // land, so these bypass the type-pair gate (combi map 1: Arnheim's port slot reaches the sea at cost 0)
+        var slotEdge = new bool[n * 6];
         if (regions is not null)
         {
             var slot = new bool[n];
@@ -134,9 +148,15 @@ public sealed class CampaignPathGrid
                 for (var d = 0; d < 6; d++)
                 {
                     var nb = Neighbour[h * 6 + d];
-                    if (nb < 0 || !(Types[nb] <= 1 || slot[nb])) continue;
+                    if (nb < 0) continue;
+                    // land, sea and other slot hexes: free, whatever the hex types; bridge decks (type 5): free where the
+                    // types allow the move (combi map 1: Isle of Wight's and Fu Chow's land slots step onto their bridges
+                    // at their own cost, Lothern's type-3 slot does not)
+                    var deck = Types[nb] == 5 && !slot[nb];
+                    if (!(Types[nb] <= 1 || deck || slot[nb])) continue;
                     edges[h * 6 + d] &= 0xC0;
                     edges[nb * 6 + (d + 3) % 6] &= 0xC0;
+                    if (!deck) slotEdge[h * 6 + d] = slotEdge[nb * 6 + (d + 3) % 6] = true;
                 }
             }
         }
@@ -150,7 +170,7 @@ public sealed class CampaignPathGrid
             for (var d = 0; d < 6; d++)
             {
                 var nb = Neighbour[h * 6 + d];
-                if (nb < 0 || (mask >> Types[nb] & 1) == 0)
+                if (nb < 0 || (mask >> Types[nb] & 1) == 0 && !slotEdge[h * 6 + d])
                 {
                     Forward[h * 6 + d] = Reverse[h * 6 + d] = NoEdge;
                     continue;

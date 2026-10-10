@@ -589,6 +589,16 @@ and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they
 
 ### Phase 5: Editors on WH3 (3–5 weeks)
 
+**Deferred (2026-10-10, the user):** Phase 6 first; the editors are revisited the week after. Checked so they are not
+broken:
+- the solution builds without warnings, and all 250 tests pass;
+- on WH3 data the editors stop with a message rather than crash:
+  - the scene view has no terrain: it looks for 3K's `LowFrequencyHeight` map, while WH3's is the float32 `Height`
+    map;
+  - prop placement (`PropEditor.Terrain`) reports the missing `LowFrequencyHeight` map;
+  - the Campaign battles window shows "Load failed" for WH3's `battle_locations_map.bin`.
+
+
 - **Scene editor:** WH3 entity types and attributes (`ECCampaignProperties.culture_mask`, `visible_in_shroud`,
   `ECVisibilitySettingsCampaign`, `ECPropHeightPatch`), a culture-mask view in place of the season view, and WH3
   prefabs.
@@ -599,6 +609,25 @@ and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they
 - **Campaign battles window:** WH3 `battle_locations_map.bin` / catchments and battle tables.
 
 ### Phase 6: AI pathfinding, hlp/spd (3–5 weeks, last)
+
+**Status (2026-10-10):** Atlas3K's 3K generator, carried over to WH3's formats. Details and parity are in
+[`hlp_spd.md`](hlp_spd.md) (WH3).
+- [x] 6.1 Reference set: all 4 files of 15 maps (11 vanilla, IEE, Old World and its Classic and Darklands variants),
+  extracted from the packs (`research/hlp_spd_wh3/extract_refs.py`).
+- [x] 6.2 Formats:
+  - `CaabWriter` / `CaabReader`: child records, CA's padded sizes, CBAB. All 30 reference files round-trip.
+  - The WH3 hlp/spd models.
+  - map_data's WH3 area map (`REGION_AREA_INDEX_OVERRIDE`), with int area keys.
+- [x] 6.3 spd: landmark sets (connected pieces) plus per-area landmarks, the multiple-of-4 rounding, DB values from
+  the packs, and the WH3 slot and bridge rules.
+  - Prologue is byte-identical. Every other map has every landmark, and 99.96–100 % of set costs except Old World
+    Classic (95.4 %, one extra set).
+  - Area costs are 99.99 %.
+- [x] 6.4 hlp region tables (cost, hops, max). Prologue's hlp is byte-identical.
+- [ ] 6.5 hlp on the big maps: ports and bridges (flag 2 = a ppd beach and no beach cost; type 5 = bridge decks, not
+  3K's port hexes). Combi map 1: 549 of 695 areas identical.
+- [ ] 6.6 The step on IEE and Old World end to end, and the in-game check (the AI moves; no startpos crash).
+
 
 - hlp v1 (`CAI_HIGH_LEVEL_PATHFINDER` with `REGION_AREA_INDEX`, the extra arrays, `OTHER_CONSTANTS`) and spd v1
   (variable `REFERENCE_POINTS`, the new per-cell encoding).
