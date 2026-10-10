@@ -89,7 +89,7 @@ public class HlpSpdTests
         Assert.True(area >= n * 8 * 0.9998, $"area costs {area}/{n * 8}");
     }
 
-    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 652 of 695 areas identical, and from CA's own
+    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 655 of 695 areas identical, and from CA's own
     /// transitions the region tables at 99.95 % of costs and 98 % of hop counts.</summary>
     [Fact]
     public void Combi_NativeHlp_Parity()
@@ -100,7 +100,7 @@ public class HlpSpdTests
         var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
         var same = hlp.Nodes.SelectMany(n => n.Areas).Count(a => refAreas.TryGetValue(a.Area, out var r) &&
             a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
-        Assert.True(same >= 650, $"{same}/{refAreas.Count} identical areas");
+        Assert.True(same >= 653, $"{same}/{refAreas.Count} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
         HlpRegionTables.Fill(fromRef);
@@ -113,5 +113,26 @@ public class HlpSpdTests
         Assert.True(costs >= fromRef.RegionCosts.Length - 200, $"region costs {costs}");
         Assert.True(hops >= fromRef.RegionHops.Length - 8000, $"region hops {hops}");
         Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
+    }
+
+    /// <summary>The region tables sum in wrapping u32: Old World's 38 unreachable matrix pairs (0xFFFFFFFF) are steps of
+    /// -1 (from CA's own transitions: 99.7 % of the costs, 87 % without the wrap).</summary>
+    [Fact]
+    public void OldWorld_RegionTables_FromCaTransitions()
+    {
+        var pack = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]);
+        var bytes = pack.TryRead($"campaign_maps/{TestKits.OldWorld}/hlp_data.esf") ?? throw new FileNotFoundException("Old World hlp_data.esf");
+        var reference = HlpData.Read(bytes);
+        var copy = HlpData.Read(bytes);
+        HlpRegionTables.Fill(copy);
+        int costs = 0, all = 0;
+        for (var i = 0; i < copy.RegionCosts.Length; i++)
+        {
+            if (reference.RegionCosts[i] == HlpData.NoRegionCost && copy.RegionCosts[i] == HlpData.NoRegionCost) continue;
+            all++;
+            if (copy.RegionCosts[i] == reference.RegionCosts[i]) costs++;
+        }
+        Assert.True(costs >= all * 0.996, $"region costs {costs}/{all}");
+        Assert.Equal(reference.MaxRegionCost, copy.MaxRegionCost);
     }
 }

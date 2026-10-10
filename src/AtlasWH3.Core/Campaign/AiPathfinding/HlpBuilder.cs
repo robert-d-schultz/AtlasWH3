@@ -16,9 +16,9 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///     transition; then clusters of the remaining border hexes (sets ordered by descending x, y) give more transitions,
 ///     each erasing border hexes closer than 10 hexes. A transition's cost is the path cost between its two hexes.
 ///     WH3: the path is the start region's faction path (its own settlement open at the slots' 0 cost, foreign ones
-///     closed); a land-sea transition is costed on the landmark search's grid instead (<see cref="CampaignPathGrid"/>),
-///     and its flag 2 says whether that path goes through a settlement (3K: flag 1 and cost 0). Bridge crossings count
-///     500 on either path.
+///     closed); a land-sea transition takes the cheaper of that and the landmark search's grid
+///     (<see cref="CampaignPathGrid"/>), and its flag 2 says whether the path taken goes through a settlement (3K: flag 1
+///     and cost 0). A bridge crossing (onto, along and off a run of deck hexes) counts 500 on either path.
 ///  5. WH3's region tables from the transitions (<see cref="HlpRegionTables"/>).
 ///  4. Per area the transitions sit in an MSVC unordered_multimap keyed by hex (hash y·1016 + x), whose iteration order
 ///     is the file order; the matrix holds the path costs between the transitions' inside hexes, searched inside the
@@ -182,19 +182,22 @@ public static class HlpBuilder
             return BridgeCost(path, search0.Cost, cost);
         }
 
-        // the reported cost is the sum of the path's waypoint costs (FUN_1805cc840): a bridge crossing
-        // (prev -> type-5 hex -> linked type-5 hex -> next) counts 500 instead of its three steps
-        // (a step onto the bridge from a river hex still counts; from land or sea it does not)
+        // the reported cost is the sum of the path's waypoint costs (FUN_1805cc840): a bridge crossing counts 500 instead
+        // of its steps: onto the first type-5 hex, along the deck (bridge links or neighbouring deck hexes) and off the
+        // last one (3K: prev -> deck -> linked deck -> next; Old World: land -> deck -> deck -> sea is 500 as well).
+        // A step onto the bridge from a river hex still counts; from land or sea it does not.
         uint BridgeCost(IReadOnlyList<int> path, Func<int, uint> at, uint cost)
         {
             for (var i = 0; i + 1 < path.Count; i++)
             {
                 if (g.Types[path[i + 1]] != 5) continue;
-                uint steps = 0;
-                for (var k = i + (g.Types[path[i]] == 6 ? 1 : 0); k < i + 3 && k + 1 < path.Count; k++)
-                    steps += at(path[k + 1]) - at(path[k]);
+                var last = i + 1;
+                while (last + 1 < path.Count && g.Types[path[last + 1]] == 5) last++;
+                var end = Math.Min(last + 1, path.Count - 1);
+                var from = i + (g.Types[path[i]] == 6 ? 1 : 0);
+                var steps = at(path[end]) - at(path[from]);
                 cost = cost - steps + 500;
-                i += 2;
+                i = end - 1;
             }
             return cost;
         }
@@ -206,6 +209,8 @@ public static class HlpBuilder
             if (cost == uint.MaxValue) return cost;
             var path = landmarkGrid.LastPath(b).Reverse().ToList();
             slot = path.Any(h => slotOwner[h] >= 0);
+            if (DebugCost is not null && DebugCost == $"{a % W},{a / W},{b % W},{b / W}")
+                Console.Error.WriteLine($"grid path: {string.Join(" ", path.Select(h => $"({h % W},{h / W})t{g.Types[h]}c{landmarkGrid.CostTo(h)}"))} -> {BridgeCost(path, landmarkGrid.CostTo, cost)}");
             return BridgeCost(path, landmarkGrid.CostTo, cost);
         }
 
@@ -277,8 +282,12 @@ public static class HlpBuilder
             var sba = viaSlot;
             if (f1)
             {
-                cab = GridCost(pa, qb, out sab);
-                cba = GridCost(qb, pa, out sba);
+                // the cheaper of the A* path and the landmark grid's (Old World: land -> bridge deck -> deck -> sea is
+                // only on the A* grid, whose navigation bits allow deck-to-deck and deck-to-sea steps)
+                var gab = GridCost(pa, qb, out var gsab);
+                var gba = GridCost(qb, pa, out var gsba);
+                if (gab <= cab) { cab = gab; sab = gsab; }
+                if (gba <= cba) { cba = gba; sba = gsba; }
             }
             // flag 2 (WH3): a land-sea transition whose path goes through a settlement (a port); 3K's "cost 0" is the
             // same on the prologue map and 61 areas fewer on combi map 1

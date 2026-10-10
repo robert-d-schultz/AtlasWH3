@@ -17,6 +17,9 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///    (combi map 1, from CA's own transitions: 99.3 % of the lower triangle). Regions from
 ///    <see cref="HlpData.RegionTableSize"/> on have no row.
 ///  - OTHER_CONSTANTS: the largest cost in the table.
+/// Costs are u32 sums that wrap, as the game's: a matrix value of 0xFFFFFFFF (no path inside the area) is a step of
+/// −1, which gives Old World (38 such values; combi map 1 and Darklands have none) its cheap paths (0 → 409: 40,462 +
+/// 0xFFFFFFFF + 80 = 40,541).
 /// Prologue map: all 231 pairs; combi map 1: 99.95 % of costs, 97 % of hop counts (the rest: equal-cost paths the game
 /// settles in another order, and paths into region 545).
 /// </summary>
@@ -63,7 +66,7 @@ public static class HlpRegionTables
             {
                 if (s <= r) continue;
                 var (c, h) = best.TryGetValue(s, out var b) ? b : (Unreachable, UnreachableHops);
-                costs[r * size + s] = (uint)c;
+                costs[r * size + s] = c;
                 hops[r * size + s] = (byte)Math.Min(h, UnreachableHops);
                 hops[s * size + r] = (byte)Math.Min(sameMedium.TryGetValue(s, out var m) ? m.Hops : UnreachableHops, UnreachableHops);
             }
@@ -75,14 +78,14 @@ public static class HlpRegionTables
 
     /// <summary>Cheapest (cost, region changes) from <paramref name="region"/> to every region; with
     /// <paramref name="sameMedium"/> the land-sea transitions (flag 1) are left out.</summary>
-    private static Dictionary<int, (long Cost, int Hops)> Search(int region, List<HlpData.HlpArea> stateArea, List<int> stateIndex,
+    private static Dictionary<int, (uint Cost, int Hops)> Search(int region, List<HlpData.HlpArea> stateArea, List<int> stateIndex,
                                                                   int[][] landing, Dictionary<(RegionArea, int), int> states, bool sameMedium)
     {
-        var best = new Dictionary<int, (long, int)>();
+        var best = new Dictionary<int, (uint, int)>();
         var done = new bool[stateArea.Count];
-        var queue = new PriorityQueue<int, (long, int)>();
+        var queue = new PriorityQueue<int, (uint, int)>();
         for (var s = 0; s < stateArea.Count; s++)
-            if (stateArea[s].Area.Region == region) queue.Enqueue(s, (0, 0));
+            if (stateArea[s].Area.Region == region) queue.Enqueue(s, (0u, 0));
         while (queue.TryDequeue(out var s, out var key))
         {
             if (done[s]) continue;
@@ -91,7 +94,8 @@ public static class HlpRegionTables
             var area = stateArea[s];
             var t = area.Transitions[stateIndex[s]];
             if (sameMedium && t.Flag1) continue;
-            var nc = c + t.Cost;
+            // u32 sums that wrap, as the game's: an area's unreachable pair (0xFFFFFFFF) is a step of -1
+            var nc = unchecked(c + t.Cost);
             var nh = h + (t.Target.Region != area.Area.Region ? 1 : 0);
             if (t.Target.Region != region && (!best.TryGetValue(t.Target.Region, out var b) || (nc, nh).CompareTo(b) < 0))
                 best[t.Target.Region] = (nc, nh);
@@ -103,7 +107,7 @@ public static class HlpRegionTables
                 {
                     var next = states[(target.Area, j)];
                     if (done[next]) continue;
-                    queue.Enqueue(next, (j == i0 ? nc : nc + Matrix(target, i0, j), nh));
+                    queue.Enqueue(next, (j == i0 ? nc : unchecked(nc + Matrix(target, i0, j)), nh));
                 }
             }
         }

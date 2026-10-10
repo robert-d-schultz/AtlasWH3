@@ -627,13 +627,14 @@ broken:
 - [ ] 6.5 hlp on the big maps.
   - Done:
     - the faction path keeps its own settlement open;
-    - land-sea transitions are costed on the landmark grid, with flag 2 = the path goes through a settlement;
-    - the bridge rule applies on both paths;
-    - the hop table's lower triangle is the land-only (no land-sea transitions) hop count.
-  - Identical areas: chaos 99–100 %, combi 84–94 %, IEE 84 %, Old World 77 %.
-  - Open:
-    - the rest of the port and bridge costs;
-    - Old World's region table: CA's costs are below any path over its own transitions.
+    - land-sea transitions take the cheaper of the A* and landmark-grid paths, with flag 2 = that path goes through a
+      settlement;
+    - a bridge's whole deck run counts 500;
+    - the region tables sum in wrapping u32 (Old World's unreachable matrix pairs are steps of −1);
+    - the hop table's lower triangle is the land-only hop count.
+  - Identical areas: chaos 99–100 %, combi 85–94 %, IEE 87 %, Old World 80 %, Darklands 91 %. From CA's own
+    transitions, the region tables are 99.1–100 % on every map.
+  - Open: the remaining port and bridge transition costs.
 - [ ] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash).
   - `hlp_spd` is a pipeline step now (runs by default; inputs from the build output, else the kit's working_data).
   - IEE: 17 s through `build-campaign`.
