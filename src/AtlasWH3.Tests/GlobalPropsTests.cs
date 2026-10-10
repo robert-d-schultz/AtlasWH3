@@ -234,27 +234,29 @@ public class GlobalPropsTests
     }
 
     /// <summary>
-    /// The step against a BOB run of the same sources (the scratch kit's Old World, 2026-10-09): content parity (record
-    /// order and one-prop numbering aside, which differ between two BOB runs) 98.8%. Most of the rest is 436 objects in a
-    /// coarser cell than BOB's, which boxes models it can't find loose as [-1, 1]^3; then one-ulp transforms of the
-    /// tow_torch prefab's effects, two holes and one polygon BOB triangulates otherwise, and duplicate entities.
+    /// The step against the user's GUI BOB run of the frozen IEE sources (2026-10-10): content parity (record order and
+    /// one-prop numbering aside, which differ between two BOB runs) 85.3%, the sound file 99.7%. Most of the rest are
+    /// objects in another cell than BOB's, which boxes models it can't find loose as [-1, 1]^3; then ulps of prefab
+    /// children. Both files need the quadtree root grown by quadtree_margin: without it 10.6% and 14.5%. (The scratch
+    /// kit's headless BOB runs leave the margin out, so they are no reference for the cells.)
     /// </summary>
     [Fact]
-    public void Step_OldWorld_MatchesBobContent()
+    public void Step_Iee_MatchesBobContent()
     {
-        var kit = ScratchKit.DefaultRoot(TestKits.Wh3Kit);
-        var bobFile = Path.Combine(kit, "working_data", "terrain", "campaigns", OldWorld, "global_props.bin");
-        var pack = TestKits.Pack(TestKits.OldWorldPack);
-        if (!File.Exists(bobFile) || !File.Exists(pack)) return;
+        var bobDir = TestKits.Built(TestKits.Iee);
+        var pack = TestKits.Pack(TestKits.IeePack);
+        if (!File.Exists(Path.Combine(bobDir, "global_props.bin")) || !File.Exists(pack)) return;
         var target = Path.Combine(Path.GetTempPath(), "atlaswh3_global_props_test");
         try
         {
-            var paths = new ProjectPaths { MapName = OldWorld, AssemblyKitRoot = kit, GameDataDir = TestKits.Wh3GameData, ModPacks = [pack] };
-            var ctx = new CampaignBuildContext(paths, target);
+            var ctx = new CampaignBuildContext(TestKits.Paths(TestKits.Iee, TestKits.IeePack), target);
             Assert.Empty(new GlobalPropsStep().CheckInputs(ctx));
             new GlobalPropsStep().Run(ctx);
-            var parity = GlobalPropsParity.Compare(GlobalPropsParity.Load(ctx.OutFile("global_props.bin")), GlobalPropsParity.Load(bobFile));
-            Assert.True(parity.Share > 0.985, $"{parity.Same} same, {parity.Differ} differ: {string.Join("; ", parity.Examples)}");
+            foreach (var (file, share) in new[] { ("global_props.bin", 0.85), ("global_props_sound.bin", 0.995) })
+            {
+                var parity = GlobalPropsParity.Compare(GlobalPropsParity.Load(ctx.OutFile(file)), GlobalPropsParity.Load(Path.Combine(bobDir, file)));
+                Assert.True(parity.Share > share, $"{file}: {parity.Same} same, {parity.Differ} differ: {string.Join("; ", parity.Examples)}");
+            }
         }
         finally { if (Directory.Exists(target)) Directory.Delete(target, true); }
     }

@@ -70,13 +70,13 @@ public class TileListWriterTests
     }
 
     /// <summary>
-    /// 2026-10-08. Old World: tile_list.bin and tile_mask.dds byte-identical (patch_mask.dds too, 2026-10-09, also on IEE). IEE: tile_mask.dds byte-identical, every
-    /// record identical but 473 low/high pairs (452 on sea tiles), in the east (x 2814-3068, y 412-730), where the user
-    /// edited the height layers after that BOB run (the .tif files are newer than tile_list.bin).
+    /// 2026-10-08. Old World: tile_list.bin and tile_mask.dds byte-identical (patch_mask.dds too, 2026-10-09, also on IEE).
+    /// IEE: byte-identical against the user's BOB reprocess of 2026-10-10 (the 473 low/high pairs of the older run were
+    /// its stale heights: the height layers had been edited after it).
     /// </summary>
     [Theory]
     [InlineData("cr_oldworld_map_1", 0)]
-    [InlineData("cr_combi_expanded_map_1", 473)]
+    [InlineData("cr_combi_expanded_map_1", 0)]
     public void BobPlacement_ThroughWriter_MatchesBob(string map, int staleHeights)
     {
         var reference = CompiledFormatTests.Built(map, "tile_list.bin");

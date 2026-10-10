@@ -477,14 +477,20 @@ Left: the in-game check (an area devastates and restores, with its objects and l
 
 **4.6 status (2026-10-10):** `fixture-freeze <name> --maps a,b --packs p,q` (`KitFixture`) freezes maps' folders
 (raw_data and working_data, main and devastated) and their mod packs into `atlaswh3_fixtures\<name>` beside the kit.
-`maps\` and `packs\` are hard links: no disk space, and Terry and the pack install replace a file when they save it, so
-the link keeps the frozen bytes. `kit\` is an assembly kit of junctions (into `maps\` for the frozen folders, to the
+Sources and packs are hard links: no disk space, and Terry and the pack install replace a file when they save it, so
+the link keeps the frozen bytes. working_data is copied: BOB rewrites its outputs in place (2026-10-10, the IEE
+reprocess changed the frozen outputs through the links). `kit\` is an assembly kit of junctions (into `maps\` for the frozen folders, to the
 live kit for the rest). `manifest.json` records every file's size and time, the game build, and the sources newer than
 their map's BOB outputs. `fixture-check` finds a file rewritten in place (a hard link shares its size and time);
 `fixture-delete` removes the junctions, never the kit behind them.
 - Frozen: `iee` (both IEE maps and the IEE pack: 822 files, 9.1 GB, in 4 s) and `oldworld` (both maps, both packs:
   8,741 files, 18.4 GB). Old World's pair matches. IEE's sources have edits from 2026-10-03/05, after its BOB outputs
   (2026-09-29/30); its manifest lists them. Freeze IEE again after its next BOB reprocess.
+- 2026-10-10: `iee` frozen again after the user's BOB reprocess of trees, tilemap and global_props (1,234 files, of
+  which 719 working_data files copied, 1.1 GB). `oldworld` is still the linked freeze: freeze it again after its next
+  BOB run. Its global_props pair is not clean either way: the 10-03 GUI run predates the loose mountain .wsmodel files
+  of 10-05 (so BOB put those mountains in bucket 31), and the scratch kit's headless runs leave out the quadtree margin
+  (4.8).
 - `TestKits.Kit(map)` / `Pack(name)` / `Built(map, ..)` / `Paths(map, packs)` read the frozen fixture that holds the
   map, else the live kit. A fixture that changed fails its tests, naming the files. `bob-scratch --fixture <name>` builds
   BOB's scratch kit from the frozen sources; `parity <built> --fixture <name>` compares with its frozen working_data.
@@ -540,8 +546,34 @@ gone (4.2). Install was tested on a scratch data folder, not the game's. Left: t
 
 **Parity** (the Atlas3K method: disassembly of the WH3 DLLs, Frida on `bob.modder.x64.exe`, field-level diffs; only
 where the gap is small or a mismatch is visible)
-- [ ] 4.7 `trees`: the 457 IEE heights not explained (3.2).
-- [ ] 4.8 `global_props`: the remaining ulps (effects inside prefabs, rotated sound emitters) (3.9).
+- [x] 4.7 `trees`: the 457 IEE heights not explained (3.2).
+- [x] 4.8 `global_props`: the remaining ulps (effects inside prefabs, rotated sound emitters) (3.9).
+
+**4.7 status (2026-10-10):** the 457 were the **pivot**. A height patch is placed at position − RS·pivot (not
+global_props' position + pivot − RS·pivot): IEE's pivoted mountains (def_mountain_volcano_01, pivot y 0.543; the
+ogr_large_mountain_01/02 group near (760, 310), pivots up to 3.38) sit pivot.y · scale.y lower in BOB's trees, and where
+the patch is thin that drops it under the terrain. Against the reprocessed list: 238,458 of 253,903 heights bit-exact
+(238,143 before), 253,880 within 1e-3; the 23 beyond (1e-3 to 2e-2, both signs) are on steep patch slopes, the tail of
+the matrix ulps that are still open (BOB's entity matrix vs `QtuTransform`). The patch files BOB reads loose are the
+packs' byte for byte, and the pack's logic map is working_data's. The camera height map uses the same patches.
+
+**4.8 status (2026-10-10):** two fixes, one of them not an ulp:
+- **The quadtree root is the map_data.esf bounds grown by `quadtree_margin`** (campaign_map_playable_areas; 10 on
+  every vanilla and IEE row) on every side: IEE −10..1078.11 × −10..758.57. CA's shipped vanilla combi file and every
+  GUI BOB run of the user's (IEE today, Old World 10-03) are padded; the scratch kit's headless BOB runs are not (not
+  yet explained: the live kit had no IEE row in raw_data\db, the scratch kit had one, both have it in
+  EmpireDesignData), and 3.9 was fitted to those, so the step's cells were not the game's. The step reads the margin
+  from the map's mod packs and vanilla db (default 10) and notes the root. Against the reprocessed IEE file: content
+  parity 10.6% → 85.3%, the sound file 14.5% → 99.7%, every object kind the same count as BOB (the 255 props that
+  reached past the unpadded root are kept).
+- **Sound axes are the world matrix's z and y columns divided by their lengths**, not the quaternion's axes: all 50 IEE
+  emitters whose scale is off 1 by ulps now match.
+Left, as known and invisible in game: prefab children's transforms (8,597 props, 233 decals, 21 VFX: BOB's composed
+matrix has exact zeros where ours has ~5e-7, so BOB flattens prefabs by another float path; reading it off
+qttoolutility is the next step if it ever matters), 533 hole vertices by an ulp, the last of the 53 unknown bytes on
+10 river sounds, one sound line point by an ulp. The content-parity test is now IEE against its fresh frozen pair
+(`Step_Iee_MatchesBobContent`). Found on the way: IEE's `tile_list.bin` is now byte-identical to BOB's (the 473 heights
+of 3.3 were stale), and BOB's run has all 266 rivers, all identical (3.10).
 - [x] ~~4.9 `camera_heightmap`: a BOB run with the `cam_hmap_*` keys in rules.bob as the reference, then BOB's
   tile-terrain term and blur (3.8).~~ **Dropped 2026-10-10:** no BOB parity for this file. With the keys set (0.25,
   8 samples per unit, no blur) BOB's action runs, but on IEE it had filled 69 of 486 rows after 90 minutes on three

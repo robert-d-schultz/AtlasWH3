@@ -14,13 +14,13 @@ public class Wh3RiverTests
 
     /// <summary>
     /// The whole step against the river models BOB wrote (2026-10-09): every model is identical apart from the two bytes
-    /// BOB leaves uninitialised, and every .wsmodel is identical. The user's working_data: IEE 60 rivers (6 reversed; its
-    /// other 206 splines are newer than that BOB run), Old World 127 (one with its first point at y -0.757, one reversed,
+    /// BOB leaves uninitialised, and every .wsmodel is identical. The user's working_data: IEE all 266 rivers (the BOB
+    /// reprocess of 2026-10-10; the older run had 60), Old World 127 (one with its first point at y -0.757, one reversed,
     /// 2310-row waterfalls). The scratch kit's fresh BOB runs: all 266 IEE rivers (15 with first points 1e-6 off in x/z)
     /// and Old World's 127.
     /// </summary>
     [Theory]
-    [InlineData(Iee, 60, false)]
+    [InlineData(Iee, 266, false)]
     [InlineData(OldWorld, 127, false)]
     [InlineData(Iee, 266, true)]
     [InlineData(OldWorld, 127, true)]

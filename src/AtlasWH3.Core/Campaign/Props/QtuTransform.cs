@@ -136,20 +136,6 @@ public static class QtuTransform
         return (ex, ey, ez);
     }
 
-    /// <summary>A quaternion's rotated z and y axes, as BOB writes a sound emitter's orientation (unscaled, unlike the
-    /// matrix columns): the column terms of <see cref="MatrixWh3"/> without the scale.</summary>
-    public static float[] AxesWh3((float X, float Y, float Z, float W) q)
-    {
-        var (x, y, z, w) = q;
-        float x2 = x + x, w2 = w + w;
-        float zz2 = (z + z) * z, yy2 = (y + y) * y;
-        float f19 = y * x2 - w2 * z;
-        float f12 = 1f - x2 * x, zy2 = z * (y + y), f9 = w2 * x + zy2, l148 = zy2 - w2 * x;
-        float f17 = w2 * y + z * x2;
-        float m11 = f12 - zz2, m22 = f12 - yy2;
-        return [f17, l148, m22, f19, m11, f9];
-    }
-
     public static (float X, float Y, float Z, float W) QuaternionWh3(float rx, float ry, float rz)
     {
         const float k = 0.017453294f, halfPi = 1.57079637f;

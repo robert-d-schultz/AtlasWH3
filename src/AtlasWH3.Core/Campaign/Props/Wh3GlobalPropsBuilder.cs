@@ -445,7 +445,7 @@ public sealed class Wh3GlobalPropsBuilder
                 Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1], Type = _type, PieceMask = PieceMask(cultures, _cultureMask),
                 Add = b => b.Sounds.Add(new Bmd27Sound
                 {
-                    Name = key, Shape = shape, Points = points, Radius = radius, CultureMask = mask, Axes = QtuTransform.AxesWh3(world.Q),
+                    Name = key, Shape = shape, Points = points, Radius = radius, CultureMask = mask, Axes = SoundAxes(r),
                 }),
             });
         }
@@ -608,6 +608,15 @@ public sealed class Wh3GlobalPropsBuilder
             if (maxZ <= wz) maxZ = wz;
         }
         return [minX, minZ, maxX, maxZ];
+    }
+
+    /// <summary>A sound emitter's axes: the world matrix's z and y columns, each divided by its length (BOB's 50 IEE
+    /// emitters with a scale off 1 by ulps, which the unscaled quaternion's axes missed by 1-4 ulps; 2026-10-10).</summary>
+    private static float[] SoundAxes(float[] m)
+    {
+        var i1 = 1f / MathF.Sqrt(m[4] * m[4] + m[1] * m[1] + m[7] * m[7]);
+        var i2 = 1f / MathF.Sqrt(m[5] * m[5] + m[2] * m[2] + m[8] * m[8]);
+        return [m[2] * i2, m[5] * i2, i2 * m[8], i1 * m[1], m[4] * i1, m[7] * i1];
     }
 
     // ---------------------------------------------------------------- layout

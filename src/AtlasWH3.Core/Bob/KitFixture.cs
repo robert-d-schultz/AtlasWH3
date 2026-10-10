@@ -17,10 +17,12 @@ namespace AtlasWH3.Core.Bob;
 ///    the frozen folders, junctions to the live kit for everything else (binaries, DB, tiles, prefabs, other maps);
 ///  - <c>manifest.json</c>: every frozen file's size and time, the game build, when and from where it was frozen.
 ///
-/// Files are hard links to the kit's and the data folder's (no disk space) when the store is on their volume, copies
-/// otherwise. Terry and the pack install replace a file when they save it, which leaves the link holding the frozen
-/// bytes. A tool that rewrote a file in place would change it here too: <see cref="Check"/> finds that (a hard link
-/// shares its size and time), and the fixture then has to be frozen again.
+/// Sources and packs are hard links to the kit's and the data folder's (no disk space) when the store is on their
+/// volume, copies otherwise. Terry and the pack install replace a file when they save it, which leaves the link holding
+/// the frozen bytes. BOB rewrites its outputs in place (2026-10-10: an IEE reprocess changed the frozen working_data
+/// through the links), so working_data is always copied. A tool that rewrote a linked file in place would change it
+/// here too: <see cref="Check"/> finds that (a hard link shares its size and time), and the fixture then has to be
+/// frozen again.
 /// </summary>
 public static partial class KitFixture
 {
@@ -135,10 +137,10 @@ public static partial class KitFixture
         int linked = 0, copied = 0, junctions = 0;
         long bytes = 0;
         var files = new List<FrozenFile>();
-        void Freeze(string from, string to)
+        void Freeze(string from, string to, bool copy = false)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-            if (Link(to, from)) linked++;
+            if (!copy && Link(to, from)) linked++;
             else
             {
                 File.Copy(from, to);
@@ -158,8 +160,9 @@ public static partial class KitFixture
                 log?.Invoke($"{rel}...");
                 frozen.Add(rel);
                 Directory.CreateDirectory(Path.Combine(root, "maps", rel));
+                var outputs = rel.StartsWith("working_data" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
                 foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
-                    Freeze(file, Path.Combine(root, "maps", rel, Path.GetRelativePath(from, file)));
+                    Freeze(file, Path.Combine(root, "maps", rel, Path.GetRelativePath(from, file)), copy: outputs);
             }
         foreach (var pack in packs)
         {

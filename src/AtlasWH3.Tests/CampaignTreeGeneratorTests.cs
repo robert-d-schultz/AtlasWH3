@@ -70,8 +70,10 @@ public class CampaignTreeGeneratorTests
     }
 
     /// <summary>
-    /// TreeHeightField against BOB's IEE list (2026-10-08): 238,143 of 253,903 heights bit-exact, 253,446 within 1e-3.
-    /// Most of the rest are ulps under height patches (BOB's prop matrix differs from QtuTransform's by a little).
+    /// TreeHeightField against BOB's IEE list (2026-10-10, BOB reprocess of the same day): 238,458 of 253,903 heights
+    /// bit-exact, 253,880 within 1e-3 (238,143 and 253,446 before the patches took the pivot into account). The rest are
+    /// ulps under height patches (BOB's prop matrix differs from QtuTransform's by a little), the 23 beyond 1e-3 on
+    /// steep patch slopes.
     /// </summary>
     [Fact]
     public void Iee_Heights_CloseToBob()
@@ -92,8 +94,8 @@ public class CampaignTreeGeneratorTests
             if (Math.Abs(y - t.Y) < 1e-3f) close++;
         }
         Console.WriteLine($"IEE tree heights: {exact} of {trees.Count} bit-exact, {close} within 1e-3; {string.Join("; ", notes)}");
-        Assert.True(exact >= 238_100, $"{exact} of {trees.Count} bit-exact");
-        Assert.True(close >= 253_400, $"{close} of {trees.Count} within 1e-3");
+        Assert.True(exact >= 238_450, $"{exact} of {trees.Count} bit-exact");
+        Assert.True(close >= 253_870, $"{close} of {trees.Count} within 1e-3");
     }
 
     /// <summary>Old World (no height-patched props): the whole list byte for byte (2026-10-08).</summary>
