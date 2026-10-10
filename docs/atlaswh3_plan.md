@@ -624,8 +624,16 @@ broken:
     Classic (95.4 %, one extra set).
   - Area costs are 99.99 %.
 - [x] 6.4 hlp region tables (cost, hops, max). Prologue's hlp is byte-identical.
-- [ ] 6.5 hlp on the big maps: ports and bridges (flag 2 = a ppd beach and no beach cost; type 5 = bridge decks, not
-  3K's port hexes). Combi map 1: 549 of 695 areas identical.
+- [ ] 6.5 hlp on the big maps.
+  - Done:
+    - the faction path keeps its own settlement open;
+    - land-sea transitions are costed on the landmark grid, with flag 2 = the path goes through a settlement;
+    - the bridge rule applies on both paths;
+    - the hop table's lower triangle is the land-only (no land-sea transitions) hop count.
+  - Identical areas: chaos 99–100 %, combi 84–94 %, IEE 84 %, Old World 77 %.
+  - Open:
+    - the rest of the port and bridge costs;
+    - Old World's region table: CA's costs are below any path over its own transitions.
 - [ ] 6.6 The step on IEE and Old World end to end, and the in-game check (the AI moves; no startpos crash).
 
 

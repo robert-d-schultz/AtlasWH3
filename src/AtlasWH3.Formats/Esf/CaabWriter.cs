@@ -213,7 +213,7 @@ public sealed class CaabWriter
         var v = (uint)value;
         for (var i = dest.Length - 1; i >= 0; i--)
         {
-            dest[i] = (byte)(v & 0x7F | (i < dest.Length - 1 ? 0x80 : 0));
+            dest[i] = (byte)(v & 0x7F | (i < dest.Length - 1 ? 0x80u : 0u));
             v >>= 7;
         }
     }

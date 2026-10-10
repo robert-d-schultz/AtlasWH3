@@ -15,6 +15,11 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///     by CAMPAIGN_PATHFINDER::refine_path); its last hex in B's segment and first hex in A's segment are the first
 ///     transition; then clusters of the remaining border hexes (sets ordered by descending x, y) give more transitions,
 ///     each erasing border hexes closer than 10 hexes. A transition's cost is the path cost between its two hexes.
+///     WH3: the path is the start region's faction path (its own settlement open at the slots' 0 cost, foreign ones
+///     closed); a land-sea transition is costed on the landmark search's grid instead (<see cref="CampaignPathGrid"/>),
+///     and its flag 2 says whether that path goes through a settlement (3K: flag 1 and cost 0). Bridge crossings count
+///     500 on either path.
+///  5. WH3's region tables from the transitions (<see cref="HlpRegionTables"/>).
 ///  4. Per area the transitions sit in an MSVC unordered_multimap keyed by hex (hash y·1016 + x), whose iteration order
 ///     is the file order; the matrix holds the path costs between the transitions' inside hexes, searched inside the
 ///     area itself (other areas of the same region are closed).
@@ -119,6 +124,10 @@ public static class HlpBuilder
         log?.Invoke($"hlp: {entries.Count} areas, {entries.Sum(e => e.Segs.Count)} border segments");
 
         var byAid = entries.ToDictionary(e => e.Aid);
+        // WH3: a land-sea transition is costed on the landmark search's grid (CampaignPathGrid: every settlement open
+        // at the slots' 0 cost, the type gate, bridges at 500), and its flag 2 says whether that path goes through a
+        // settlement; combi map 1: every such cost CA has where the A* path paid the 2,100 beach (1,000, 785, 1,191…)
+        var landmarkGrid = new CampaignPathGrid.PairSearch(new CampaignPathGrid(ppd, regions, settings));
         var search0 = new AiSearch(g);
         var blocked = g.Slot;
 
@@ -138,32 +147,61 @@ public static class HlpBuilder
             return -1;
         }
 
+        var foreign = new System.Collections.Concurrent.ConcurrentDictionary<int, bool[]>();
+        bool[] Foreign(int region) => foreign.GetOrAdd(region, r =>
+        {
+            var b = (bool[])blocked.Clone();
+            for (var h = 0; h < b.Length; h++) if (slotOwner[h] == r) b[h] = false;
+            return b;
+        });
+
         // FUN_1805f8910: both ends next to the same settlement -> path without a faction (settlements passable),
-        // else the faction path, for which foreign settlements are closed
+        // else the faction path (the start's region), for which foreign settlements are closed
+        var viaSlot = false; // the last PathCost's path crossed a settlement slot hex
         uint PathCost(int a, int b)
         {
+            viaSlot = false;
             if (a == b) return 0;
             var sa = AdjacentSettlement(a);
             var same = options.CostSameSettlementZero && sa >= 0 && sa == AdjacentSettlement(b);
-            var edges = g.Gated(same, g.Hlci[a], g.Hlci[b]);
-            var cost = search0.Run(a, edges, target: b, blocked: same ? null : blocked);
+            // WH3: the faction path has its own settlement open at the slots' 0 cost (combi map 1: Altdorf's bridge
+            // transitions cost 500 through its slots), foreign ones closed
+            var own = !same;
+            var edges = g.Gated(same || own, g.Hlci[a], g.Hlci[b]);
+            var cost = search0.Run(a, edges, target: b, blocked: same ? null : own ? Foreign(regions.AreaMap[a] & MapDataRegions.RegionMask) : blocked);
             if (cost == uint.MaxValue) return cost;
-            // the reported cost is the sum of the path's waypoint costs (FUN_1805cc840): a bridge crossing
-            // (prev -> type-5 hex -> linked type-5 hex -> next) counts 500 instead of its three steps
             var path = search0.PathTo(b);
+            viaSlot = path.Any(h => slotOwner[h] >= 0);
             if (DebugCost is not null && DebugCost == $"{a % W},{a / W},{b % W},{b / W}")
                 Console.Error.WriteLine($"cost path same={same} hlci {g.Hlci[a]}->{g.Hlci[b]}: {string.Join(" ", path.Select(h => $"({h % W},{h / W})t{g.Types[h]}c{search0.Cost(h)}"))}");
+            return BridgeCost(path, search0.Cost, cost);
+        }
+
+        // the reported cost is the sum of the path's waypoint costs (FUN_1805cc840): a bridge crossing
+        // (prev -> type-5 hex -> linked type-5 hex -> next) counts 500 instead of its three steps
+        // (a step onto the bridge from a river hex still counts; from land or sea it does not)
+        uint BridgeCost(IReadOnlyList<int> path, Func<int, uint> at, uint cost)
+        {
             for (var i = 0; i + 1 < path.Count; i++)
             {
                 if (g.Types[path[i + 1]] != 5) continue;
                 uint steps = 0;
-                // (a step onto the bridge from a river hex still counts; from land or sea it does not)
                 for (var k = i + (g.Types[path[i]] == 6 ? 1 : 0); k < i + 3 && k + 1 < path.Count; k++)
-                    steps += search0.Cost(path[k + 1]) - search0.Cost(path[k]);
+                    steps += at(path[k + 1]) - at(path[k]);
                 cost = cost - steps + 500;
                 i += 2;
             }
             return cost;
+        }
+
+        uint GridCost(int a, int b, out bool slot)
+        {
+            var cost = landmarkGrid.Cost(a, b);
+            slot = false;
+            if (cost == uint.MaxValue) return cost;
+            var path = landmarkGrid.LastPath(b).Reverse().ToList();
+            slot = path.Any(h => slotOwner[h] >= 0);
+            return BridgeCost(path, landmarkGrid.CostTo, cost);
         }
 
         var DebugRefine = false;
@@ -229,9 +267,19 @@ public static class HlpBuilder
         void Emit(Entry e, Entry f, int pa, int qb, bool f1)
         {
             var cab = PathCost(pa, qb);
+            var sab = viaSlot;
             var cba = PathCost(qb, pa);
-            e.Created.Add(new Tr { P = pa, Q = qb, Cost = cab, Target = f.Aid, Idx = e.Created.Count, F1 = f1, F2 = f1 && cab == 0 });
-            f.Created.Add(new Tr { P = qb, Q = pa, Cost = cba, Target = e.Aid, Idx = f.Created.Count, F1 = f1, F2 = f1 && cba == 0 });
+            var sba = viaSlot;
+            if (f1)
+            {
+                cab = GridCost(pa, qb, out sab);
+                cba = GridCost(qb, pa, out sba);
+            }
+            // flag 2 (WH3): a land-sea transition whose path goes through a settlement (a port); 3K's "cost 0" is the
+            // same on the prologue map and 61 areas fewer on combi map 1
+            bool F2(uint c, bool slot) => f1 && slot;
+            e.Created.Add(new Tr { P = pa, Q = qb, Cost = cab, Target = f.Aid, Idx = e.Created.Count, F1 = f1, F2 = F2(cab, sab) });
+            f.Created.Add(new Tr { P = qb, Q = pa, Cost = cba, Target = e.Aid, Idx = f.Created.Count, F1 = f1, F2 = F2(cba, sba) });
         }
 
         void Determine(Entry e, Seg s, Seg t, Entry f)

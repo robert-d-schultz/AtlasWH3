@@ -69,6 +69,13 @@ static class AiPathfindingCommands
         {
             var t = Stopwatch.StartNew();
             var grid = new CampaignPathGrid(ppd, regions, settings);
+            if (Option(a, "--grid-cost") is { } gc) // research: the spd grid's shortest cost between hex pairs
+                foreach (var pair in gc.Split(';'))
+                {
+                    var v = pair.Split(',').Select(int.Parse).ToArray();
+                    var dist = grid.Search(grid.Index(v[0], v[1]), false);
+                    Console.WriteLine($"grid cost ({v[0]},{v[1]})->({v[2]},{v[3]}) {dist[grid.Index(v[2], v[3])]}");
+                }
             if (Option(a, "--dump-grid") is { } dump) // research: forward edge costs (u32 per hex·6) + types
             {
                 File.WriteAllBytes(dump + ".fwd", System.Runtime.InteropServices.MemoryMarshal.AsBytes(grid.Forward.AsSpan()).ToArray());
@@ -174,6 +181,22 @@ static class AiPathfindingCommands
             };
             var hlp = HlpBuilder.Build(ppd, regions, settings, refHlp?.Timestamp ?? ts, Console.WriteLine, opt);
             if (refHlp is not null) hlp.Magic = refHlp.Magic;
+            if (refHlp is not null && a.Contains("--tables-from-ref")) // research: the region tables from CA's own transitions
+            {
+                var copy = HlpData.Read(refPath!);
+                HlpRegionTables.Fill(copy);
+                Console.WriteLine("from CA's transitions: " + HlpCompare.RegionTables(copy, refHlp));
+                var shown = 0;
+                for (var i = 0; i < copy.RegionCosts.Length && shown < 12; i++)
+                    if (copy.RegionCosts[i] != refHlp.RegionCosts[i])
+                    {
+                        shown++;
+                        Console.WriteLine($"  ({i / 1024},{i % 1024}) mine {copy.RegionCosts[i]} ref {refHlp.RegionCosts[i]} hops mine {copy.RegionHops[i]} ref {refHlp.RegionHops[i]}");
+                    }
+                var byRow = Enumerable.Range(0, 1024).Select(r => Enumerable.Range(0, 1024).Count(c => copy.RegionCosts[r * 1024 + c] != refHlp.RegionCosts[r * 1024 + c])).ToArray();
+                Console.WriteLine($"  rows with mismatches: {byRow.Count(x => x > 0)}; worst {string.Join(" ", byRow.Select((x, r) => (x, r)).OrderByDescending(p => p.x).Take(8).Select(p => $"{p.r}:{p.x}"))}");
+                Console.WriteLine($"  columns with mismatches: {string.Join(" ", Enumerable.Range(0, 1024).Select(c => (Enumerable.Range(0, 1024).Count(r => copy.RegionCosts[r * 1024 + c] != refHlp.RegionCosts[r * 1024 + c]), c)).OrderByDescending(p => p.Item1).Take(8).Select(p => $"{p.c}:{p.Item1}"))}");
+            }
             var bytes = hlp.ToBytes();
             Console.WriteLine($"hlp: {hlp.Nodes.Count} nodes, {bytes.Length:N0} bytes in {t.Elapsed.TotalSeconds:F2} s");
             if (outDir is not null) { Directory.CreateDirectory(outDir); File.WriteAllBytes(Path.Combine(outDir, "hlp_data.esf"), bytes); }

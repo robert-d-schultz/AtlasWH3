@@ -88,4 +88,30 @@ public class HlpSpdTests
         Assert.True(set >= n * 8 * 0.9995, $"set costs {set}/{n * 8}");
         Assert.True(area >= n * 8 * 0.9998, $"area costs {area}/{n * 8}");
     }
+
+    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 652 of 695 areas identical, and from CA's own
+    /// transitions the region tables at 99.95 % of costs and 98 % of hop counts.</summary>
+    [Fact]
+    public void Combi_NativeHlp_Parity()
+    {
+        var (_, ppd, regions) = Inputs("wh3_main_combi_map_1");
+        var reference = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
+        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp);
+        var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
+        var same = hlp.Nodes.SelectMany(n => n.Areas).Count(a => refAreas.TryGetValue(a.Area, out var r) &&
+            a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
+        Assert.True(same >= 650, $"{same}/{refAreas.Count} identical areas");
+
+        var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
+        HlpRegionTables.Fill(fromRef);
+        int costs = 0, hops = 0;
+        for (var i = 0; i < fromRef.RegionCosts.Length; i++)
+        {
+            if (fromRef.RegionCosts[i] == reference.RegionCosts[i]) costs++;
+            if (fromRef.RegionHops[i] == reference.RegionHops[i]) hops++;
+        }
+        Assert.True(costs >= fromRef.RegionCosts.Length - 200, $"region costs {costs}");
+        Assert.True(hops >= fromRef.RegionHops.Length - 8000, $"region hops {hops}");
+        Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
+    }
 }

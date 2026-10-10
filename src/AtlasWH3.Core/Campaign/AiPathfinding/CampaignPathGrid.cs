@@ -316,6 +316,71 @@ public sealed class CampaignPathGrid
         }
     }
 
+    /// <summary>Point-to-point costs on this grid (Dial buckets, stopping at the target), with scratch arrays reused
+    /// between calls. Not thread-safe: one per thread.</summary>
+    public sealed class PairSearch(CampaignPathGrid g)
+    {
+        private readonly uint[] _dist = new uint[g.Width * g.Height];
+        private readonly int[] _seen = new int[g.Width * g.Height];
+        private readonly int[] _done = new int[g.Width * g.Height];
+        private readonly int[] _parent = new int[g.Width * g.Height];
+        private readonly List<int>[] _buckets = Enumerable.Range(0, (int)g.MaxEdgeCost + 1).Select(_ => new List<int>()).ToArray();
+        private int _gen;
+
+        /// <summary>The last search's cost to hex <paramref name="h"/> (valid for the hexes of <see cref="LastPath"/>).</summary>
+        public uint CostTo(int h) => _dist[h];
+
+        /// <summary>The hexes of the last found path, target first.</summary>
+        public IEnumerable<int> LastPath(int target)
+        {
+            for (var h = target; h >= 0; h = _parent[h]) yield return h;
+        }
+
+        public uint Cost(int source, int target)
+        {
+            _gen++;
+            var ring = _buckets.Length;
+            _dist[source] = 0;
+            _seen[source] = _gen;
+            _parent[source] = -1;
+            _buckets[0].Add(source);
+            var pending = 1;
+            var result = uint.MaxValue;
+            for (uint cur = 0; pending > 0; cur++)
+            {
+                var bucket = _buckets[cur % ring];
+                for (var i = 0; i < bucket.Count; i++)
+                {
+                    var h = bucket[i];
+                    pending--;
+                    if (_done[h] == _gen || _dist[h] != cur) continue;
+                    _done[h] = _gen;
+                    if (h == target) { result = cur; pending = 0; break; }
+                    var o = h * 6;
+                    for (var d = 0; d < 6; d++)
+                    {
+                        var c = g.Forward[o + d];
+                        if (c != NoEdge) Relax(h, g.Neighbour[o + d], cur + c, ring, ref pending);
+                    }
+                    for (var k = g.LinkStart[h]; k < g.LinkStart[h + 1]; k++) Relax(h, g.Links[k], cur + BridgeCost, ring, ref pending);
+                }
+                bucket.Clear();
+            }
+            foreach (var b in _buckets) b.Clear();
+            return result;
+        }
+
+        private void Relax(int from, int nb, uint nd, int ring, ref int pending)
+        {
+            if (_done[nb] == _gen || _seen[nb] == _gen && nd >= _dist[nb]) return;
+            _seen[nb] = _gen;
+            _dist[nb] = nd;
+            _parent[nb] = from;
+            _buckets[nd % ring].Add(nb);
+            pending++;
+        }
+    }
+
     public uint[] Search(int source, bool reverse, Action<int, uint>? visit = null)
     {
         var n = Width * Height;

@@ -75,21 +75,47 @@ Open on spd:
 
 ### hlp
 
-- The transition data is 3K's generator. On the prologue map it is byte-identical, region tables included.
+- **Transitions** come from 3K's generator, with three WH3 changes (each measured on combi map 1):
+  - The cost path is the start region's faction path: its own settlement is open at the slots' 0 cost, and foreign
+    ones are closed. 3K closed every slot. Example: Altdorf's bridge transitions cost 500 through its slots.
+    Transitions with CA's cost: 5,051 → 5,147.
+  - Land-sea transitions (flag 1) are costed on the landmark search's grid (`CampaignPathGrid.PairSearch`): every
+    settlement is open, the type gate applies, and a bridge crossing counts 500 as on the A* path. CA's 1,000, 785
+    and 1,191 are exactly those paths' costs, where the A* path paid the 2,100 beach.
+  - Flag 2 says whether that path goes through a settlement (a port). 3K's rule was "flag 1 and cost 0".
 - **Region tables** (`HlpRegionTables`):
   - Per region pair (from < to), the cheapest path over the transitions. Crossing costs the transition's cost, and
-    moving on inside an area costs that area's matrix value.
-  - The hop count is the number of region changes on that path; crossings between areas of one region don't count.
-  - Pairs with no path are `FFFFFFFF` and 255. Regions without areas, the diagonal and the costs' lower triangle are
-    `FFFFFFFE` and 0.
-  - From CA's own transitions on combi map 1: 99.95 % of costs and 97 % of hops. The hop misses are equal-cost
-    paths the game settles in another order.
-- **Combi map 1**: 549–551 of 695 areas identical, 5,049 of 5,280 transitions with CA's cost. The gaps are ports and
-  bridges:
-  - Flag 2 is no longer "flag 1 and cost 0". CA marks transitions that use a ppd beach, which then cost only their
-    land step (112 against my 2,100).
-  - 3K's hlp cost code still treats type 5 as 3K's port hexes. In WH3, type 5 is a bridge deck, and a crossing costs
-    500 against my 820.
+    moving on inside an area costs that area's matrix value. The cost goes in the u32 table's upper triangle.
+  - The u8 table's upper triangle holds that path's number of region changes; crossings between areas of one region
+    don't count.
+  - Its lower triangle `[to, from]` holds the region changes of the cheapest path without land-sea transitions:
+    99.3 % from CA's own transitions on combi map 1.
+  - No path: `FFFFFFFF` / 255. Regions without areas, the diagonal and the costs' lower triangle: `FFFFFFFE` / 0.
+  - Regions from 1,024 on have no row; paths may still pass through them.
+
+Parity (2026-10-10). "Areas" counts areas whose transitions, matrix, centre, `a` and `b` all equal CA's. "From CA's"
+is the region tables computed from CA's own transitions; "ours" from ours.
+
+| map | areas | region costs (from CA's / ours) | region hops (from CA's / ours) |
+|---|---|---|---|
+| prologue | 22 / 22, byte-identical | 100 % / 100 % | 100 % / 100 % |
+| chaos 1–4 | 263/263, 274/274, 280/281, 280/281 | 100 % / 100 % | 99 % / 99 % |
+| combi 1–4 | 652/695 … 666/713 (92–94 %) | 99.95 % / 90–96 % | 98 % / 95–98 % |
+| combi 5, 7 | 602/717, 607/720 (84 %) | 99.93 % / 81 % | 94 % / 93 % |
+| IEE | 900 / 1,068 (84 %) | 99.9 % / 79 % | 97 % / 95 % |
+| Old World | 1,305 / 1,703 (77 %) | 87 % / 68 % | 81 % / 76 % |
+| Old World Classic | 776 / 992 (78 %) | 81 % / 61 % | 76 % / 72 % |
+| Darklands | 261 / 303 (86 %) | 99.95 % / 82 % | 98 % / 91 % |
+
+Open on hlp:
+- The remaining transition costs are mostly ports and bridges on the bigger maps.
+- The equal-cost hop ties.
+- Old World's region costs: from CA's own transitions only 87 %, and CA's costs are *lower* than any path over its
+  transitions under these rules (example 0 → 12: 55,019 against 56,360). Tested without a fix:
+  - leaving regions from 1,024 on out of the paths;
+  - folding region indices onto 1,024 slots;
+  - folding the landing hex lookup onto the last 32 or 64 rows and columns, as 3K's sparse maps do (region 981
+    has transitions at x and y ≥ 1,024).
 
 ## Three Kingdoms (Atlas3K)
 
