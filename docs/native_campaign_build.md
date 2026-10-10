@@ -472,7 +472,7 @@ Before the first two fixes, about 900 IEE blocks decoded to values in the hundre
 `AtlasWH3.Cli build --project <map>.atlaswh3` (or the Build window) runs Validate → Compile → Pack → Install.
 `new-project <file> --map <map> --pack <the mod's pack>` makes a project that merges the build into a copy of that pack
 and installs it. Pack contents:
-- `{compiled}`: the files the steps wrote (the build manifest, `%LocalAppData%\AtlasWH3\cacheuilds`), at their
+- `{compiled}`: the files the steps wrote (the build manifest, `%LocalAppData%\AtlasWH3\cache\builds`), at their
   paths under the output; with a `path`, only that pack folder. Nothing else in working_data is packed.
 - a file or folder on disk, as before.
 
