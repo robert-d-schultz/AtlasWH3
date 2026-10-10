@@ -480,11 +480,11 @@ Old World's two packs, as shipped:
 
 ```json
 "packs": [
-  { "mode": "merge", "base": "{game}\!cr_oldworld_campaign.pack", "output": "{project}\!cr_oldworld_campaign.pack",
+  { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign.pack", "output": "{project}\\!cr_oldworld_campaign.pack",
     "contents": [{ "source": "{compiled}" }],
     "exclude": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"],
     "replaceDirs": ["terrain/campaigns/{map}/models/"] },
-  { "mode": "merge", "base": "{game}\!cr_oldworld_campaign_devastate.pack", "output": "{project}\!cr_oldworld_campaign_devastate.pack",
+  { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign_devastate.pack", "output": "{project}\\!cr_oldworld_campaign_devastate.pack",
     "contents": [{ "source": "{compiled}", "path": "terrain/campaigns/{map}/pieces" },
                  { "source": "{compiled}", "path": "terrain/campaigns/{devastated}" }],
     "replaceDirs": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/pieces/"] }
