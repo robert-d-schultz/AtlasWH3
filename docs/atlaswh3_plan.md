@@ -634,7 +634,12 @@ broken:
   - Open:
     - the rest of the port and bridge costs;
     - Old World's region table: CA's costs are below any path over its own transitions.
-- [ ] 6.6 The step on IEE and Old World end to end, and the in-game check (the AI moves; no startpos crash).
+- [ ] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash).
+  - `hlp_spd` is a pipeline step now (runs by default; inputs from the build output, else the kit's working_data).
+  - IEE: 17 s through `build-campaign`.
+  - Old World: 46 s and 3.8 GB peak (on the pack's inputs: the kit has no Old World `pathfinding.ppd`). The peak was
+    8.8 GB before the faction path's blocked array was shared.
+  - Left: the in-game check.
 
 
 - hlp v1 (`CAI_HIGH_LEVEL_PATHFINDER` with `REGION_AREA_INDEX`, the extra arrays, `OTHER_CONSTANTS`) and spd v1

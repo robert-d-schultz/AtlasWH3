@@ -60,7 +60,7 @@ public static partial class InfoCards
         new("build.step.camera_heightmap", "camera_heightmap  (BOB: Generate Camera Height Map)",
             "Writes camera_heightmap.png, which keeps the campaign camera above the ground and props. BOB's own action crashes on large maps."),
         new("build.step.hlp_spd", "hlp_spd  (the game's own generation, no BOB action)",
-            "Writes the AI pathfinding files spd_data.esf and hlp_data.esf from pathfinding.ppd and map_data.esf. Needs those two files from CAIME."),
+            "Writes the AI pathfinding files spd_data.esf and hlp_data.esf from pathfinding.ppd and map_data.esf, without the game. Needs those two files from CAIME. Run it after changing regions, roads, settlements or passability."),
 
         // ---- log tab
         new("build.tab.log", "Log", "The build's output, one line per event, tagged with the row that wrote it."),

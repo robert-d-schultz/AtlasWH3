@@ -147,13 +147,15 @@ public static class HlpBuilder
             return -1;
         }
 
-        var foreign = new System.Collections.Concurrent.ConcurrentDictionary<int, bool[]>();
-        bool[] Foreign(int region) => foreign.GetOrAdd(region, r =>
-        {
-            var b = (bool[])blocked.Clone();
-            for (var h = 0; h < b.Length; h++) if (slotOwner[h] == r) b[h] = false;
-            return b;
-        });
+        // the faction paths run one at a time: one blocked array, the start region's own slots opened for the call
+        var ownSlots = new Dictionary<int, List<int>>();
+        for (var h = 0; h < slotOwner.Length; h++)
+            if (slotOwner[h] >= 0)
+            {
+                if (!ownSlots.TryGetValue(slotOwner[h], out var l)) ownSlots[slotOwner[h]] = l = [];
+                l.Add(h);
+            }
+        var foreign = (bool[])blocked.Clone();
 
         // FUN_1805f8910: both ends next to the same settlement -> path without a faction (settlements passable),
         // else the faction path (the start's region), for which foreign settlements are closed
@@ -168,7 +170,10 @@ public static class HlpBuilder
             // transitions cost 500 through its slots), foreign ones closed
             var own = !same;
             var edges = g.Gated(same || own, g.Hlci[a], g.Hlci[b]);
-            var cost = search0.Run(a, edges, target: b, blocked: same ? null : own ? Foreign(regions.AreaMap[a] & MapDataRegions.RegionMask) : blocked);
+            var mine = own ? ownSlots.GetValueOrDefault(regions.AreaMap[a] & MapDataRegions.RegionMask) : null;
+            if (mine is not null) foreach (var h in mine) foreign[h] = false;
+            var cost = search0.Run(a, edges, target: b, blocked: same ? null : own ? foreign : blocked);
+            if (mine is not null) foreach (var h in mine) foreign[h] = true;
             if (cost == uint.MaxValue) return cost;
             var path = search0.PathTo(b);
             viaSlot = path.Any(h => slotOwner[h] >= 0);

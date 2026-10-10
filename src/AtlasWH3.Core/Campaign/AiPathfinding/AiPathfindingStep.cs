@@ -6,9 +6,9 @@ using AtlasWH3.Formats.Maps;
 namespace AtlasWH3.Core.Campaign.AiPathfinding;
 
 /// <summary>
-/// campaign_maps\&lt;map&gt;\spd_data.esf and hlp_data.esf: the campaign AI's offline pathfinding data, which only the
-/// game itself writes (CAI_PATHFINDER::reprocess_spd_data / CAI_TRANSITION_DATA::save_hlp_data during a startpos
-/// build). Inputs: pathfinding.ppd and map_data.esf (CAIME / map data export) plus three DB values from the kit.
+/// campaign_maps\&lt;map&gt;\spd_data.esf and hlp_data.esf (WH3 v1): the campaign AI's offline pathfinding data, which
+/// otherwise only the game itself writes. Inputs: pathfinding.ppd and map_data.esf (CAIME / map data export) plus three
+/// DB values from the map's mod packs and the vanilla db (docs/hlp_spd.md).
 /// </summary>
 public sealed class AiPathfindingStep : ICampaignBuildStep
 {

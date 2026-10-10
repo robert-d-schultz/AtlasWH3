@@ -198,7 +198,7 @@ static class AiPathfindingCommands
                 Console.WriteLine($"  columns with mismatches: {string.Join(" ", Enumerable.Range(0, 1024).Select(c => (Enumerable.Range(0, 1024).Count(r => copy.RegionCosts[r * 1024 + c] != refHlp.RegionCosts[r * 1024 + c]), c)).OrderByDescending(p => p.Item1).Take(8).Select(p => $"{p.c}:{p.Item1}"))}");
             }
             var bytes = hlp.ToBytes();
-            Console.WriteLine($"hlp: {hlp.Nodes.Count} nodes, {bytes.Length:N0} bytes in {t.Elapsed.TotalSeconds:F2} s");
+            Console.WriteLine($"hlp: {hlp.Nodes.Count} nodes, {bytes.Length:N0} bytes in {t.Elapsed.TotalSeconds:F2} s; peak working set {System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 >> 20} MB");
             if (outDir is not null) { Directory.CreateDirectory(outDir); File.WriteAllBytes(Path.Combine(outDir, "hlp_data.esf"), bytes); }
             if (refHlp is not null)
             {

@@ -12,7 +12,9 @@ retargeted to WH3 only.
 > `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless.
 > `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
 > campaign), so far without the pieces' objects. `lookup`, `camera_heightmap`, `global_props` (props, effects,
-> lights and sounds) and `rivers` (the river meshes, identical to BOB's) are in too. Only `hlp_spd` is still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> lights and sounds) and `rivers` (the river meshes, identical to BOB's) are in too. `hlp_spd` (the AI pathfinding
+> files, without the game) is in as well: byte-identical on the prologue map, close on the others. Its in-game check is
+> still to come. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -43,7 +45,7 @@ The goal is **one command that rebuilds the whole map from loose files**, with n
 | `camera_heightmap` | `camera_heightmap.png` (with the props' height patches) | Generate Camera Height Map (fails in BOB) |
 | `global_props` | `global_props.bin`, `global_props_sound.bin` | the Terry file action's props export |
 | `rivers` | `models\river_*` | the Terry file action's river export |
-| `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation (last) |
+| `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation during a startpos build (no BOB action) |
 
 Only BOB's default actions can run headless (the Terry file, the mask textures and Devastation pieces, as one group;
 see [`docs/bob_wh3.md`](docs/bob_wh3.md)). Until those steps are native, the hybrid build (Phase 2) will run that group in

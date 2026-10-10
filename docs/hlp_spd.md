@@ -8,6 +8,14 @@ WH3 maps ship `campaign_maps/<map>/hlp_data.esf` and `spd_data.esf`, which the g
 IEE and Old World maps (all four inputs and outputs per map). `extract_refs.py` in `research/hlp_spd_wh3` pulls them
 out through rpfm_server.
 
+- **Pipeline:** the `hlp_spd` step runs with the other native steps. It reads `pathfinding.ppd` and `map_data.esf`
+  from the build output's `campaign_maps/<map>`, else the kit's working_data, and the DB values from the linked mod
+  packs and vanilla. It writes both files with magic `CB AB`.
+  - IEE: 17 s. Old World: 46 s, peak 3.8 GB.
+- **CLI:** `hlp-spd --in <dir> [--out <dir>] [--compare <dir>]` reports field-level parity for both files.
+  `--tables-from-ref` adds the region tables computed from the reference's own transitions. The research flags are
+  listed on `AiPathfindingCommands`.
+
 ### Formats (`Formats/Esf/CampaignAiData.cs`, `CaabWriter`, `CaabReader`)
 
 - **CAAB / CBAB with child records.** The game's current files have magic `CB AB` (combi maps 5 and 7, IEE); older

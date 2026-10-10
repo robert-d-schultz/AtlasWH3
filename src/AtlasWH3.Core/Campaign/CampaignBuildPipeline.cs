@@ -10,9 +10,8 @@ public sealed class CampaignBuildPipeline
 {
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
-    /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phase 3). A <see cref="PendingStep"/> is
-    /// not native yet: Atlas3K's 3K version of it (AiPathfindingStep) is kept as the basis of the re-port, but writes 3K
-    /// formats, so it is not in the pipeline.</summary>
+    /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phases 3 and 6). A
+    /// <see cref="PendingStep"/> is not native yet (none is left).</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
         new HeightmapsStep(),
@@ -26,8 +25,7 @@ public sealed class CampaignBuildPipeline
         new LookupStep(),
         new CameraHeightmapStep(),
         new EnvironmentStep(),
-        new PendingStep("hlp_spd", "the game's own hlp/spd generation", [],
-            "hlp_data.esf v1 and spd_data.esf v1 (Phase 6; Atlas3K's AiPathfindingStep writes 3K's v0)"),
+        new AiPathfinding.AiPathfindingStep(),
     ];
 
     /// <summary>Steps that run when none are named: every one that is native.</summary>
