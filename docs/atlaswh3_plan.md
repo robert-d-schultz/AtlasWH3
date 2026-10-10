@@ -264,14 +264,11 @@ from those GUI actions alone, so they go away with 3.1–3.4 and are not automat
 - [x] Headless BOB: `ScratchKit` (an isolated copy of the kit, so BOB never writes into the user's) and `BobRunner`
   (silent run of the default group, `bob.log` guard, one launch). CLI `bob-scratch`, `bob-run`, `bob-actions`.
 - [ ] ~~Automatic pack round trips~~: dropped, see above.
-- [ ] Devastated builds without the fake campaign: work out the minimum BOB needs for Devastation pieces, so the
-  hybrid build can make the pieces without the user keeping a fake `campaign_maps\<map>_devastate_1`.
-- [ ] Hybrid pipeline: each step resolves to native when it is ported and enabled, otherwise to the BOB default group
-  (one group, run after the native `tile_list` and `trees` are written into the scratch kit, or its pieces lose them).
-  Per-step override in the project file. Native steps run in parallel as they do now.
-- [ ] Pack and install segments retargeted to WH3 (`data` folder, `Warhammer3.exe` running check).
-- [ ] The `trim_mips` fix-up is built in as a step before Devastation pieces, while that action is still BOB's.
-- [ ] Timing report per step, so the next native step can be chosen by measured time saved.
+- [x] Devastated builds without the fake campaign: done natively by 3.6 (the devastated project is an input).
+- [ ] ~~Hybrid pipeline~~: dropped in Phase 4, since every step but hlp/spd is native.
+- [ ] Pack and install segments retargeted to WH3 (`data` folder, `Warhammer3.exe` running check): Phase 4.5.
+- [ ] ~~The `trim_mips` fix-up~~: dropped, since the pieces are native (3.6).
+- [ ] ~~Timing report per step~~: dropped in Phase 4 (each step's time is in `docs/native_campaign_build.md`).
 
 ### Phase 3: Native steps, game-valid (5–8 weeks)
 
@@ -421,12 +418,41 @@ Each step is done when:
 - the decompiler round trip agrees,
 - and parity numbers are recorded in `docs/native_campaign_build.md`.
 
-### Phase 4: Parity (ongoing, +4–6 weeks total)
+### Phase 4: Loose ends, then parity
 
-Use the Atlas3K method: Ghidra on the WH3 DLLs, Frida on `bob.modder.x64.exe` (the harness's process name changes),
-and field-level diffs. Do it step by step, where the gap is small or a mismatch causes a visible bug. Expected order:
-`tile_list` → `trees` → `global_props` → `rivers` → `camera_heightmap`. BC6H/BCn byte parity is out of scope unless
-AMDCompress's behaviour turns out to be cheap to match.
+Rewritten 2026-10-09, after 3.10. Every BOB step but hlp/spd is native, so this phase first closes what a native build
+still can't write (checked against the shipped IEE, Old World and vanilla packs), then the Phase 1–3 leftovers, then
+parity. Files the user writes by hand are inputs, not outputs: `environment_collection.xml` (both folders) and
+`event_vfx`.
+
+**Completeness:** what ships but is still BOB's
+- [ ] 4.1 The pieces' objects: `objects(.culture)`, `bmd_objects_sound(.culture)`, and on the devastate side
+  `objects_devastation_<type>` / `bmd_objects_sound_devastation_<type>`. This is 3.9's builder applied per event area,
+  to the main and devastated projects (3.6 left).
+- [ ] 4.2 The pieces' `rivers` files, cut from 3.10's bake (IEE's main map has 2, from its lava rivers).
+- [ ] 4.3 `lf_normal.dds` (DXT5nm; BOB's Campaign Heightmap action, NVTT). The main map ships it and the pieces cut it.
+
+**Leftovers from Phases 1–3**
+- [ ] 4.4 Lookup: build Old World's palette reorder (more settlement regions than the game's 1024 palette entries,
+  today `lookup_tweak.py`) into the step (3.7).
+- [ ] 4.5 Pack and install for WH3: `data` folder, the `Warhammer3.exe` running check (Phase 2), so a full rebuild is
+  one command from `raw_data` to an installed pack.
+- [ ] 4.6 Fixtures and `TestKits` (Phase 1): frozen source + output snapshots, so the parity work below has regression
+  tests.
+
+**Parity** (the Atlas3K method: disassembly of the WH3 DLLs, Frida on `bob.modder.x64.exe`, field-level diffs; only
+where the gap is small or a mismatch is visible)
+- [ ] 4.7 `trees`: the 457 IEE heights not explained (3.2).
+- [ ] 4.8 `global_props`: the remaining ulps (effects inside prefabs, rotated sound emitters) (3.9).
+- [ ] 4.9 `camera_heightmap`: a BOB run with the `cam_hmap_*` keys in rules.bob as the reference, then BOB's
+  tile-terrain term and blur (needs Phase 1's CHMF / RMV2 v7 tile meshes) (3.8).
+
+BC6H/BCn byte parity is out of scope unless AMDCompress's behaviour turns out to be cheap to match. The in-game checks
+of 3.1–3.10 are done in one pass once 4.1–4.3 are in.
+
+**Dropped:** the hybrid BOB fallback and the per-step override (no BOB-only step is left; `BobRunner` stays for parity
+runs), the `trim_mips` fix-up (the pieces are native), the timing report (it was there to choose the next native step),
+and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they ship nowhere, §2).
 
 ### Phase 5: Editors on WH3 (3–5 weeks)
 
