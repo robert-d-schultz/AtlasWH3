@@ -78,6 +78,8 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         var (w, h) = GridSize(tiles.Ints[1], tiles.Ints[2], settings.ResolutionScale);
         ctx.Log($"sampling {w}x{h}...");
         var cells = Sample((x, z) => field.Height(x, z), w, h, field.WorldWidth, field.WorldDepth, settings.SamplesPerUnit);
+        if (FillOffMap(cells, w, h) is > 0 and var filled)
+            notes.Add($"{filled} cells off the terrain at the map's edges take the nearest terrain cell's height");
         var highest = cells.Max();
         var (raster, scale) = Encode(cells, w, h, highest);
         Directory.CreateDirectory(ctx.CampaignMapOutDir);
@@ -151,6 +153,53 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
             }
         });
         return cells;
+    }
+
+    /// <summary>
+    /// Cells off the terrain (no height above 0: the map's edges outside the tiled area, where full_logic_map is 0)
+    /// that are connected to the map border take the value of the nearest cell with terrain, so the edge carries on the
+    /// sea or coast next to it instead of dropping to 0, below the sea surface. CA's vanilla combi file does the same in
+    /// effect (flat sea values out to the edge, 2026-10-10). Zero cells inside the map (lake bowls) are kept. Returns
+    /// the number of cells filled.
+    /// </summary>
+    public static int FillOffMap(float[] cells, int w, int h)
+    {
+        var off = new bool[w * h];
+        var queue = new Queue<int>();
+        void Mark(int i) { if (!off[i] && cells[i] <= 0f) { off[i] = true; queue.Enqueue(i); } }
+        for (var u = 0; u < w; u++) { Mark(u); Mark((h - 1) * w + u); }
+        for (var j = 0; j < h; j++) { Mark(j * w); Mark(j * w + w - 1); }
+        while (queue.Count > 0)
+        {
+            var i = queue.Dequeue();
+            int u = i % w, j = i / w;
+            if (u > 0) Mark(i - 1);
+            if (u < w - 1) Mark(i + 1);
+            if (j > 0) Mark(i - w);
+            if (j < h - 1) Mark(i + w);
+        }
+        // breadth first from the terrain cells bordering the marked region: each marked cell takes its nearest one's value
+        for (var i = 0; i < off.Length; i++)
+        {
+            if (off[i]) continue;
+            int u = i % w, j = i / w;
+            if (u > 0 && off[i - 1] || u < w - 1 && off[i + 1] || j > 0 && off[i - w] || j < h - 1 && off[i + w]) queue.Enqueue(i);
+        }
+        var filled = 0;
+        while (queue.Count > 0)
+        {
+            var i = queue.Dequeue();
+            int u = i % w, j = i / w;
+            foreach (var n in new[] { u > 0 ? i - 1 : -1, u < w - 1 ? i + 1 : -1, j > 0 ? i - w : -1, j < h - 1 ? i + w : -1 })
+            {
+                if (n < 0 || !off[n]) continue;
+                off[n] = false;
+                cells[n] = cells[i];
+                filled++;
+                queue.Enqueue(n);
+            }
+        }
+        return filled;
     }
 
     /// <summary>16-bit pixels (row 0 = north) and the height_scale text.</summary>

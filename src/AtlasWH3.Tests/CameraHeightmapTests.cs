@@ -78,4 +78,20 @@ public class CameraHeightmapTests
         Assert.Equal((ushort)13107, raster.Data[0]);
         Assert.Equal((ushort)0, raster.Data[4]);              // the south row
     }
+
+    [Fact]
+    public void FillOffMap_CarriesTheEdgeOnAndKeepsInnerHoles()
+    {
+        // 5 x 4, south row first: an off-terrain strip down the west column, a hole (lake bowl) inside the map
+        float[] cells =
+        [
+            0, 1.0f, 1.0f, 1.0f, 1.0f,
+            0, 1.4f, 0f,   2.0f, 1.0f,
+            0, 1.4f, 2.0f, 2.0f, 1.0f,
+            0, 3.0f, 1.0f, 1.0f, 1.0f,
+        ];
+        Assert.Equal(4, CameraHeightmapStep.FillOffMap(cells, 5, 4));
+        Assert.Equal([1.0f, 1.4f, 1.4f, 3.0f], new[] { cells[0], cells[5], cells[10], cells[15] });   // its east neighbour's
+        Assert.Equal(0f, cells[7]);
+    }
 }

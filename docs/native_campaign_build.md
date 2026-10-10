@@ -302,12 +302,22 @@ the map's working_data and EmpireDesignData folders.
   (mountains, 204 models) and along slopes (BOB's max over samples), and a few lake bowls are lower. Old World has no
   height patches: correlation 0.997, the native map up to about 1 higher on slopes (the user's file is also a row short:
   3549 · 0.25 rounds up to 888).
-- **Time:** IEE 18 s, Old World 15 s.
+- **Against vanilla combi** (2026-10-10; CA's `wh3_main_combi_map_1` file through rpfm_server against the native IEE
+  map, vanilla's 720 columns, the IEE-only east ignored): the same scale (median ratio 1.001 on land), the same
+  roughness, and no box or max filter of the native map comes closer, so the sampling stays as it is. West of the IEE
+  edits, 89.6% of cells within 0.25 and 96.2% within 1. The one systematic gap was the map's edges outside the tiled
+  area: full_logic_map is 0 there, so the native cells were 0 (below the sea, ~1.0) where vanilla carries flat sea or
+  coast values out to the edge. Now `FillOffMap` gives such cells, when connected to the border, their nearest terrain
+  cell's value (IEE: 27,794 cells); zero cells inside the map (lake bowls) stay. Left: vanilla's own leftovers (a 3.8
+  plateau in the south-west corner, lake discs).
+- **Not BOB's any more** (2026-10-10): with the cam_hmap keys set BOB's action runs, but on IEE it filled 69 of 486 rows
+  in 90 minutes (about 10 hours in all, almost all in the height-patch lookup, warscape 0x5b5c30), so there is no BOB
+  reference; the step is judged in game and against vanilla.
+- **Time:** IEE 11–18 s, Old World 15 s.
 - **Inputs:** the build's (else working_data's) full_logic_map and tile_list.bin, the .terry's `world_width` (else
   map_data.esf's), the layers' height-patched entities, their models' patches from the packs (vanilla plus `--pack`),
   and the rules.bob files (`campaigns\rules.bob`, then the map folder's).
-- **Open:** BOB's tile terrain T; the blur; entities inside groups (their parents' transforms; none in the fixtures);
-  a BOB run with the cam_hmap keys set, as the reference.
+- **Open:** entities inside groups (their parents' transforms; none in the fixtures); the in-game check.
 
 ### global_props.bin and global_props_sound.bin (WH3)
 
