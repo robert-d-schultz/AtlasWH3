@@ -25,6 +25,7 @@ public sealed class CampaignBuildPipeline
         new DevastationPiecesStep(),
         new LookupStep(),
         new CameraHeightmapStep(),
+        new EnvironmentStep(),
         new PendingStep("hlp_spd", "the game's own hlp/spd generation", [],
             "hlp_data.esf v1 and spd_data.esf v1 (Phase 6; Atlas3K's AiPathfindingStep writes 3K's v0)"),
     ];

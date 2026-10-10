@@ -28,12 +28,13 @@ namespace AtlasWH3.Core.Campaign;
 ///    position, mapped as the trees', is in the area, flattened by the global_props builder
 ///    (<see cref="Wh3GlobalPropsBuilder.BuildPieces"/>; rivers and light probes stay map-wide). BOB's record order
 ///    changes from run to run (two runs of the same IEE sources: 268 files differ in order alone), so parity is content;
-///  - rivers: the river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>).
+///  - rivers: the river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>);
+///  - event_vfx (the main map's folder): <see cref="EventVfx"/>.
 /// The devastated project (&lt;map&gt;_devastate_1 in raw_data, <see cref="CampaignBuildContext.DevastatedMap"/>) is an input,
 /// not a second campaign: its heightmaps, tile list, trees, global map and masks are built into the cache (no fake
 /// campaign_maps folder; map_data.esf is the main map's; full_height_map only where the pieces cut it), and its pieces,
 /// event_tiles, event_trees and event_area_mask.dds go into terrain\campaigns\&lt;map&gt;_devastate_1, which is all that
-/// folder ships besides environment_collection.xml (the map author's own file, not built).
+/// folder ships besides environment_collection.xml (<see cref="EnvironmentStep"/>).
 /// lf_normal.dds (NVTT) is not native yet: it is cut from working_data's.
 /// </summary>
 public sealed class DevastationPiecesStep : ICampaignBuildStep
@@ -70,9 +71,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         string? Terrain(string root, string map, string relative) => Compiled(root, Path.Combine("terrain", "campaigns", map, relative));
 
         var main = TerryProject.Load(ctx.TerryFile);
+        var mainObjects = Objects(ctx, main, ctx.MapName, Packs, notes);
         Write(main, rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
               Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes,
-              Objects(ctx, main, ctx.MapName, Packs, notes));
+              mainObjects);
 
         if (DevastatedMapName(ctx) is not { } devastated)
             notes.Add($"no devastated project ({TerryFileOf(ctx, DevastatedName(ctx.MapName))}): only the main map's pieces");
@@ -97,8 +99,17 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             string? Source(string rel) => Terrain(build, devastated, rel)
                 ?? (rel == "lf_normal.dds" ? Terrain(ctx.TargetRoot, ctx.MapName, rel) : null);
             var outDir = Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
-            Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
-                  Objects(ctx, project, devastated, Packs, notes));
+            var devastatedObjects = Objects(ctx, project, devastated, Packs, notes);
+            var pieceAt = Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
+                                devastatedObjects);
+            if (mainObjects is not null && devastatedObjects is not null && pieceAt is not null)
+            {
+                var lines = EventVfx(devastatedObjects.PieceVfx(pieceAt), mainObjects.MapWideVfx());
+                var path = ctx.OutFile("event_vfx");
+                File.WriteAllBytes(path, EventPieces.Lines(lines));
+                written.Add(path);
+                notes.Add($"event_vfx: {lines.Count} effects the devastated pieces bring that no map-wide object uses");
+            }
             if (Terrain(build, devastated, "event_area_mask.dds") is { } mask)
             {
                 var path = Path.Combine(outDir, "event_area_mask.dds");
@@ -132,6 +143,23 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         return builder;
     }
 
+    /// <summary>
+    /// event_vfx, the effects the game preloads at campaign start so an area's swap does not stall on them (it loads each
+    /// name and drops the result; a missing file skips that). Nothing in the kit writes it and CA's list is hand-kept
+    /// (WH3_visual_map_decompiler docs/event-area-pieces.md; IEE ships vanilla's copy). Here: per bmd_export_type
+    /// (ordinal, the untyped files last, as vanilla's chaos / nagash / skaven groups), the effects in the devastated
+    /// pieces that no global_props.bin object uses and no earlier group listed, ordinal.
+    /// </summary>
+    public static List<string> EventVfx(IReadOnlyDictionary<string, SortedSet<string>> pieceVfx, IReadOnlySet<string> mapWide)
+    {
+        var seen = new HashSet<string>(mapWide, StringComparer.Ordinal);
+        var lines = new List<string>();
+        foreach (var type in pieceVfx.Keys.OrderBy(t => t.Length == 0).ThenBy(t => t, StringComparer.Ordinal))
+            foreach (var name in pieceVfx[type])
+                if (name.Length > 0 && seen.Add(name)) lines.Add(name);
+        return lines;
+    }
+
     /// <summary>The devastated project: <see cref="CampaignBuildContext.DevastatedMap"/>, else
     /// &lt;map without _1&gt;_devastate_1 when its .terry exists.</summary>
     public static string? DevastatedMapName(CampaignBuildContext ctx)
@@ -143,7 +171,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
 
     private static string DevastatedName(string map) => (map.EndsWith("_1", StringComparison.Ordinal) ? map[..^2] : map) + "_devastate_1";
 
-    private static string TerryFileOf(CampaignBuildContext ctx, string map) =>
+    public static string TerryFileOf(CampaignBuildContext ctx, string map) =>
         Path.Combine(ctx.Paths.AssemblyKitRoot, "raw_data", "terrain", "campaigns", map, map + ".terry");
 
     /// <summary>The full_height_map.dds blocks a project's pieces cut, as linear block indices (a crop past the right
@@ -178,7 +206,9 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
     /// <param name="compiled">A compiled file of the map by its path under the map folder, or null when there is none.</param>
     /// <param name="treeList">trees.campaign_tree_list, or null.</param>
     /// <param name="objects">The project's layer objects for the objects / bmd_objects_sound files, or null.</param>
-    public static void Write(TerryProject project, Func<string, string?> compiled, string? treeList, string mapOutDir,
+    /// <returns>The area lookup the objects were placed with (world x, z to a piece; -1 for none), or null without
+    /// objects.</returns>
+    public static Func<float, float, int>? Write(TerryProject project, Func<string, string?> compiled, string? treeList, string mapOutDir,
                              Func<CampaignTileDatabase> tileDb, CampaignBuildContext ctx, List<string> written, List<string> notes,
                              Wh3GlobalPropsBuilder? objects = null)
     {
@@ -252,6 +282,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         else notes.Add("no trees.campaign_tree_list (this build or working_data): no tree_list in the pieces, no event_trees");
 
         // objects and sounds
+        Func<float, float, int>? pieceAt = null;
         if (objects is not null)
         {
             ctx.Log("objects...");
@@ -265,6 +296,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                 if (px < 0 || px >= maskW || row < 0 || row >= maskH) return -1;
                 return slot.TryGetValue(mask.Data[row * maskW + px], out var s) ? s : -1;
             }
+            pieceAt = PieceAt;
             var files = objects.BuildPieces(PieceAt, pieces.Count);
             for (var i = 0; i < pieces.Count; i++)
                 foreach (var f in files[i])
@@ -279,6 +311,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             notes.Add($"{rivers.Sum(r => (r?.Length ?? 0) / 16)} river_lava rivers in {rivers.Count(r => r is not null)} pieces' rivers files");
         }
         written.AddRange(pieces.Select(p => p.Folder));
+        return pieceAt;
     }
 
     private static uint Colour(TiffMap.Palette palette, byte index) =>

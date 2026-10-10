@@ -422,14 +422,15 @@ Each step is done when:
 
 Rewritten 2026-10-09, after 3.10. Every BOB step but hlp/spd is native, so this phase first closes what a native build
 still can't write (checked against the shipped IEE, Old World and vanilla packs), then the Phase 1–3 leftovers, then
-parity. Files the user writes by hand are inputs, not outputs: `environment_collection.xml` (both folders) and
-`event_vfx`.
+parity.
 
 **Completeness:** what ships but is still BOB's
 - [x] 4.1 The pieces' objects: `objects(.culture)`, `bmd_objects_sound(.culture)`, and on the devastate side
   `objects_devastation_<type>` / `bmd_objects_sound_devastation_<type>`. This is 3.9's builder applied per event area,
   to the main and devastated projects (3.6 left).
 - [x] 4.2 The pieces' `rivers` files, cut from 3.10's bake (IEE's main map has 2, from its lava rivers).
+- [x] 4.2b `environment_collection.xml` for both folders (BOB's Terry file action; new `environment` step) and the main
+  folder's `event_vfx` (nothing in the kit writes it; the pieces step does now).
 - [ ] 4.3 `lf_normal.dds` (DXT5nm; BOB's Campaign Heightmap action, NVTT). The main map ships it and the pieces cut it.
 
 **4.1–4.2 status (2026-10-10):** `DevastationPiecesStep` writes every piece's objects and sound files, per
@@ -444,9 +445,14 @@ list the `river_lava` rivers: IEE's two match the pack's (one byte-identical, on
 - BOB writes no files for a type with nothing in the piece, and no light probes or rivers in pieces;
 - **an ECTransform pivot moves the entity** (position + pivot − RS·pivot). This also fixes two IEE mountains in
   global_props (content parity: IEE 85.10%, Old World unchanged at 98.83%);
-- **the user's kit's Terry `configuration.xml` names 3K's `art/campaign/prefabs`** (changed 2026-10-09 10:20; the
-  scratch kit's copy has `art/prefabs/campaign`), so IEE's `white_tree_of_morash_chaos_bits` prefab was dropped. The
-  prefab library now falls back to WH3's folder when the configured one does not exist.
+- **the vanilla kit's Terry `configuration.xml` names `art/campaign/prefabs` for campaign prefabs**, a mistake (they
+  are in `art/prefabs/campaign`) that the user corrects by hand in each kit; this kit had the vanilla value again
+  since 2026-10-09, so IEE's `white_tree_of_morash_chaos_bits` was dropped. The prefab library now ignores that value.
+
+**4.2b status (2026-10-10):** `EnvironmentStep` compiles `environment_collection.xml` from the project (the .terry's
+global_lighting and devastation_light_environments, a SPHERE / CYLINDER per ECEnvironmentVolume). Against BOB: IEE's
+devastate folder byte-identical; IEE and Old World the same lines in another order, which two BOB runs of the same IEE
+sources also differ in (address order). `event_vfx`: see `docs/native_campaign_build.md` (pieces).
 
 Left: the in-game check (an area devastates and restores, with its objects and lava rivers). Numbers in
 `docs/native_campaign_build.md`.

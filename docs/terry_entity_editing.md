@@ -206,7 +206,7 @@ Self-test: `Atlas3K.App --scene <copy>.terry --terrain-selftest <out dir>`. It r
 | Database | Library folder | In the kit |
 |---|---|---|
 | battle | `raw_data/art/prefabs/battle` | 1,302 prefabs; `ea_villa_m_01` and `wo_l_tea_field_07` each exist twice, and the first path in ordinal order wins |
-| campaign | `raw_data/art/prefabs/campaign` | 33 prefabs (WH3's kit; the folder configuration.xml names is used only when it exists) |
+| campaign | `raw_data/art/prefabs/campaign` | 33 prefabs. The vanilla kit's configuration.xml says `art/campaign/prefabs`, a mistake map authors correct by hand; AtlasWH3 ignores that value |
 
 ### Code (`Formats/Terry/`)
 

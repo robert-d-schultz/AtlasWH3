@@ -182,6 +182,26 @@ public class PrefabTests
 
     // ---------------------------------------------------------------- editor ops (sandbox kit)
 
+    /// <summary>The vanilla kit's configuration.xml names art/campaign/prefabs for campaign prefabs, a mistake: the
+    /// library reads art/prefabs/campaign instead, and any other configured folder as it is.</summary>
+    [Fact]
+    public void ForKit_IgnoresTheVanillaCampaignPrefabMistake()
+    {
+        var kit = Directory.CreateTempSubdirectory();
+        try
+        {
+            var config = Path.Combine(kit.FullName, "working_data", "Terry", "configuration.xml");
+            Directory.CreateDirectory(Path.GetDirectoryName(config)!);
+            void Config(string campaign) => File.WriteAllText(config,
+                $"<configuration><item key=\"path\"><item key=\"campaign\"><item key=\"prefab\">{campaign}</item></item></item></configuration>");
+            Config("art/campaign/prefabs");
+            Assert.Equal(Path.Combine(kit.FullName, "raw_data", "art", "prefabs", "campaign"), PrefabLibrary.ForKit(kit.FullName, "campaign").Root);
+            Config("art/my_prefabs");
+            Assert.Equal(Path.Combine(kit.FullName, "raw_data", "art", "my_prefabs"), PrefabLibrary.ForKit(kit.FullName, "campaign").Root);
+        }
+        finally { kit.Delete(true); }
+    }
+
     [Fact]
     public void Editor_PlaceMakeExpand_UndoRestoresEverything()
     {

@@ -18,6 +18,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. **Objects and sounds** (2026-10-10, Phase 4.1): the same files as BOB in every piece of all four folders; BOB's record order changes between runs, so parity is content (records with their `.culture` masks as multisets, `gp27-pieces-diff`): IEE main against the fresh BOB run 99.96% of 485,625 records, IEE devastate against the pack 99.78% of 552,712, Old World main against its working_data 95.98% of 80,002, Old World devastate 78.36% of 5,518; leaving out the three fields BOB takes only from models loose in its kit (`UsesTerrainVertexOffset`, `Animated`, `DynamicShadows`, see global_props): 99.98%, 100.00%, 99.87%, 99.95%. **Rivers files:** see below. Cutting: IEE 4 s, Old World 7 s; objects about 20 s per project; the devastated build IEE 207 s. Not yet checked in game |
 | `lookup` | Texture / Convert lookup texture | 2026-10-09, against the user's BOB output (IEE) and the shipped packs (both). IEE: `.tga` and `.dds` **byte-identical** to BOB's and to `!cr_immortal_empires_expanded.pack`'s; `_minimap.tga` differs in 1,545 of 388,000 pixels, along region borders (see below). Old World: every pixel the same colour as the pack's, but the palette is ordered differently on purpose (see below). IEE 0.2 s, Old World 2.5 s |
 | `global_props` | Terry file (props export) | 2026-10-09, against BOB runs of the same sources (the scratch kit, Old World and IEE). BOB is not byte-reproducible here: two Old World runs of identical input differ in record order (20,912 bodies), entry order and the one-prop bucket numbers, so parity is **content parity** (every bucket body's records as a multiset; `gp27-diff`), on which two BOB runs agree 100%. Measured with BOB's model boxes (a research switch since removed): Old World 58,875 of 59,085 groups the same (99.6%), IEE 101,465 of 101,561 (99.9%); `global_props_sound.bin` IEE 3,172 of 3,215. The same bodies as BOB on both maps (60,753 and 102,578) and the same objects (132,644 and 1,326,436). The step boxes every model by its own bounds, so 436 Old World and 8,248 IEE objects go to a coarser cell than BOB's (Old World 98.8%, IEE 85.1%), see below. The v27 reader / writer round-trips all 166,549 bodies of both maps' BOB files. IEE 17.6 s, Old World 5.2 s (BOB's Terry file about 3 min on IEE). Not yet checked in game |
+| `environment` | Terry file (environment_collection.xml) | 2026-10-10, against BOB's output (the scratch kit's fresh runs, IEE's devastated project's in the kit). IEE's devastate folder **byte-identical**; IEE (2 spheres, 25 cylinders) and Old World (9, 247): every line the same, in another order. Two BOB runs of the same IEE sources differ in that order too (address order), so the step writes layer and entity order. Under 0.1 s. Not yet checked in game |
 | `rivers` | Terry file (river models) | 2026-10-09, against four BOB runs: the user's working_data (IEE 60 rivers, Old World 127) and the scratch kit's fresh runs (IEE all 266, Old World 127). Every `river_<id>.wsmodel.rigid_model_v2` **byte-identical** apart from the two bytes BOB leaves uninitialised (0x31A–0x31B), every `.wsmodel` byte-identical; reversed rivers, a first point off the origin and 2310-row waterfalls included. `global_props` now boxes and places rivers from this bake: content parity unchanged, no river record differs. IEE 8 s, Old World 0.8 s. Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
@@ -227,12 +228,16 @@ fresh BOB run. The formats are in the decompiler's `docs/event-area-pieces.md`; 
   `river_lava`, in the piece whose area holds it. IEE's pack has two (`event_9ca317`, `event_c14516`), listing all 7 of
   its `cr_campaign_water_plane_river_lava` rivers at their layer positions, and not its one `wh_campaign_lava` river
   (in `event_ff8856`'s area); vanilla's devastated rivers are `cwb_campaign_river_lava`. Against the pack: `event_c14516`
-  byte-identical, `event_9ca317` the same two records in the other order (the order means nothing, decompiler notes). A
-  fresh BOB run of IEE wrote none, with its pieces folder emptied first, so BOB may only add them to piece folders that
-  already exist (not checked in the disassembly). The game gives a listed river the lava material while the area is
-  devastated.
-- Not native yet: `lf_normal.dds`, which is cut from working_data's (BOB's Campaign Heightmap, NVTT). The devastated
-  folder's `environment_collection.xml` is the map author's own file.
+  byte-identical, `event_9ca317` the same two records in the other order (the order means nothing). Only river
+  splines are listed, never river props, and the game claims a kept river by this position and gives it the lava
+  material while the area is devastated (WH3_visual_map_decompiler `docs/event-area-pieces.md`, README "Devastated
+  maps").
+- **event_vfx** (main map folder): the effects the game preloads so a swap does not stall on them. Nothing in the kit
+  writes it and CA's list is hand-kept (IEE ships vanilla's copy). The step writes, per bmd_export_type (the untyped
+  files last, like vanilla's chaos / nagash / skaven groups), the effects in the devastated pieces that no
+  global_props.bin object uses and no earlier group listed. Written only with a devastated project.
+- **environment_collection.xml**: the `environment` step (below).
+- Not native yet: `lf_normal.dds`, which is cut from working_data's (BOB's Campaign Heightmap, NVTT).
 
 ### Lookup textures (WH3)
 
@@ -345,9 +350,9 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
   sound masks have only their known cultures' bits; ECPolyline3D emitters are SST_LINE_LIST of every point.
 - **Layers:** every exported file layer; an `ECLayer export="false"` group hides its members (transitively), inside
   prefabs too (marienburg_big's "houses"); members of a group with a bmd_export_type go to the pieces' typed files
-  instead. Prefabs come from the folder Terry's configuration.xml names for the campaign database, or WH3's
-  `art/prefabs/campaign` when that folder does not exist (the user's kit named 3K's `art/campaign/prefabs` from
-  2026-10-09, which dropped IEE's `white_tree_of_morash_chaos_bits`).
+  instead. Prefabs come from the folder Terry's configuration.xml names for the campaign database, except the vanilla
+  kit's mistaken `art/campaign/prefabs`, which is read as `art/prefabs/campaign` (with it, IEE's
+  `white_tree_of_morash_chaos_bits` was dropped).
 - **Not matched yet:** one-ulp transforms of effects inside prefabs (Old World's tow_torch), sound axes of rotated
   emitters, the last byte of the 53 unknown bytes on 10 IEE river sounds, a spot light's length by an ulp, one polygon
   BOB stops triangulating early. Not written: the devastated project's `global_props[_sound]_devastation_<type>.bin`,

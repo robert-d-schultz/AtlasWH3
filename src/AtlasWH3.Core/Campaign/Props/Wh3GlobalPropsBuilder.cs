@@ -306,12 +306,13 @@ public sealed class Wh3GlobalPropsBuilder
                 for (var j = 0; j < 3; j++)
                     scaled[i * 3 + j] = world.R[i * 3] * (j == 0 ? vs : 0f) + world.R[i * 3 + 1] * (j == 1 ? vs : 0f) + world.R[i * 3 + 2] * (j == 2 ? vs : 0f);
             var vfxWorld = world with { R = scaled };
+            var vfxName = (string?)vfx.Attribute("vfx") ?? "";
             Add("vfx", b => b.Vfx.Add(new Bmd27Vfx
             {
                 Name = (string?)vfx.Attribute("vfx") ?? "", Transform = vfxWorld.Record(), Instance = (string?)vfx.Attribute("instance_name") ?? "",
                 Flags = flags, Autoplay = B((string?)vfx.Attribute("autoplay") != "false"), VisibleInShroud = B(shroud),
                 NotShroudOnly = B(!shroudOnly), NoCulling = B(noCulling),
-            }));
+            })).What = vfxName;
             return;
         }
         if (e.Element("ECPointLight") is { } light)
@@ -751,6 +752,19 @@ public sealed class Wh3GlobalPropsBuilder
                 result[p].Add(PieceBody("objects" + suffix, objects));
                 result[p].Add(PieceBody("bmd_objects_sound" + suffix, sounds));
             }
+        return result;
+    }
+
+    /// <summary>The effect names of the objects in global_props.bin (no bmd_export_type).</summary>
+    public IReadOnlySet<string> MapWideVfx() =>
+        _objects.Where(o => o.Kind == "vfx" && o.Type.Length == 0).Select(o => o.What).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The effect names of the objects <paramref name="pieceAt"/> puts in a piece, by bmd_export_type.</summary>
+    public Dictionary<string, SortedSet<string>> PieceVfx(Func<float, float, int> pieceAt)
+    {
+        var result = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        foreach (var o in _objects.Where(o => o.Kind == "vfx" && pieceAt(o.X, o.Z) >= 0))
+            (result.TryGetValue(o.Type, out var set) ? set : result[o.Type] = new SortedSet<string>(StringComparer.Ordinal)).Add(o.What);
         return result;
     }
 
