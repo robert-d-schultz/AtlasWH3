@@ -66,7 +66,7 @@ public sealed class BuildRunner
         var profile = _project.Build;
         bool Want(BuildSegment s) => request.Segments?.Contains(s) ?? s switch
         {
-            BuildSegment.Pack => profile.Pack.Enabled,
+            BuildSegment.Pack => profile.Packs.Any(p => p.Enabled),
             BuildSegment.Install => profile.Install.Enabled,
             _ => true,
         };
@@ -143,6 +143,8 @@ public sealed class BuildRunner
         }
 
         var ctx = Context();
+        var manifestFile = BuildManifest.FileFor(_paths, _project.Map, outDir);
+        var manifest = BuildManifest.Load(manifestFile, outDir);
         var started = new System.Collections.Concurrent.ConcurrentDictionary<string, Stopwatch>();
         var pipeline = new CampaignBuildPipeline
         {
@@ -161,6 +163,8 @@ public sealed class BuildRunner
                         var seconds = o.Result?.Elapsed.TotalSeconds ?? (started.TryGetValue(id, out var w) ? w.Elapsed.TotalSeconds : 0);
                         var r = new ItemResult(id, o.Status, seconds, o.Problems, o.Result?.Notes ?? [], o.Result?.Written.Count ?? 0);
                         lock (_items) _items.Add(r);
+                        if (o.Status == "ok" && o.Result is { } done)
+                            lock (manifest) { manifest.Set(e.Step, done.Written); manifest.Save(manifestFile); }
                         Write(id, $"{o.Status}{(o.Result is { } res ? $" {res.Elapsed.TotalSeconds:F1} s, {res.Written.Count} files" : "")}");
                         foreach (var p in o.Problems) Write(id, "! " + p);
                         foreach (var n in r.Notes) Write(id, NoteLine(n));
@@ -201,7 +205,7 @@ public sealed class BuildRunner
         psi.Environment["ATLASWH3_OUT"] = _project.OutputDir(_paths);
         psi.Environment["ATLASWH3_GAME"] = _paths.GameDataDir;
         psi.Environment["ATLASWH3_PROJECT"] = _project.Folder;
-        if (_project.Build.Pack.Output.Length > 0) psi.Environment["ATLASWH3_PACK"] = _project.Resolve(_project.Build.Pack.Output, _paths);
+        if (_project.PackOutput(_paths) is { } packOut) psi.Environment["ATLASWH3_PACK"] = packOut;
         if (CliExe() is { } cli) psi.Environment["ATLASWH3_CLI"] = cli;
         Log(id, $"> {psi.FileName} {psi.Arguments}  (in {cwd})");
 
@@ -228,32 +232,72 @@ public sealed class BuildRunner
         return ([$"exit code {proc.ExitCode}"], 0);
     }
 
+    /// <summary>Every enabled pack, in order (one item; each pack's summary is a note).</summary>
     private bool Pack() => Item("pack", notes =>
     {
-        var settings = _project.Build.Pack;
-        if (settings.Output.Length == 0) return (["no pack output set"], 0);
+        var packs = _project.Build.Packs.Where(p => p.Enabled).ToList();
+        if (packs.Count == 0) return (["no pack set (Project settings → Pack)"], 0);
+        var outDir = _project.OutputDir(_paths);
+        BuildManifest? manifest = null;
+        BuildManifest Manifest() => manifest ??= BuildManifest.Load(BuildManifest.FileFor(_paths, _project.Map, outDir), outDir);
+        var total = 0;
+        foreach (var settings in packs)
+        {
+            _cancel.ThrowIfCancellationRequested();
+            var (problems, files) = PackOne(settings, Manifest, notes);
+            if (problems.Count > 0) return (problems, total);
+            total += files;
+        }
+        return ([], total);
+    });
+
+    private (List<string> Problems, int Files) PackOne(PackSettings settings, Func<BuildManifest> manifest, List<string> notes)
+    {
+        if (settings.Output.Length == 0) return ([$"{PackName(settings)}: no output pack set"], 0);
         var output = _project.Resolve(settings.Output, _paths);
+        var name = PackName(settings);
         if (IsInGameData(output) && GameRunning()) return ([$"{GameProcess}.exe is running; close the game to write {Path.GetFileName(output)}"], 0);
 
         var problems = new List<string>();
-        var contents = settings.Contents.Select(c => (Source: _project.Resolve(c.Source, _paths), Path: _project.Expand(c.Path, _paths), c.Optional)).ToList();
-        var files = PackBuilder.Collect(contents.Select(c => (c.Source, c.Path)), missing =>
+        var files = new Dictionary<string, (string Rel, string Disk)>();
+        foreach (var c in settings.Contents)
         {
-            var optional = contents.Any(c => c.Optional && c.Source.Equals(missing, StringComparison.OrdinalIgnoreCase));
-            (optional ? notes : problems).Add($"{(optional ? WarningPrefix : "")}missing {missing}");
-        });
-        if (problems.Count > 0) return (problems, 0);
-        if (files.Count == 0) return (["nothing to pack"], 0);
+            if (c.Source == PackContent.CompiledSource)
+            {
+                var m = manifest();
+                var under = _project.Expand(c.Path, _paths).Replace('\\', '/').Trim('/');
+                var picked = m.Files.Where(f => under.Length == 0 || f.StartsWith(under + "/", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (m.Steps.Count == 0) problems.Add($"{name}: nothing compiled into {m.Output} yet; run Compile first");
+                else if (picked.Count == 0) (c.Optional ? notes : problems).Add($"{(c.Optional ? WarningPrefix : "")}{name}: no compiled files under {under}/");
+                foreach (var rel in picked)
+                {
+                    var disk = Path.Combine(m.Output, rel.Replace('/', '\\'));
+                    if (File.Exists(disk)) files[Formats.Packs.PackFile.Normalize(rel)] = (rel, disk);
+                    else problems.Add($"{name}: compiled file {disk} is gone; run Compile again");
+                }
+                continue;
+            }
+            var source = _project.Resolve(c.Source, _paths);
+            foreach (var (key, f) in PackBuilder.Collect([(source, _project.Expand(c.Path, _paths))], missing =>
+                         (c.Optional ? notes : problems).Add($"{(c.Optional ? WarningPrefix : "")}{name}: missing {missing}")))
+                files[key] = f;
+        }
+        var excluded = settings.Exclude.Select(x => Formats.Packs.PackFile.Normalize(_project.Expand(x, _paths).Replace('\\', '/').Trim()))
+            .Where(x => x.Length > 0).ToList();
+        foreach (var key in files.Keys.Where(k => excluded.Any(x => x.EndsWith('\\') ? k.StartsWith(x, StringComparison.Ordinal) : k == x)).ToList())
+            files.Remove(key);
+        if (problems.Count > 0) return (problems.Take(20).ToList(), 0);
+        if (files.Count == 0) return ([$"{name}: nothing to pack"], 0);
         _cancel.ThrowIfCancellationRequested();
 
         PackBuilder.Summary summary;
         if (settings.Mode == PackMode.Merge)
         {
             var basePack = settings.Base.Length > 0 ? _project.Resolve(settings.Base, _paths) : output;
-            if (!File.Exists(basePack)) return ([$"merge base pack {basePack} not found"], 0);
+            if (!File.Exists(basePack)) return ([$"{name}: merge base pack {basePack} not found"], 0);
             Log("pack", $"merging {files.Count} files into {Path.GetFileName(basePack)} -> {output}");
             summary = PackBuilder.Merge(basePack, output, files, settings.ReplaceDirs.Select(d => _project.Expand(d, _paths)));
-            notes.Add($"{summary.Kept} kept, {summary.Replaced} replaced, {summary.Added} added, {summary.Dropped} stale dropped");
+            notes.Add($"{name}: {summary.Kept} kept, {summary.Replaced} replaced, {summary.Added} added, {summary.Dropped} stale dropped");
         }
         else
         {
@@ -261,28 +305,40 @@ public sealed class BuildRunner
             summary = PackBuilder.New(output, files);
         }
         notes.Add($"{output}: {summary.Files} files, {summary.Bytes / 1048576.0:F1} MB");
-        return (summary.Verified ? [] : ["re-read check failed: files missing from the written pack"], summary.Files);
-    });
+        return (summary.Verified ? [] : [$"{name}: re-read check failed: files missing from the written pack"], summary.Files);
+    }
 
+    private string PackName(PackSettings settings) =>
+        settings.Name.Length > 0 ? settings.Name : settings.Output.Length > 0 ? Path.GetFileName(_project.Expand(settings.Output, _paths)) : "pack";
+
+    /// <summary>Copies every enabled pack that is not already there into the game's data folder.</summary>
     private bool Install() => Item("install", notes =>
     {
-        var pack = _project.Build.Pack.Output.Length > 0 ? _project.Resolve(_project.Build.Pack.Output, _paths) : "";
-        if (!File.Exists(pack)) return ([$"no pack to install ({pack}); run Pack first"], 0);
+        var packs = _project.Build.Packs.Where(p => p.Enabled && p.Output.Length > 0).Select(p => _project.Resolve(p.Output, _paths)).ToList();
+        if (packs.Count == 0) return (["no pack to install (Project settings → Pack)"], 0);
         if (!Directory.Exists(_paths.GameDataDir)) return ([$"game data folder {_paths.GameDataDir} not found"], 0);
-        if (IsInGameData(pack)) { notes.Add($"{Path.GetFileName(pack)} is already in the game's data folder"); return ([], 0); }
-        if (GameRunning()) return ([$"{GameProcess}.exe is running; close the game to install"], 0);
-        var target = Path.Combine(_paths.GameDataDir, Path.GetFileName(pack));
-        if (File.Exists(target) && _project.Build.Install.Backup)
+        if (packs.FirstOrDefault(p => !File.Exists(p)) is { } absent) return ([$"no pack to install ({absent}); run Pack first"], 0);
+        var copies = packs.Where(p => !IsInGameData(p)).ToList();
+        foreach (var p in packs.Except(copies)) notes.Add($"{Path.GetFileName(p)} is already in the game's data folder");
+        if (copies.Count > 0 && GameRunning()) return ([$"{GameProcess}.exe is running; close the game to install"], 0);
+        foreach (var pack in copies)
         {
-            var backupDir = Path.Combine(_paths.OutputRoot, "pack_backups");
-            Directory.CreateDirectory(backupDir);
-            var backup = Path.Combine(backupDir, Path.GetFileName(target));   // one rolling copy per pack name
-            File.Copy(target, backup, overwrite: true);
-            notes.Add($"previous pack backed up to {backup}");
+            _cancel.ThrowIfCancellationRequested();
+            var target = Path.Combine(_paths.GameDataDir, Path.GetFileName(pack));
+            if (File.Exists(target) && _project.Build.Install.Backup)
+            {
+                var backupDir = Path.Combine(_paths.OutputRoot, "pack_backups");
+                Directory.CreateDirectory(backupDir);
+                var backup = Path.Combine(backupDir, Path.GetFileName(target));   // one rolling copy per pack name
+                File.Copy(target, backup, overwrite: true);
+                notes.Add($"previous {Path.GetFileName(target)} backed up to {backup}");
+            }
+            // copied beside the target, then swapped, so a failed copy never leaves a half pack in the data folder
+            File.Copy(pack, target + ".tmp", overwrite: true);
+            File.Move(target + ".tmp", target, overwrite: true);
+            Log("install", $"installed {target}");
         }
-        File.Copy(pack, target, overwrite: true);
-        Log("install", $"installed {target}");
-        return ([], 1);
+        return ([], copies.Count);
     });
 
     // ------------------------------------------------------------------ helpers

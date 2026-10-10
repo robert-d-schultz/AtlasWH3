@@ -31,7 +31,11 @@ static class BuildCommands
         var file = Option(a, "--project") ?? throw new ArgumentException("build needs --project <file.atlaswh3>");
         var project = BuildProject.Load(file);
         if (Option(a, "--out") is { } outDir) project.Build.Output = Path.GetFullPath(outDir);
-        if (Option(a, "--pack-output") is { } packOut) project.Build.Pack.Output = Path.GetFullPath(packOut);
+        if (Option(a, "--pack-output") is { } packOut)
+        {
+            if (project.Build.Packs.Count == 0) project.Build.Packs.Add(new PackSettings());
+            project.Build.Packs[0].Output = Path.GetFullPath(packOut);
+        }
         var json = a.Contains("--json");
 
         // --ak / --map / --root / --pack given on the command line win over the project
@@ -70,14 +74,15 @@ static class BuildCommands
         return report.Succeeded ? 0 : 1;
     }
 
-    // new-project <file.atlaswh3> [--map <name>] [--ak <kit>]   (global --map / --ak)
+    // new-project <file.atlaswh3> [--map <name>] [--ak <kit>] [--pack <the map's mod pack>]..   (global options)
     private static int NewProject(ProjectPaths paths, string[] a)
     {
         var file = a.FirstOrDefault(s => !s.StartsWith("--")) ?? throw new ArgumentException("new-project <file.atlaswh3>");
         if (!file.EndsWith(BuildProject.Extension, StringComparison.OrdinalIgnoreCase)) file += BuildProject.Extension;
         if (File.Exists(file)) throw new IOException($"{file} exists");
         var defaults = new ProjectPaths();
-        var project = BuildProject.CreateDefault(paths.MapName, paths.AssemblyKitRoot != defaults.AssemblyKitRoot ? paths.AssemblyKitRoot : "");
+        var project = BuildProject.CreateDefault(paths.MapName, paths.AssemblyKitRoot != defaults.AssemblyKitRoot ? paths.AssemblyKitRoot : "",
+                                                 paths.ModPacks);
         project.Save(file);
         Console.WriteLine($"wrote {Path.GetFullPath(file)} (map {project.Map})");
         return 0;

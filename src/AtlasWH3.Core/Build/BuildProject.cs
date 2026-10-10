@@ -5,7 +5,7 @@ namespace AtlasWH3.Core.Build;
 
 /// <summary>
 /// A map project (<c>.atlaswh3</c>, JSON): which map, which assembly kit, and how to build it. Paths may use the tokens
-/// <c>{ak} {map} {game} {out} {pack} {project}</c>; relative paths are relative to the project file's folder.
+/// <c>{ak} {map} {devastated} {game} {out} {pack} {project}</c>; relative paths are relative to the project file's folder.
 /// </summary>
 public sealed class BuildProject
 {
@@ -56,26 +56,40 @@ public sealed class BuildProject
     }
 
     /// <summary>A new project for <paramref name="map"/> with the standard build: every native step into the kit's
-    /// working_data, then a new pack of the compiled map.</summary>
-    public static BuildProject CreateDefault(string map, string assemblyKit = "") => new()
+    /// working_data, then one pack of the files the build wrote. With a mod pack (the map's own, linked for its DB
+    /// tables and assets) the build is merged into a copy of it next to the project, which Install puts in the data
+    /// folder: the mod's DB, scripts, battle terrain, CAIME's and the game's files stay as they are. Without one, a
+    /// new pack of the build alone.</summary>
+    public static BuildProject CreateDefault(string map, string assemblyKit = "", IReadOnlyList<string>? modPacks = null)
     {
-        Name = map,
-        Map = map,
-        AssemblyKit = assemblyKit,
-        Build = new BuildProfile
+        var pack = new PackSettings
         {
-            Pack = new PackSettings
-            {
-                Output = "{project}\\{map}.pack",
-                Contents =
-                [
-                    new PackContent { Source = "{out}\\terrain\\campaigns\\{map}", Path = "terrain/campaigns/{map}" },
-                    new PackContent { Source = "{out}\\campaign_maps\\{map}\\camera_heightmap.png", Path = "campaign_maps/{map}/camera_heightmap.png" },
-                    new PackContent { Source = "{out}\\campaign_maps\\{map}\\display\\trees\\trees.campaign_tree_list", Path = "campaign_maps/{map}/display/trees/trees.campaign_tree_list" },
-                ],
-            },
-        },
-    };
+            Output = "{project}\\{map}.pack",
+            Contents = [new PackContent { Source = PackContent.CompiledSource }],
+            ReplaceDirs = [.. DefaultReplaceDirs],
+        };
+        var install = new InstallSettings();
+        if (modPacks is [var modPack, ..])
+        {
+            pack.Mode = PackMode.Merge;
+            pack.Base = modPack;
+            pack.Output = "{project}\\" + System.IO.Path.GetFileName(modPack);
+            install.Enabled = true;
+        }
+        return new BuildProject
+        {
+            Name = map,
+            Map = map,
+            AssemblyKit = assemblyKit,
+            ModPacks = [.. modPacks ?? []],
+            Build = new BuildProfile { Packs = [pack], Install = install },
+        };
+    }
+
+    /// <summary>The folders a build rewrites whole (the event-area pieces and the river models), so a merge drops the
+    /// base pack's stale files in them (pieces of areas no longer on the map, rivers since deleted).</summary>
+    public static readonly IReadOnlyList<string> DefaultReplaceDirs =
+        ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{map}/models/", "terrain/campaigns/{devastated}/pieces/"];
 
     /// <summary>The editor / builder paths for this project, on top of <paramref name="defaults"/>.</summary>
     public ProjectPaths ToPaths(ProjectPaths? defaults = null)
@@ -102,13 +116,23 @@ public sealed class BuildProject
         var s = value
             .Replace("{project}", Folder)
             .Replace("{ak}", paths.AssemblyKitRoot)
+            .Replace("{devastated}", DevastatedMap)
             .Replace("{map}", Map)
             .Replace("{game}", paths.GameDataDir);
         // {out} and {pack} may themselves contain the tokens above
         if (s.Contains("{out}")) s = s.Replace("{out}", OutputDir(paths));
-        if (s.Contains("{pack}")) s = s.Replace("{pack}", Build.Pack.Output.Length > 0 ? Resolve(Build.Pack.Output, paths) : "");
+        if (s.Contains("{pack}")) s = s.Replace("{pack}", PackOutput(paths) ?? "");
         return s;
     }
+
+    /// <summary>The first pack's output file, or null when no pack has one ({pack}, ATLASWH3_PACK).</summary>
+    public string? PackOutput(ProjectPaths paths) =>
+        Build.Packs.FirstOrDefault(p => p.Output.Length > 0) is { } p ? Resolve(p.Output, paths) : null;
+
+    /// <summary>The devastated project's name ({devastated}): the profile's, else &lt;map without _1&gt;_devastate_1.</summary>
+    [JsonIgnore]
+    public string DevastatedMap => Build.DevastatedMap is { Length: > 0 } d && !d.Equals("none", StringComparison.OrdinalIgnoreCase)
+        ? d : Campaign.DevastationPiecesStep.DevastatedName(Map);
 
     /// <summary>Where Compile writes (laid out like working_data).</summary>
     public string OutputDir(ProjectPaths paths) => Resolve(Build.Output, paths);
@@ -137,7 +161,12 @@ public sealed class BuildProfile
     /// <summary>When set, a rolling copy of the kit's raw terrain and the compiled terrain is kept here before Compile.</summary>
     public string Backup { get; set; } = "";
     public List<CustomStep> CustomSteps { get; set; } = [];
-    public PackSettings Pack { get; set; } = new();
+    /// <summary>The packs Pack writes, in order (e.g. Old World ships its map in one pack and the event-area pieces in a
+    /// second).</summary>
+    public List<PackSettings> Packs { get; set; } = [];
+    /// <summary>An older project's single pack (read only; it becomes the first of <see cref="Packs"/>).</summary>
+    [JsonPropertyName("pack")]
+    public PackSettings? LegacyPack { get => null; set { if (value is not null) Packs.Insert(0, value); } }
     public InstallSettings Install { get; set; } = new();
 }
 
@@ -163,6 +192,8 @@ public enum PackMode { New, Merge }
 public sealed class PackSettings
 {
     public bool Enabled { get; set; } = true;
+    /// <summary>A name for the build log (default: the output's file name).</summary>
+    public string Name { get; set; } = "";
     /// <summary>New: a pack with only <see cref="Contents"/>. Merge: <see cref="Base"/> (default: the output pack itself)
     /// with <see cref="Contents"/> replacing or adding files.</summary>
     public PackMode Mode { get; set; } = PackMode.New;
@@ -172,13 +203,20 @@ public sealed class PackSettings
     public List<string> ReplaceDirs { get; set; } = [];
     /// <summary>Files or folders to pack; a later entry wins over an earlier one for the same pack path.</summary>
     public List<PackContent> Contents { get; set; } = [];
+    /// <summary>Pack paths (files, or folders ending in /) left out of <see cref="Contents"/>, e.g. the pieces that go to
+    /// another pack.</summary>
+    public List<string> Exclude { get; set; } = [];
 }
 
 public sealed class PackContent
 {
-    /// <summary>File or folder on disk.</summary>
+    /// <summary>The source "the files the build wrote" (<see cref="BuildManifest"/>), each at its path under the output.</summary>
+    public const string CompiledSource = "{compiled}";
+
+    /// <summary>File or folder on disk, or <see cref="CompiledSource"/>.</summary>
     public string Source { get; set; } = "";
-    /// <summary>Path inside the pack (the folder for a folder source).</summary>
+    /// <summary>Path inside the pack (the folder for a folder source). For <see cref="CompiledSource"/>, the pack folder
+    /// it is limited to (empty: all of it).</summary>
     public string Path { get; set; } = "";
     /// <summary>Missing source is a warning instead of an error.</summary>
     public bool Optional { get; set; }

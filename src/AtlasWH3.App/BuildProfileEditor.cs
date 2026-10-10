@@ -19,7 +19,12 @@ public sealed class BuildProfileEditor : ScrollViewer
     private readonly Func<ProjectPaths> _paths;
     private readonly Action _changed;
     private readonly ObservableCollection<CustomStep> _custom;
-    private readonly ObservableCollection<PackContent> _contents;
+    private ObservableCollection<PackContent> _contents = [];
+    /// <summary>The pack shown under Pack (an index into Build.Packs).</summary>
+    private int _pack;
+    private readonly ComboBox _packCombo = new() { MinWidth = 280 };
+    private readonly ContentControl _packForm = new();
+    private bool _refreshingPacks;
 
     public BuildProfileEditor(BuildProject project, Func<ProjectPaths> paths, Action changed)
     {
@@ -27,9 +32,7 @@ public sealed class BuildProfileEditor : ScrollViewer
         _paths = paths;
         _changed = changed;
         _custom = new ObservableCollection<CustomStep>(project.Build.CustomSteps);
-        _contents = new ObservableCollection<PackContent>(project.Build.Pack.Contents);
         _custom.CollectionChanged += (_, _) => { project.Build.CustomSteps = [.. _custom]; changed(); };
-        _contents.CollectionChanged += (_, _) => { project.Build.Pack.Contents = [.. _contents]; changed(); };
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         Content = BuildForm();
     }
@@ -75,20 +78,16 @@ public sealed class BuildProfileEditor : ScrollViewer
         form.Children.Add(CustomGrid());
 
         form.Children.Add(Theme.Header("Pack").Card("profile.header.pack"));
-        form.Children.Add(Combo("Pack mode", Enum.GetValues<PackMode>(), () => b.Pack.Mode, v => b.Pack.Mode = v, "profile.packMode"));
-        form.Children.Add(Field("Output pack", () => b.Pack.Output, v => b.Pack.Output = v, Browse.SaveFile, "profile.packOutput"));
-        form.Children.Add(Field("Merge base", () => b.Pack.Base, v => b.Pack.Base = v, Browse.File, "profile.packBase"));
-        form.Children.Add(Field("Replace folders", () => string.Join(", ", b.Pack.ReplaceDirs), v => b.Pack.ReplaceDirs = Split(v, ','),
-                                key: "profile.replaceDirs"));
-        form.Children.Add(new TextBlock { Text = "Contents (later rows win for the same pack path)", Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 8, 0, 4) }.Card("profile.contents"));
-        form.Children.Add(ContentsGrid());
+        form.Children.Add(PackPicker());
+        form.Children.Add(_packForm);
+        ShowPack(0);
 
         form.Children.Add(Theme.Header("Install").Card("profile.header.install"));
         form.Children.Add(Check("Keep a backup of the pack being replaced", () => b.Install.Backup, v => b.Install.Backup = v, "profile.installBackup"));
         form.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
-            Text = "Install copies the output pack into the game's data folder (skipped when it is already there). It refuses while the game is running.",
+            Text = "Install copies each output pack into the game's data folder (skipped when it is already there). It refuses while the game is running.",
         });
         return form;
     }
@@ -137,17 +136,86 @@ public sealed class BuildProfileEditor : ScrollViewer
         return new StackPanel { Children = { grid, buttons } };
     }
 
-    private UIElement ContentsGrid()
+    // ------------------------------------------------------------------ packs
+
+    private UIElement PackPicker()
     {
+        var grid = Row("Packs", "profile.packs");
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        _packCombo.SelectionChanged += (_, _) =>
+        {
+            if (!_refreshingPacks && _packCombo.SelectedIndex >= 0 && _packCombo.SelectedIndex != _pack) ShowPack(_packCombo.SelectedIndex);
+        };
+        panel.Children.Add(_packCombo);
+        panel.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add pack", (_, _) =>
+        {
+            var packs = _project.Build.Packs;
+            packs.Add(new PackSettings { Output = packs.Count == 0 ? "{project}\\{map}.pack" : $"{{project}}\\{{map}}_{packs.Count + 1}.pack" });
+            _changed();
+            ShowPack(packs.Count - 1);
+        }).Card("profile.packs.add"));
+        panel.Children.Add(Theme.IconButton(Theme.Glyph.Delete, "Remove pack", (_, _) =>
+        {
+            var packs = _project.Build.Packs;
+            if (_pack >= packs.Count) return;
+            packs.RemoveAt(_pack);
+            _changed();
+            ShowPack(Math.Max(0, _pack - 1));
+        }).Card("profile.packs.remove"));
+        Grid.SetColumn(panel, 1);
+        grid.Children.Add(panel);
+        return grid;
+    }
+
+    /// <summary>Shows pack <paramref name="index"/>'s settings (or a hint when the project has none).</summary>
+    private void ShowPack(int index)
+    {
+        var packs = _project.Build.Packs;
+        _pack = Math.Clamp(index, 0, Math.Max(0, packs.Count - 1));
+        RefreshPackCombo();
+        _packForm.Content = packs.Count == 0
+            ? new TextBlock { Text = "No pack: the build stops after Compile. Add pack to make one.", Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 4, 0, 4) }
+            : PackForm(packs[_pack]);
+    }
+
+    private void RefreshPackCombo()
+    {
+        _refreshingPacks = true;
+        _packCombo.ItemsSource = _project.Build.Packs.Select((p, i) =>
+            $"{i + 1}. {(p.Name.Length > 0 ? p.Name : p.Output.Length > 0 ? Path.GetFileName(p.Output) : "(no output)")}{(p.Enabled ? "" : " (off)")}").ToList();
+        _packCombo.SelectedIndex = _project.Build.Packs.Count > 0 ? _pack : -1;
+        _refreshingPacks = false;
+    }
+
+    private UIElement PackForm(PackSettings pack)
+    {
+        var form = new StackPanel();
+        form.Children.Add(Check("Build this pack", () => pack.Enabled, v => { pack.Enabled = v; RefreshPackCombo(); }, "profile.packEnabled"));
+        form.Children.Add(Field("Name", () => pack.Name, v => { pack.Name = v; RefreshPackCombo(); }, key: "profile.packName"));
+        form.Children.Add(Combo("Pack mode", Enum.GetValues<PackMode>(), () => pack.Mode, v => pack.Mode = v, "profile.packMode"));
+        form.Children.Add(Field("Output pack", () => pack.Output, v => { pack.Output = v; RefreshPackCombo(); }, Browse.SaveFile, "profile.packOutput"));
+        form.Children.Add(Field("Merge base", () => pack.Base, v => pack.Base = v, Browse.File, "profile.packBase"));
+        form.Children.Add(Field("Replace folders", () => string.Join(", ", pack.ReplaceDirs), v => pack.ReplaceDirs = Split(v, ','),
+                                key: "profile.replaceDirs"));
+        form.Children.Add(Field("Leave out", () => string.Join(", ", pack.Exclude), v => pack.Exclude = Split(v, ','), key: "profile.packExclude"));
+        form.Children.Add(new TextBlock { Text = "Contents (later rows win for the same pack path)", Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 8, 0, 4) }.Card("profile.contents"));
+        form.Children.Add(ContentsGrid(pack));
+        return form;
+    }
+
+    private UIElement ContentsGrid(PackSettings pack)
+    {
+        _contents = new ObservableCollection<PackContent>(pack.Contents);
+        _contents.CollectionChanged += (_, _) => { pack.Contents = [.. _contents]; _changed(); };
         var grid = new DataGrid
         {
             ItemsSource = _contents, AutoGenerateColumns = false, CanUserAddRows = false, MinHeight = 90, MaxHeight = 240,
             HeadersVisibility = DataGridHeadersVisibility.Column, SelectionMode = DataGridSelectionMode.Single,
         };
-        grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Source (file or folder on disk)", "profile.contents.source"), Binding = new Binding(nameof(PackContent.Source)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Source (file or folder on disk, or {compiled})", "profile.contents.source"), Binding = new Binding(nameof(PackContent.Source)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Path in pack", "profile.contents.path"), Binding = new Binding(nameof(PackContent.Path)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         grid.Columns.Add(new DataGridCheckBoxColumn { Header = ColumnHeader("Optional", "profile.contents.optional"), Binding = new Binding(nameof(PackContent.Optional)) });
-        grid.CellEditEnding += (_, _) => Dispatcher.BeginInvoke(() => { _project.Build.Pack.Contents = [.. _contents]; _changed(); });
+        grid.CellEditEnding += (_, _) => Dispatcher.BeginInvoke(() => { pack.Contents = [.. _contents]; _changed(); });
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
         buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add folder…", (_, _) =>
@@ -164,7 +232,7 @@ public sealed class BuildProfileEditor : ScrollViewer
         buttons.Children.Add(Theme.IconButton(Theme.Glyph.Build, "Default contents", (_, _) =>
         {
             _contents.Clear();
-            foreach (var c in BuildProject.CreateDefault(_project.Map).Build.Pack.Contents) _contents.Add(c);
+            foreach (var c in BuildProject.CreateDefault(_project.Map).Build.Packs[0].Contents) _contents.Add(c);
         }).Card("profile.contents.default"));
         return new StackPanel { Children = { grid, buttons } };
     }

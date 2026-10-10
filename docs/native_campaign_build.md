@@ -467,6 +467,33 @@ Before the first two fixes, about 900 IEE blocks decoded to values in the hundre
 - **Straight into the kit:** `--out <kit>/working_data`, or `to_working_data=true` in the MCP tools, writes into the kit and replaces BOB's files there.
 - **Step order:** steps run in dependency order, and independent steps run in parallel. On dlc07 the whole native set takes about 24 s (global meshes 21 s, in parallel).
 
+## Project build: pack and install (WH3)
+
+`AtlasWH3.Cli build --project <map>.atlaswh3` (or the Build window) runs Validate → Compile → Pack → Install.
+`new-project <file> --map <map> --pack <the mod's pack>` makes a project that merges the build into a copy of that pack
+and installs it. Pack contents:
+- `{compiled}`: the files the steps wrote (the build manifest, `%LocalAppData%\AtlasWH3\cacheuilds`), at their
+  paths under the output; with a `path`, only that pack folder. Nothing else in working_data is packed.
+- a file or folder on disk, as before.
+
+Old World's two packs, as shipped:
+
+```json
+"packs": [
+  { "mode": "merge", "base": "{game}\!cr_oldworld_campaign.pack", "output": "{project}\!cr_oldworld_campaign.pack",
+    "contents": [{ "source": "{compiled}" }],
+    "exclude": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"],
+    "replaceDirs": ["terrain/campaigns/{map}/models/"] },
+  { "mode": "merge", "base": "{game}\!cr_oldworld_campaign_devastate.pack", "output": "{project}\!cr_oldworld_campaign_devastate.pack",
+    "contents": [{ "source": "{compiled}", "path": "terrain/campaigns/{map}/pieces" },
+                 { "source": "{compiled}", "path": "terrain/campaigns/{devastated}" }],
+    "replaceDirs": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/pieces/"] }
+]
+```
+
+The main folder's `event_tiles`, `event_trees` and `event_vfx` then go to the first pack; the shipped
+`!cr_oldworld_campaign.pack` has none of them.
+
 ## Prop editing (AK layers)
 
 The `terry` MCP server also edits the props in the kit's region layers (`<map>.<id>.layer`), the way the battlemap MCP drives Dungeondraft.

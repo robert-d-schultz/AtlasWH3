@@ -236,8 +236,7 @@ public sealed class BuildWindow : Window
 
     private ProjectPaths Paths() => _project!.ToPaths(_defaults);
 
-    private string? PackPath() =>
-        _project is { } p && p.Build.Pack.Output.Length > 0 ? p.Resolve(p.Build.Pack.Output, Paths()) : null;
+    private string? PackPath() => _project?.PackOutput(Paths());
 
     private void OpenProjectDialog()
     {
@@ -255,7 +254,7 @@ public sealed class BuildWindow : Window
             Title = "New project: where to save it (the default pack goes next to it)",
         };
         if (dlg.ShowDialog(this) != true) return;
-        var project = BuildProject.CreateDefault(_defaults.MapName, _defaults.AssemblyKitRoot);
+        var project = BuildProject.CreateDefault(_defaults.MapName, _defaults.AssemblyKitRoot, _defaults.ModPacks);
         project.Save(dlg.FileName);
         OpenProject(dlg.FileName);
     }
@@ -349,9 +348,11 @@ public sealed class BuildWindow : Window
                    on => SetStep(step.Name, on)).Step = step.Name;
         compile.Item.IsExpanded = true;
         AddCustom(CustomStepStage.AfterCompile);
-        var packTarget = profile.Pack.Output.Length > 0 ? $"{profile.Pack.Mode} pack → {Path.GetFileName(p.Expand(profile.Pack.Output, Paths()))}" : "No pack output set yet (Project settings → Pack).";
+        var packTargets = profile.Packs.Where(x => x.Output.Length > 0)
+            .Select(x => $"{x.Mode} pack → {Path.GetFileName(p.Expand(x.Output, Paths()))}{(x.Enabled ? "" : " (off)")}").ToList();
+        var packTarget = packTargets.Count > 0 ? string.Join("\n", packTargets) : "No pack output set yet (Project settings → Pack).";
         AddRow(_tree.Items, "pack", BuildSegment.Pack, "Pack", InfoCard.Make("Pack", $"{InfoCards.Get("build.pack").Text}\n{packTarget}"),
-               profile.Pack.Enabled, on => { profile.Pack.Enabled = on; MarkDirty(); });
+               profile.Packs.Any(x => x.Enabled), on => { foreach (var x in profile.Packs) x.Enabled = on; MarkDirty(); });
         AddCustom(CustomStepStage.AfterPack);
         AddRow(_tree.Items, "install", BuildSegment.Install, "Install", InfoCard.For("build.install"), profile.Install.Enabled,
                on => { profile.Install.Enabled = on; MarkDirty(); });

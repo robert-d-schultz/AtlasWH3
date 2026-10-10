@@ -266,7 +266,7 @@ from those GUI actions alone, so they go away with 3.1–3.4 and are not automat
 - [ ] ~~Automatic pack round trips~~: dropped, see above.
 - [x] Devastated builds without the fake campaign: done natively by 3.6 (the devastated project is an input).
 - [ ] ~~Hybrid pipeline~~: dropped in Phase 4, since every step but hlp/spd is native.
-- [ ] Pack and install segments retargeted to WH3 (`data` folder, `Warhammer3.exe` running check): Phase 4.5.
+- [x] Pack and install segments retargeted to WH3 (`data` folder, `Warhammer3.exe` running check): done in Phase 4.5.
 - [ ] ~~The `trim_mips` fix-up~~: dropped, since the pieces are native (3.6).
 - [ ] ~~Timing report per step~~: dropped in Phase 4 (each step's time is in `docs/native_campaign_build.md`).
 
@@ -468,7 +468,7 @@ Left: the in-game check (an area devastates and restores, with its objects and l
 **Leftovers from Phases 1–3**
 - [x] 4.4 Lookup: build Old World's palette reorder (more settlement regions than the game's 1024 palette entries,
   today `lookup_tweak.py`) into the step (3.7).
-- [ ] 4.5 Pack and install for WH3: `data` folder, the `Warhammer3.exe` running check (Phase 2), so a full rebuild is
+- [x] 4.5 Pack and install for WH3: `data` folder, the `Warhammer3.exe` running check (Phase 2), so a full rebuild is
   one command from `raw_data` to an installed pack.
 - [ ] 4.6 Fixtures and `TestKits` (Phase 1): frozen source + output snapshots, so the parity work below has regression
   tests.
@@ -483,6 +483,23 @@ lookups (`elector_counts_small`, `wh3_main_hef_court_small`) hold region colours
 files are **byte-identical** to `!cr_oldworld_campaign.pack`'s. The step names the regions still past entry 1024: on
 Old World one, `cr_oldworld_region_skull_guardian` (1,327 entries, 302 moved, so 1,025 are left in front; the shipped
 file has the same). Left: the in-game check.
+
+**4.5 status (2026-10-10):** the shipped packs (read through RPFM) are whole mods, uncompressed PFH5: DB, scripts,
+battle terrain, CAIME's and the game's files beside the map, and Old World ships its pieces (both folders) in a second,
+4.3 GB pack. So a build **merges** into the mod's pack rather than making a map-only one, and packs only what it wrote:
+- Compile records each step's files in a build manifest (app cache, per map and output folder); the pack source
+  `{compiled}` is those files, so working_data's BOB by-products (the devastated folder's full rasters,
+  `global_props_devastation_*`) and CAIME's inputs (`*_lookup.bmp`) never ship.
+- A project has a list of packs (`packs`; an older `pack` still loads), each with `exclude`, so Old World's split is two
+  merges; `{devastated}` names the devastated project.
+- A replace folder (default: both `pieces\`, `models\`) drops a base file only where the build put files; compressed
+  base entries are copied as they are.
+- Default with a linked mod pack (`new-project --pack`, the GUI's linked packs): merge into a copy beside the project,
+  then Install (backup, copy-then-swap, refused while `Warhammer3.exe` runs).
+IEE end to end (`build --segments validate,compile,pack`, scratch output): 513 s, of which the merge into a copy of the
+3.1 GB pack 5 s (2,203 kept, 11,014 replaced, 412 added, 208 dropped). RPFM opens it; against the shipped pack only the
+river models differ (all 266 rivers baked, the pack has an older run's 163) and the two pieces' `rivers` files are
+gone (4.2). Install was tested on a scratch data folder, not the game's. Left: the in-game check.
 
 **Parity** (the Atlas3K method: disassembly of the WH3 DLLs, Frida on `bob.modder.x64.exe`, field-level diffs; only
 where the gap is small or a mismatch is visible)

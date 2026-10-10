@@ -165,7 +165,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         return File.Exists(TerryFileOf(ctx, name)) ? name : null;
     }
 
-    private static string DevastatedName(string map) => (map.EndsWith("_1", StringComparison.Ordinal) ? map[..^2] : map) + "_devastate_1";
+    public static string DevastatedName(string map) => (map.EndsWith("_1", StringComparison.Ordinal) ? map[..^2] : map) + "_devastate_1";
 
     public static string TerryFileOf(CampaignBuildContext ctx, string map) =>
         Path.Combine(ctx.Paths.AssemblyKitRoot, "raw_data", "terrain", "campaigns", map, map + ".terry");
