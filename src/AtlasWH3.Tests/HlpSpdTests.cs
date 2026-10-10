@@ -89,7 +89,7 @@ public class HlpSpdTests
         Assert.True(area >= n * 8 * 0.9998, $"area costs {area}/{n * 8}");
     }
 
-    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 655 of 695 areas identical, and from CA's own
+    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 671 of 695 areas identical, and from CA's own
     /// transitions the region tables at 99.95 % of costs and 98 % of hop counts.</summary>
     [Fact]
     public void Combi_NativeHlp_Parity()
@@ -100,7 +100,7 @@ public class HlpSpdTests
         var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
         var same = hlp.Nodes.SelectMany(n => n.Areas).Count(a => refAreas.TryGetValue(a.Area, out var r) &&
             a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
-        Assert.True(same >= 653, $"{same}/{refAreas.Count} identical areas");
+        Assert.True(same >= 668, $"{same}/{refAreas.Count} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
         HlpRegionTables.Fill(fromRef, wrapLikeGame: true);

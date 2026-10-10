@@ -83,17 +83,18 @@ Open on spd:
 
 ### hlp
 
-- **Transitions** come from 3K's generator, with these WH3 changes (each measured on combi map 1 or Old World):
-  - The cost path is the start region's faction path: its own settlement is open at the slots' 0 cost, and foreign
-    ones are closed. 3K closed every slot. Example: Altdorf's bridge transitions cost 500 through its slots.
-  - A land-sea transition (flag 1) takes the cheaper of that path and the landmark search's grid
-    (`CampaignPathGrid.PairSearch`: every settlement open, the type gate).
-    - CA's 1,000, 785 and 1,191 on combi are the grid's paths, where the A* path paid the 2,100 beach.
-    - Old World's land → deck → deck → sea bridges (500) exist only on the A* grid: its navigation bits allow deck
-      steps that the type gate does not.
-  - Flag 2 says whether the path taken goes through a settlement (a port). 3K's rule was "flag 1 and cost 0".
-  - A bridge crossing counts 500 for the whole run: onto the first deck hex, along the deck (links or neighbouring
-    deck hexes) and off the last one. 3K counted only "on, link, off".
+- **Transitions** come from 3K's generator, with these WH3 changes, read from the game's own waypoints
+  (`probe.py --waypoints`, below):
+  - A transition's cost is one A* path between its two hexes with every settlement open (slot hexes at 0), summed
+    per waypoint. There is no faction and no cheaper alternative path. (Before: the start region's faction path
+    with foreign settlements closed, and for land-sea transitions the cheaper of that and the landmark grid.)
+  - A bridge crossing is four waypoints: the hex before the first type-5 hex, that hex, the hex after it and the
+    next one, 500 together whatever the other three are (land → deck → sea → sea, sea → deck → land → land,
+    land → deck → deck → land). A type-5 hex inside a settlement's slot area is a slot hex, not a crossing. A step
+    onto the deck from a river hex still counts (3K). The ppd's bridge links are not what the game flags.
+  - Flag 2 says whether a land-sea transition's path goes through a settlement (a waypoint flagged `0xf800`). 3K's
+    rule was "flag 1 and cost 0".
+  - Identical areas from these: IEE 944 → 965, Old World 1,419 → 1,491, Classic 801 → 853, combi 1–7 +15 to +17.
 - **Region tables** (`HlpRegionTables`):
   - Per region pair (from < to), the cheapest path over the transitions. Crossing costs the transition's cost, and
     moving on inside an area costs that area's matrix value. The cost goes in the u32 table's upper triangle.
@@ -113,23 +114,82 @@ Open on spd:
   - No path: `FFFFFFFF` / 255. Regions without areas, the diagonal and the costs' lower triangle: `FFFFFFFE` / 0.
   - Regions from 1,024 on have no row; paths still pass through them.
 
-Parity (2026-10-10). "Areas" counts areas whose transitions, matrix, centre, `a` and `b` all equal CA's. "From CA's"
-is the region tables computed from CA's own transitions; "ours" from ours.
+Parity (2026-10-10, `hlp-spd --compare`). "Areas" counts areas whose transitions, matrix, centre, `a` and `b` all
+equal CA's. "From CA's" is the region tables computed from CA's own transitions (unchanged by the transition work);
+"ours" is the CLI's region-table line for our own build, matching entries of those it compares.
 
 | map | areas | region costs (from CA's / ours) | region hops (from CA's / ours) |
 |---|---|---|---|
 | prologue | 22 / 22, byte-identical | 100 % / 100 % | 100 % / 100 % |
-| chaos 1–4 | 263/263, 274/274, 280/281, 280/281 | 100 % / 100 % | 99 % / 99 % |
-| combi 1–4 | 655/695 … 672/713 (93–94 %) | 99.95 % / 90–96 % | 98 % / 95–97 % |
-| combi 5, 7 | 607/717, 612/720 (85 %) | 99.93 % / 82 % | 94 % / 92 % |
-| IEE | 925 / 1,068 (87 %) | 99.9 % / 81 % | 97 % / 95 % |
-| Old World | 1,368 / 1,703 (80 %) | 99.7 % / 82 % | 95 % / 91 % |
-| Old World Classic | 792 / 992 (80 %) | 99.1 % / 77 % | 96 % / 91 % |
-| Darklands | 277 / 303 (91 %) | 99.95 % / 91 % | 98 % / 97 % |
+| chaos 1–4 | 263/263, 274/274, 281/281, 281/281 | 100 % / 100 % | 99 % / 99 % |
+| combi 1–3 | 671/695, 680, 685 | 99.95 % / 94 % | 98 % / 95 % |
+| combi 4 | 702/713 | 99.95 % / 99.9 % | 98 % / 98 % |
+| combi 5, 7 | 635/717, 640/720 | 99.93 % / 83 % | 94 % / 93 % |
+| IEE | 965 / 1,068 (90 %) | 99.9 % / 84 % | 97 % / 96.5 % |
+| Old World | 1,491 / 1,703 (88 %) | 99.7 % / 75 % | 95 % / 79 % |
+| Old World Classic | 853 / 992 (86 %) | 99.1 % / 65 % | 96 % / 75 % |
+| Darklands | 295 / 303 (97 %) | 99.95 % / 94 % | 98 % / 97 % |
 
 Open on hlp:
-- The rest of the transition costs: mostly ports and bridges on the bigger maps.
+- IEE has 5 transition costs left: A* ties where the game's path takes a different hex at the same cost (and then
+  is or is not a bridge crossing), and two that leave a slot area straight onto a crossing.
+- Transitions on other hexes than CA's (IEE: 118 of 7,476). 32 of IEE's 44 game-only pairs come from the centre
+  path, 12 from border clusters. `probe.py --centre` records the game's unrefined centre paths and
+  `HLP_DUMP_CENTRE=<file>` ours: only 204 of 2,162 agree outright (slot hexes dropped); most part within a few hexes
+  on equal-cost zig-zags, so the line tie-break of our centre search is not the game's yet. The game's path leaves
+  out the start settlement's slot hexes; closing them (`--centre-blocked`) is far worse (166 identical areas).
+- Region tables: one misplaced transition changes every region pair whose cheapest path crosses it, so the 2–12 %
+  of differing transitions cost 6–25 % of region costs. With the game's wrapping (`--wrap-like-game`) Old World is
+  86 % and Classic 81 % (75 % and 65 % without).
+- Old World's largest region cost: 188,931 against CA's 189,229.
 - The equal-cost hop ties.
+
+### The game's generator (Warhammer3.exe, 2026-10-10)
+
+`research/hlp_spd_wh3/exe/probe.py` attaches Frida to the game during a `build_starpos` with `process_hlp_spd` and
+sets hardware breakpoints only (a code patch trips the integrity check). It can snapshot the game's memory (`snap.py`
+reads it), watch hex records for writes, or count pathfinder setups (`--trace`). `x.py` disassembles the exe.
+
+- **Code.** `0x14261050c(model, reprocess)` is the entry: spd compute `0x142a24a0c` on `[model+0x910]`, spd writer
+  `0x142a35f10`, then the hlp writer `0x142a31f44` on `[model+0x918]`, which builds the transitions (`0x142a16d44`)
+  and then the region tables (`0x142a12e80`). Without `reprocess` it loads the files instead.
+  - IEE: spd and the transitions take about 20 s; the region tables take over 10 minutes, the slow part of the
+    game's build.
+  - The game's IEE spd is byte-identical to the shipped one apart from the timestamp, so the shipped files are
+    exactly what the game produces from those inputs.
+- **CAMPAIGN_PATHFINDER** (`[[model+0x8d0]+0x5bc8]`): 3K's layout. Width and height at `+0xa8`, the hex array (8
+  bytes per hex) at `+0x118`, the cost table at `+0x458` (4 × 64 u32: ppd costs, beaches 2100 in slots 1 and 2,
+  road 80 in 0x3e). The search's navigation bit is `+0x89c` (0x40 or 0x80).
+- **Two navigation bits.** Bit 6 is a static copy of the ppd's bit 7. Bit 7 is live: the setup `0x142944564`
+  switches modifiers on it. Every modifier is a list of (x, y, direction mask, counter) entries with a reference
+  count per edge, so an edge is open while nothing holds it closed.
+  - Beaches (`pf+0x188`, 22 on IEE) switch both bits by the search's HLCI, in every mode.
+  - In full mode (`params+0xc0 = 0`, bit 7) the setup also applies characters (`pf+0x1b8`, empty during the
+    build), settlements (`pf+0x1e8`, 765 on IEE), a reopen list (`pf+0x218`) and `pf+0x248`.
+  - A settlement holds 8 edge sets (`0x142944ba4`): set 0 is a zone up to 6 hexes around the slot area, sets 1–3
+    smaller zones, and sets 4–7 the slot area with the ring of edges into it (5 and 7 inside, 4 and 6 the ring).
+    Their default state is 4–7 closed.
+- **hlp searches run in simple mode only.** `--trace` on IEE: all ~18,200 setups of the hlp phase have
+  `params+0xc0 = 1` (bit 6, beaches only), and no settlement set is switched. Some pass a faction. The settlement
+  zones and the live bit 7 belong to the campaign's own pathfinding at load, not to hlp. So the grid AtlasWH3 uses
+  for hlp (static navigation plus beach gating) is the game's; the remaining differences are in the transition
+  search and costing itself.
+- **Transition searches** (`--transitions`, recorded once the hlp writer is hit):
+  - `0x1429ef520(pf, out, &start, &end)`: the A* (`0x141e41bd0`) between a transition's two hexes, run in both
+    directions; `out` = (u8 found, u32 cost). IEE: 7,260 searches. CA's transition cost is that A* cost for most
+    transitions; where it is not, the path crosses a bridge and is re-costed (the 500 run), and our paths equal the
+    game's (same A* cost). Slot transitions of cost 0 run no search.
+  - `0x1429efcc4` (settlement → hex, 530) and `0x1429eff24` (settlement → settlement, 1,220) take a settlement
+    object (`+8` id) and run with that settlement's faction. They do not give transition costs.
+  - The matrix: `0x142a12d68` runs one search per transition from its hex (`0x1429f17f8`, 7,476 on IEE).
+- **Transition costs** (`--waypoints`): `0x142a17200` builds the transitions of an area pair. Per hex pair,
+  `0x142a25aec(a, b)` finds each end's first neighbour of slot type (4, 7–9; the same 14,535 hexes as map_data's
+  slot areas) and its settlement through the tile group; the same settlement on both ends picks the
+  settlement-passable search (`0x1429ef7c4`), else the A* (`0x1429ef520`). The path comes back as waypoints of 20
+  bytes (world x, y; hex; step cost × 1024; flags), and the cost is the sum of the rounded step costs. Flags: 0x1, 0x2,
+  0x4, 0x8 for a bridge crossing (the 0x1 hex's step is 500 for all four), 0x800 / 0x880 entering a slot / port
+  area, 0x1000–0x7000 inside, 0x8000 the first hex after; any of 0xf800 sets flag 2. On IEE these sums equal CA's
+  cost for all 33 transitions we had wrong. `wp_compare.py` lists our differing transitions with the game's waypoints.
 
 ## Three Kingdoms (Atlas3K)
 
