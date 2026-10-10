@@ -59,7 +59,7 @@ public class HlpSpdTests
         Assert.True(refSpd.AsSpan().SequenceEqual(spd.ToBytes()), "spd_data.esf differs");
         var refHlp = Read("wh3_main_prologue_map", "hlp_data.esf");
         var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), HlpData.Read(refHlp).Timestamp,
-                                   options: new HlpBuilder.Options { LegacyCentrePath = true });
+                                   options: new HlpBuilder.Options { LegacyCentrePath = true }, spd: spd);
         hlp.Magic = CaabWriter.MagicCaab;
         Assert.True(refHlp.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
@@ -98,85 +98,82 @@ public class HlpSpdTests
     }
 
     /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10, an older game build's file: legacy centre
-    /// paths): 694 of 695 areas identical, and from CA's own transitions the region tables at 99.95 % of costs and 98 %
-    /// of hop counts.</summary>
+    /// paths): 694 of 695 areas identical, and from CA's own transitions every region-table value.</summary>
     [Fact]
     public void Combi_NativeHlp_Parity()
     {
         var (_, ppd, regions) = Inputs("wh3_main_combi_map_1");
         var reference = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
+        var spd = SpdData.Read(Read("wh3_main_combi_map_1", "spd_data.esf"));
         var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp,
-                                   options: new HlpBuilder.Options { LegacyCentrePath = true });
+                                   options: new HlpBuilder.Options { LegacyCentrePath = true }, spd: spd);
         var same = IdenticalAreas(hlp, reference);
         Assert.True(same >= 694, $"{same} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
-        HlpRegionTables.Fill(fromRef, wrapLikeGame: true);
-        int costs = 0, hops = 0;
-        for (var i = 0; i < fromRef.RegionCosts.Length; i++)
-        {
-            if (fromRef.RegionCosts[i] == reference.RegionCosts[i]) costs++;
-            if (fromRef.RegionHops[i] == reference.RegionHops[i]) hops++;
-        }
-        Assert.True(costs >= fromRef.RegionCosts.Length - 200, $"region costs {costs}");
-        Assert.True(hops >= fromRef.RegionHops.Length - 8000, $"region hops {hops}");
+        HlpRegionTables.Fill(fromRef, spd, regions, wrapLikeGame: true);
+        Assert.Equal(reference.RegionCosts, fromRef.RegionCosts);
+        Assert.Equal(reference.RegionHops, fromRef.RegionHops);
         Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
     }
 
-    /// <summary>Guards the current exe's transitions on combi map 7 (2026-10-10): every area identical (transitions,
-    /// matrix, centre, a, b).</summary>
+    /// <summary>Combi map 7 (the current exe's rules, 2026-10-10): the native hlp_data.esf is CA's byte for byte, the
+    /// region tables filled with CA's spd and the game's wrapping sums.</summary>
     [Fact]
-    public void Combi7_NativeHlp_Parity()
+    public void Combi7_NativeHlp_ByteIdentical()
     {
         var (_, ppd, regions) = Inputs("wh3_main_combi_map_7");
-        var reference = HlpData.Read(Read("wh3_main_combi_map_7", "hlp_data.esf"));
-        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp);
-        var same = IdenticalAreas(hlp, reference);
-        Assert.Equal(reference.Nodes.Sum(n => n.Areas.Count), same);
+        var bytes = Read("wh3_main_combi_map_7", "hlp_data.esf");
+        var reference = HlpData.Read(bytes);
+        var spd = SpdData.Read(Read("wh3_main_combi_map_7", "spd_data.esf"));
+        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp,
+                                   options: new HlpBuilder.Options { WrapLikeGame = true }, spd: spd);
+        hlp.Magic = reference.Magic;
+        Assert.Equal(reference.Nodes.Sum(n => n.Areas.Count), IdenticalAreas(hlp, reference));
+        Assert.True(bytes.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
 
+    private static (HlpData Reference, byte[] Bytes, SpdData Spd, MapDataRegions Regions) OldWorldInputs()
+    {
+        var pack = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]);
+        byte[] Get(string f) => pack.TryRead($"campaign_maps/{TestKits.OldWorld}/{f}") ?? throw new FileNotFoundException($"Old World {f}");
+        var bytes = Get("hlp_data.esf");
+        return (HlpData.Read(bytes), bytes, SpdData.Read(Get("spd_data.esf")), MapDataRegions.Read(EsfTree.Read(Get("map_data.esf"))));
+    }
+
+    private static readonly int[] OldWorldRows = [0, 1, 2, 100, 409, 1000];
+
     /// <summary>The region tables sum in wrapping u32: Old World's 38 unreachable matrix pairs (0xFFFFFFFF) are steps of
-    /// -1 (from CA's own transitions: 99.7 % of the costs, 87 % without the wrap).</summary>
+    /// -1. From CA's own transitions, with the game's wrapping, these rows come out as CA's (the whole table takes
+    /// minutes).</summary>
     [Fact]
     public void OldWorld_RegionTables_FromCaTransitions()
     {
-        var pack = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]);
-        var bytes = pack.TryRead($"campaign_maps/{TestKits.OldWorld}/hlp_data.esf") ?? throw new FileNotFoundException("Old World hlp_data.esf");
-        var reference = HlpData.Read(bytes);
+        var (reference, bytes, spd, regions) = OldWorldInputs();
         var copy = HlpData.Read(bytes);
-        HlpRegionTables.Fill(copy, wrapLikeGame: true);
-        int costs = 0, all = 0;
-        for (var i = 0; i < copy.RegionCosts.Length; i++)
-        {
-            if (reference.RegionCosts[i] == HlpData.NoRegionCost && copy.RegionCosts[i] == HlpData.NoRegionCost) continue;
-            all++;
-            if (copy.RegionCosts[i] == reference.RegionCosts[i]) costs++;
-        }
-        Assert.True(costs >= all * 0.996, $"region costs {costs}/{all}");
-        Assert.Equal(reference.MaxRegionCost, copy.MaxRegionCost);
+        HlpRegionTables.Fill(copy, spd, regions, wrapLikeGame: true, rows: OldWorldRows);
+        const int size = HlpData.RegionTableSize;
+        foreach (var r in OldWorldRows)
+            for (var s = r + 1; s < size; s++)
+            {
+                Assert.True(reference.RegionCosts[r * size + s] == copy.RegionCosts[r * size + s], $"cost {r},{s}");
+                Assert.True(reference.RegionHops[r * size + s] == copy.RegionHops[r * size + s], $"hops {r},{s}");
+                Assert.True(reference.RegionHops[s * size + r] == copy.RegionHops[s * size + r], $"hops {s},{r}");
+            }
     }
 
-    /// <summary>By default an area's unreachable pair is no step: no region cost comes out below the wrapped one, and
-    /// Old World's 0 -> 409 is not the game's impossible 40,541.</summary>
+    /// <summary>By default an area's unreachable pair is no step: Old World's 0 -> 409 is not the game's impossible
+    /// 40,541 (40,462 + 0xFFFFFFFF + 80).</summary>
     [Fact]
     public void OldWorld_RegionTables_NoWrap()
     {
-        var bytes = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]).TryRead($"campaign_maps/{TestKits.OldWorld}/hlp_data.esf")!;
-        var reference = HlpData.Read(bytes);
+        var (reference, bytes, spd, regions) = OldWorldInputs();
         var wrapped = HlpData.Read(bytes);
-        HlpRegionTables.Fill(wrapped, wrapLikeGame: true);
+        HlpRegionTables.Fill(wrapped, spd, regions, wrapLikeGame: true, rows: [0]);
         var copy = HlpData.Read(bytes);
-        HlpRegionTables.Fill(copy);
+        HlpRegionTables.Fill(copy, spd, regions, rows: [0]);
         Assert.Equal(40541u, reference.RegionCosts[409]);
         Assert.Equal(40541u, wrapped.RegionCosts[409]);
-        Assert.True(copy.RegionCosts[409] > 40541u);
-        var higher = 0;
-        for (var i = 0; i < copy.RegionCosts.Length; i++)
-        {
-            if (copy.RegionCosts[i] == HlpData.NoRegionCost) continue;
-            Assert.True(copy.RegionCosts[i] >= wrapped.RegionCosts[i], $"pair {i / 1024},{i % 1024}");
-            if (copy.RegionCosts[i] > wrapped.RegionCosts[i]) higher++;
-        }
-        Assert.True(higher > 0);
+        Assert.True(copy.RegionCosts[409] > 40541u, $"{copy.RegionCosts[409]}");
     }
 }

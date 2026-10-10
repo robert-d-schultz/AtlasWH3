@@ -92,6 +92,12 @@ static class AiPathfindingCommands
             var spd = SpdBuilder.Build(grid, regions, refSpd?.Timestamp ?? ts, Console.WriteLine,
                 new SpdBuilder.Options { Inwards = a.Contains("--spd-inwards"), MaxThreads = threads });
             if (refSpd is not null) spd.Magic = refSpd.Magic;
+            if (refSpd is not null && Option(a, "--dump-spd") is { } dumpSpd) // research: the reference's values, sets and areas, raw
+            {
+                File.WriteAllBytes(dumpSpd, refSpd.Values.SelectMany(BitConverter.GetBytes).ToArray());
+                File.WriteAllBytes(dumpSpd + ".sets", refSpd.Sets.SelectMany(BitConverter.GetBytes).ToArray());
+                File.WriteAllBytes(dumpSpd + ".areas", refSpd.Areas.SelectMany(r => BitConverter.GetBytes(r.Region).Concat(BitConverter.GetBytes(r.Area))).ToArray());
+            }
             var bytes = spd.ToBytes();
             Console.WriteLine($"spd: {spd.Width}x{spd.Height} cells, {spd.SetCount} sets, {spd.AreaLandmarks.Count} areas, {bytes.Length:N0} bytes in {t.Elapsed.TotalSeconds:F2} s");
             if (outDir is not null) { Directory.CreateDirectory(outDir); File.WriteAllBytes(Path.Combine(outDir, "spd_data.esf"), bytes); }
@@ -202,16 +208,19 @@ static class AiPathfindingCommands
                         var e = ag.EdgesPlain[h * 6 + d];
                         var nav = (e & 0x80) != 0 ? "nav" : "---";
                         return nb < 0 ? $"d{d} -" : $"d{d}->({nb % ag.Width},{nb / ag.Width}) {nav} {ag.CostTable[e & 0x7F]} [{e:x2}]";
-                    })));
+                    })) + $"  links {string.Join(" ", Enumerable.Range(ag.PortLinkStart[h], ag.PortLinkStart[h + 1] - ag.PortLinkStart[h]).Select(k => $"({ag.PortLinks[k] % ag.Width},{ag.PortLinks[k] / ag.Width})"))}");
                 }
             }
-            var hlp = HlpBuilder.Build(ppd, regions, settings, refHlp?.Timestamp ?? ts, Console.WriteLine, opt);
+            // the region tables use the reference's spd when comparing (CA's tables were filled with it)
+            var spdRef = compare is not null && File.Exists(Path.Combine(compare, "spd_data.esf")) && !a.Contains("--own-spd")
+                ? SpdData.Read(Path.Combine(compare, "spd_data.esf")) : null;
+            var hlp = HlpBuilder.Build(ppd, regions, settings, refHlp?.Timestamp ?? ts, Console.WriteLine, opt, spdRef);
             if (refHlp is not null) hlp.Magic = refHlp.Magic;
             if (refHlp is not null && a.Contains("--categories")) Console.WriteLine(HlpCompare.AreaCategories(hlp, refHlp, 12));
             if (refHlp is not null && a.Contains("--tables-from-ref")) // research: the region tables from CA's own transitions
             {
                 var copy = HlpData.Read(refPath!);
-                HlpRegionTables.Fill(copy, wrapLikeGame: true);
+                HlpRegionTables.Fill(copy, spdRef ?? SpdBuilder.Build(new CampaignPathGrid(ppd, regions, settings), regions, ts), regions, wrapLikeGame: true);
                 Console.WriteLine("from CA's transitions: " + HlpCompare.RegionTables(copy, refHlp));
                 var shown = 0;
                 for (var i = 0; i < copy.RegionCosts.Length && shown < 12; i++)

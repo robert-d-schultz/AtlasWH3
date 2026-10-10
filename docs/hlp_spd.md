@@ -11,7 +11,8 @@ out through rpfm_server.
 - **Pipeline:** the `hlp_spd` step runs with the other native steps. It reads `pathfinding.ppd` and `map_data.esf`
   from the build output's `campaign_maps/<map>`, else the kit's working_data, and the DB values from the linked mod
   packs and vanilla. It writes both files with magic `CB AB`.
-  - IEE: 17 s. Old World: 46 s, peak 3.8 GB.
+  - IEE: about 1 minute. Old World: about 5 minutes (283 s for hlp, nearly all of it the region tables), peak 4 GB.
+    The game itself takes over 10 minutes on IEE.
 - **CLI:** `hlp-spd --in <dir> [--out <dir>] [--compare <dir>]` reports field-level parity for both files.
   `--tables-from-ref` adds the region tables computed from the reference's own transitions. The research flags are
   listed on `AiPathfindingCommands`.
@@ -119,57 +120,86 @@ Open on spd:
     - **Older game builds used 3K's rule** (centre to centre, settlement hexes kept): chaos 1–4, combi 1–4, the
       prologue and Darklands only match with it. `--legacy-centre` (`HlpBuilder.Options.LegacyCentrePath`) keeps
       it for those files' parity. Under the new rule they drop: chaos 1 263 → 234, combi 1 671 → 600.
-- **Region tables** (`HlpRegionTables`):
-  - Per region pair (from < to), the cheapest path over the transitions. Crossing costs the transition's cost, and
-    moving on inside an area costs that area's matrix value. The cost goes in the u32 table's upper triangle.
-  - **The game's sums are u32 and wrap: a bug.** An area's matrix value of `FFFFFFFF` (no path inside the area) is
-    a step of −1, so the game writes impossible cheap paths. Old World has 38 such values and combi and Darklands
-    none. Example: 0 → 409 = 40,462 + `FFFFFFFF` + 80 = 40,541.
-    - AtlasWH3 leaves those steps out by default: no region cost comes out below the wrapped one, and 0 → 409 costs
-      more than the game's 40,541.
-    - `--wrap-like-game` (`HlpBuilder.Options.WrapLikeGame`) reproduces the game. With it, Old World's tables from
-      CA's own transitions go from 87 % to 99.7 % (Classic 81 % → 99.1 %).
-    - The 38 matrix values themselves are written as CA writes them: the game's runtime reads them, and how it adds
-      them there is not known.
-  - The u8 table's upper triangle holds that path's number of region changes; crossings between areas of one region
-    don't count.
-  - Its lower triangle `[to, from]` holds the region changes of the cheapest path without land-sea transitions:
-    99.3 % from CA's own transitions on combi map 1.
-  - No path: `FFFFFFFF` / 255. Regions without areas, the diagonal and the costs' lower triangle: `FFFFFFFE` / 0.
-  - Regions from 1,024 on have no row; paths still pass through them.
+- **Region tables** (`HlpRegionTables`): the game's own procedure (`0x142a12e80`), read from Warhammer3.exe on
+  2026-10-10. From CA's own transitions it now gives every table value of every map checked (combi 1, combi 7,
+  Darklands, Old World with its wrapped sums).
+  - **Pairs.** For every pair of regions r < s, `0x142a03ef4` computes the cost (`0x1429ed2bc`), the hops with
+    land-sea transitions (upper triangle `[r, s]`) and the hops without (lower triangle `[s, r]`, `0x1429ede54`).
+    - A region is left out only when all its map_data areas are of type 6/7, or it has none. Its pairs stay
+      `FFFFFFFE` / 0, as do the diagonal and the costs' lower triangle.
+    - A region with only type-1 areas is computed and finds nothing: `FFFFFFFF` / 255.
+    - Regions from 1,024 on have no row, but their costs count for OTHER_CONSTANTS (the largest cost).
+  - **Points** (`0x14284f9d8`): a region's areas of type 0 (land) and 3/4 (sea), in map_data order.
+    - The pair's value comes from one search per (area of r, area of s), in that order.
+    - Without land-sea transitions, s offers only areas of a medium r has, and an area pair needs equal `a`.
+  - **The search** is the campaign's runtime high-level search (`0x142a24698` → A* `0x1429ec824`, loop
+    `0x1429e7af8`).
+    - Nodes are (area, transition to take), plus (area, none) for the start and the goal.
+    - From a node it moves into the area its transition leads to (the start: its own area). If that is the goal area,
+      the only successor is the goal; else every transition of the area, in file order. Land-sea transitions are
+      skipped when not allowed.
+    - **Step** (`0x142a0869c`): 0 from the start. Otherwise the transition's cost, plus the area's matrix value from
+      the landing transition to the next one. The landing transition is the exact reverse one (inside = this one's
+      outside and outside = its inside, `0x142a28e70`). The step adds 0 when there is none or it is the next one. The
+      sum is u32.
+    - **A\*.** g is a float (g + (float)step). h = max(0, spd landmark estimate − the goal's `b`, and the start's `b`
+      for the start node).
+      - The estimate (`0x142a18174`) runs from the node's hex (its transition's inside hex, or the area centre) to
+        the goal area's centre. It is the largest |cost difference| over the landmarks both cells have: the set's 8,
+        plus the area's 8 when both cells are in the same area. It uses the game's u16 copies (cost / 4).
+        `FFFFFFFF` outside the box, across sets or without landmarks.
+      - An MSVC binary heap ordered by f = h + g only. A better g reopens a closed node.
+      - A successor whose g is above the bound is dropped, when the bound is above 0.
+      - The first goal popped ends the search. Its path cost is the u32 sum of its steps.
+    - The heuristic can overestimate, so the game's paths are not always the cheapest. That is where our earlier
+      Dijkstra (99.93–99.95 % of costs, 94–98 % of hops) differed.
+  - **Cost** = the last path found. Each search is bounded by the best so far, starting at `FFFFFFFF`. A cost of 0
+    ends the loop.
+  - **Hops** = the region changes along the path's nodes (`0x142a31168`). The bound passed is the hop count found so
+    far (the game's own oddity), so after the first path later area pairs rarely replace it.
+  - **The game's sums are u32 and wrap: a bug.** An area's matrix value of `FFFFFFFF` (no path inside the area) makes
+    a step of the transition's cost − 1, so the game writes impossible cheap paths. Old World has 38 such values; combi
+    and Darklands have none. Example: 0 → 409 = 40,462 + `FFFFFFFF` + 80 = 40,541.
+    - AtlasWH3 does not take such steps by default, so 0 → 409 costs more than the game's 40,541.
+    - `--wrap-like-game` (`HlpBuilder.Options.WrapLikeGame`) reproduces the game: Old World's tables from CA's own
+      transitions then equal CA's, max cost 189,229 included.
+    - The 38 matrix values themselves are written as CA writes them.
+  - **Speed.** Searches that cannot change the result are not run. Per area pair and mode, a Dijkstra over the same
+    nodes and steps gives the exact (64-bit) cheapest cost; no path the A* finds is cheaper.
+    - A bounded search whose cheapest cost is above the bound fails, and changes nothing.
+    - With the bound `FFFFFFFF` only searches without any path are left out. As a float that bound is 2^32, which a
+      wrapped step of `FFFFFFFF` reaches without being pruned.
+    - When the cheapest cost equals the best so far, the cost stays.
+    - The upper hops reuse the cost loop's searches up to its first path (same bound, same searches).
+    - h is computed once per goal area for every node.
+    - Combi 7: 22 s for the whole hlp (the region tables about 13 s). IEE: 48 s. Old World: about 4.5 minutes. The
+      game itself takes over 10 minutes on IEE.
 
-Parity (2026-10-10, `hlp-spd --compare`). "Areas" counts areas whose transitions, matrix, centre, `a` and `b` all
-equal CA's. "From CA's" is the region tables computed from CA's own transitions (unchanged by the transition work);
-"ours" is the CLI's region-table line for our own build, matching entries of those it compares.
+Parity (2026-10-10, `hlp-spd --compare --wrap-like-game`). "Areas" counts areas whose transitions, matrix, centre, `a`
+and `b` all equal CA's. The region columns compare our own build's tables with CA's. From CA's own transitions they
+are exact on every map checked, so every difference left comes from a differing transition.
 
-| map | areas | region costs (from CA's / ours) | region hops (from CA's / ours) |
-|---|---|---|---|
-| prologue | 22 / 22, byte-identical | 100 % / 100 % | 100 % / 100 % |
-| chaos 1–4 | 263/263, 274/274, 281/281, 281/281 | 100 % / 100 % | 99 % / 99 % |
-| combi 1–3 | 694/695, 703/704, 708/709 | 99.95 % / 99.94–99.95 % | 98 % / 97.8–98.1 % |
-| combi 4 | 713/713 | 99.95 % / 99.94 % | 98 % / 97.9 % |
-| combi 5, 7 | 717/717, 720/720 | 99.93 % / 99.93 % | 94 % / 94.3 % |
-| IEE | 1,067 / 1,068 | 99.9 % / 99.9 % | 97 % / 97.1 % |
-| Old World | 1,690 / 1,703 | 99.7 % / 86.6 % | 95 % / 81.3 % |
-| Old World Classic | 987 / 992 | 99.1 % / 80.2 % | 96 % / 76.2 % |
-| Darklands | 299 / 303 | 99.95 % / 95.0 % | 98 % / 97.0 % |
+| map | hlp_data.esf | areas | region costs | region hops |
+|---|---|---|---|---|
+| prologue | byte-identical | 22 / 22 | 100 % | 100 % |
+| chaos 1–4 | byte-identical | all | 100 % | 100 % |
+| combi 1–3 | 1 area each | 694/695, 703/704, 708/709 | 100 % | 2 values off |
+| combi 4, 5, 7 | byte-identical | all | 100 % | 100 % |
+| IEE | 1 area (transition order) | 1,067 / 1,068 | 100 % | 100 % |
+| Old World | 13 areas | 1,690 / 1,703 | 99.37 % | 99.84 % |
+| Old World Classic | 5 areas | 987 / 992 | 99.53 % | 99.96 % |
+| Darklands | 4 areas | 299 / 303 | 95.0 % | 99.0 % |
 
 Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the others with the current rule.
 
 Open on hlp:
-- Combi 4, 5 and 7: every area identical; only the region tables differ (combi 7: 134 costs, 23k hop counts), so
-  the region-table algorithm itself still differs from the game's.
 - IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
   at cost 1,180 in one big tie, and the game's pop order differs from ours.
-- Old World: 5 land-sea costs that are ours +80 (sea → type-5 hex → land), 2 more costs, 5 areas on other hexes,
-  3 others; Classic has a subset of them. The waypoint converter (`0x141e481e4`) costs type 3/7 and type 6 hexes
-  with its own move-cost function (`0x14292ca78`) and string-pulls plain runs (`0x141e33c4c`). The game's own
-  waypoints on Old World (`probe.py --waypoints`) would settle these.
+- Combi 1–3: one land-sea transition each, where the game's path takes the other side of a port link at the same raw
+  cost, and the crossing then absorbs one more step (500 against our 580).
+- Old World (13 areas), Classic (5) and Darklands (4): mostly land-sea costs that are ours +80 (sea → type-5 hex →
+  land), the same port-link ties. The game's own waypoints on Old World (`probe.py --waypoints`) would settle them.
 - `probe.py --centre` records the game's centre paths (refined and trimmed) and `HLP_DUMP_CENTRE=<file>` ours.
-- Region tables: one misplaced transition changes every region pair whose cheapest path crosses it. Without the
-  game's wrapping Old World is 86.6 % and Classic 80 %, nearly all of it the wrapped steps.
-- Old World's largest region cost: 188,931 against CA's 189,229, also with `--wrap-like-game` (Classic's is equal with it).
-- The equal-cost hop ties.
 
 ### The game's generator (Warhammer3.exe, 2026-10-10)
 

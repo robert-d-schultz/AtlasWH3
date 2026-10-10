@@ -74,8 +74,10 @@ public static class HlpBuilder
         public List<uint> Matrix = [];
     }
 
+    /// <param name="spd">the map's spd (the game fills the region tables with the spd it built just before); null:
+    /// built here.</param>
     public static HlpData Build(PathfindingPpd ppd, MapDataRegions regions, CampaignPathGrid.Settings settings, uint timestamp,
-                                Action<string>? log = null, Options? options = null)
+                                Action<string>? log = null, Options? options = null, SpdData? spd = null)
     {
         options ??= new Options();
         var g = new AiPathGrid(ppd, regions, settings);
@@ -415,7 +417,8 @@ public static class HlpBuilder
             }
             hlp.Nodes.Add(node);
         }
-        HlpRegionTables.Fill(hlp, options.MaxThreads, options.WrapLikeGame);
+        spd ??= SpdBuilder.Build(new CampaignPathGrid(ppd, regions, settings), regions, timestamp);
+        HlpRegionTables.Fill(hlp, spd, regions, options.MaxThreads, options.WrapLikeGame);
         return hlp;
     }
 

@@ -50,7 +50,7 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
         ctx.Log($"spd_data.esf {spd.Width}x{spd.Height} in {t.Elapsed.TotalSeconds:F1} s");
 
         t.Restart();
-        var hlp = HlpBuilder.Build(ppd, regions, settings, timestamp, ctx.Log);
+        var hlp = HlpBuilder.Build(ppd, regions, settings, timestamp, ctx.Log, spd: spd);
         var hlpPath = Path.Combine(ctx.CampaignMapOutDir, "hlp_data.esf");
         File.WriteAllBytes(hlpPath, hlp.ToBytes());
         written.Add(hlpPath);
