@@ -247,7 +247,8 @@ public sealed class TreeHeightField
         return (CompressedMap.Decode(bytes), add);
     }
 
-    private static bool AddsTerrainHeight(byte[]? material)
+    /// <summary>True when a .xml.material sets a non-zero add_terrain_height (the campaign mountain shaders).</summary>
+    internal static bool AddsTerrainHeight(byte[]? material)
     {
         if (material is null) return false;
         try

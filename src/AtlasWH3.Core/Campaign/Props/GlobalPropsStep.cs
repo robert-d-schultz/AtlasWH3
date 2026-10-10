@@ -1,102 +1,90 @@
 using System.Diagnostics;
 using System.Xml.Linq;
-using AtlasWH3.Core.Campaign.Rivers;
-using AtlasWH3.Formats.Maps;
-using AtlasWH3.Formats.Packs;
 using AtlasWH3.Formats.Props;
 using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.Core.Campaign.Props;
 
-/// <summary>global_props.bin from the exported AK layers (BOB "Terry file").</summary>
+/// <summary>global_props.bin and global_props_sound.bin from the map's layers (BOB "Terry file"), BMD v27
+/// (<see cref="Wh3GlobalPropsBuilder"/>).</summary>
 public sealed class GlobalPropsStep : ICampaignBuildStep
 {
     public string Name => "global_props";
-    public string ReplacesBobAction => "Terrain / Terry file (global_props.bin)";
-    public IReadOnlyList<string> DependsOn => ["rasters", "rivers"];
+    public string ReplacesBobAction => "Terry file (global_props.bin, global_props_sound.bin)";
+    public IReadOnlyList<string> DependsOn => [];
 
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)
     {
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
-        if (!File.Exists(ctx.OutFile("lf_height_map.compressed_map"))) missing.Add("missing lf_height_map.compressed_map (run step 'rasters')");
-        if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir} (record templates, model bounds)");
+        if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir} (models and materials)");
+        if (HexRegionLookup.ForMap(ctx.Paths, out var why) is null) missing.Add($"no map.hex region lookup: {why}");
         return missing;
     }
 
     public StepResult Run(CampaignBuildContext ctx)
     {
         var sw = Stopwatch.StartNew();
-        var lf = CompressedMap.Read(ctx.OutFile("lf_height_map.compressed_map"));
-        var worldW = lf.Raster.Width * RiversStep.WorldPerPixelX;
-        var worldH = lf.Raster.Height * RiversStep.WorldPerPixelZ;
-        ctx.Log("templates and model bounds from the game packs...");
-
+        var lookup = HexRegionLookup.ForMap(ctx.Paths, out var why) ?? throw new InvalidOperationException(why);
+        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var project = TerryProject.Load(ctx.TerryFile);
-        // BOB keeps a layer's region only if the map has it (campaign_map_regions); other layers go to the
-        // non-playable region
-        var regions = MapRegions(ctx);
-        var notes = new List<string>();
-        var layers = ExportedLayers(ctx.TerryFile)
-            .Select(l => (Region: regions.Count == 0 || regions.Contains(l.Name) ? l.Name : NonPlayable, Path: project.LayerFilePath(l.Id)))
-            .Where(l => File.Exists(l.Path))
-            .ToList();
-        if (regions.Count == 0) notes.Add("no campaign_map_regions rows for this map in EmpireDesignData; layer names used as regions");
-        else notes.Add($"{layers.Count(l => l.Region == NonPlayable)} layers without a region on this map -> {NonPlayable}");
-        // BOB puts every object in the map.hex region under its entity's position, whatever layer it came from
-        var lookup = HexRegionLookup.ForMap(ctx.Paths, out var why);
-        var builder = new GlobalPropsBuilder(PackSet.OpenVanilla(ctx.Paths.GameDataDir), worldW, worldH)
+        // the quadtree covers the map bounds of map_data.esf (Old World: 0..1367.396 x 0..1368.743, fitted to BOB's cells)
+        var root = HexRegionLookup.EsfHeaderBounds(Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf")) is { } b
+            ? (b.MinX, b.MinY, b.MaxX, b.MaxY) : lookup.QuadRoot;
+        var builder = new Wh3GlobalPropsBuilder(packs, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
+            Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), ctx.MapName, root,
+            (x, z) => lookup.RegionAt(x, z) ?? NoRegion)
         {
-            Prefabs = PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            QuadRoot = lookup?.QuadRoot,
-            Debug = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
+            // the build's own files first, then what BOB left in the kit's working_data (river models until step 3.10)
+            LooseFile = rel => new[] { ctx.TargetRoot, Path.Combine(ctx.Paths.AssemblyKitRoot, "working_data") }
+                .Select(root => Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar)))
+                .Where(File.Exists).Select(File.ReadAllBytes).FirstOrDefault(),
+            Trace = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
         };
-        if (lookup is null) notes.Add($"region by layer name only ({why})");
-        else notes.Add("regions from map.hex at each object's position (as BOB)");
+        var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{layers.Count} exported layers...");
-        var entries = builder.Build(ctx.MapName, layers, lookup is null ? null : (x, z) => lookup.RegionAt(x, z) ?? NonPlayable);
-        var outPath = ctx.OutFile("global_props.bin");
-        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-        File.WriteAllBytes(outPath, GlobalProps.Pack(entries));
-
-        // summary by re-reading what was written
-        var check = GlobalProps.Load(outPath).ReadRegions(ctx.MapName);
-        notes.InsertRange(0, new[]
+        foreach (var layer in layers)
         {
-            $"{layers.Count} layers -> {check.Count} regions, {entries.Count} bmd bodies",
-            $"{check.Sum(r => r.Props.Count):N0} props, {check.Sum(r => r.Vfx.Count):N0} VFX, {check.Sum(r => r.PointLights.Count):N0} lights, " +
-            $"{check.Sum(r => r.CompositeScenes.Count):N0} composite scenes, {check.Sum(r => r.Sounds.Count):N0} sounds, " +
-            $"{check.Sum(r => r.LightProbes.Count):N0} light probes, {check.Sum(r => r.PolyMeshes.Count):N0} polygon meshes",
-        });
-        notes.AddRange(builder.Notes);
-        return new StepResult(Name, [outPath], notes, sw.Elapsed);
+            ctx.Cancel.ThrowIfCancellationRequested();
+            builder.AddLayer(layer.FilePath!);
+        }
+        ctx.Log($"{builder.ObjectCount:N0} objects, {builder.SoundCount:N0} sound emitters; writing...");
+        var props = builder.BuildProps();
+        var sound = builder.BuildSound();
+        var propsPath = ctx.OutFile("global_props.bin");
+        var soundPath = ctx.OutFile("global_props_sound.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(propsPath)!);
+        File.WriteAllBytes(propsPath, GlobalProps.Pack(props));
+        File.WriteAllBytes(soundPath, GlobalProps.Pack(sound));
+        var notes = new List<string>
+        {
+            $"{layers.Count} layers -> {builder.ObjectCount:N0} objects in {props.Count:N0} bodies, {builder.SoundCount:N0} sound emitters in {sound.Count:N0} bodies",
+        };
+        if (builder.MissingModels is { Count: > 0 } missing)
+            notes.Add($"{missing.Count} {(missing.Count == 1 ? "model" : "models")} not in the game or mod packs (or unreadable), boxed as 2 x 2 x 2: "
+                      + string.Join(", ", missing.Take(10)) + (missing.Count > 10 ? $" (+{missing.Count - 10} more)" : ""));
+        notes.AddRange(builder.Notes.Distinct());
+        return new StepResult(Name, [propsPath, soundPath], notes, sw.Elapsed);
     }
-
-    public const string NonPlayable = "3k_main_reg_non_playable";
-
-    /// <summary>Region keys of this map from raw_data\EmpireDesignData\campaign_map_regions.xml (empty if none).</summary>
-    public static HashSet<string> MapRegions(CampaignBuildContext ctx)
-    {
-        var file = Path.Combine(ctx.Paths.AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_map_regions.xml");
-        if (!File.Exists(file)) return [];
-        return XDocument.Load(file).Descendants("campaign_map_regions")
-            .Where(e => (string?)e.Element("campaign_map") == ctx.MapName)
-            .Select(e => (string?)e.Element("region") ?? "")
-            .Where(r => r.Length > 0)
-            .ToHashSet();
-    }
-
-    /// <summary>(layer name, id) of every layer file the .terry exports (ECLayerFile with ECLayerExport export="true").</summary>
-    public static List<(string Name, string Id)> ExportedLayers(string terryPath) =>
-        XDocument.Load(terryPath).Descendants("entity")
-            .Where(e => e.Element("ECLayerFile") is not null && (string?)e.Element("ECLayerExport")?.Attribute("export") == "true")
-            .Select(e => ((string?)e.Attribute("name") ?? "", (string)e.Attribute("id")!))
-            .Where(l => l.Item1.Length > 0)
-            .ToList();
 
     private static Action<string> TraceTo(string path)
     {
         var w = new StreamWriter(path) { AutoFlush = true };
-        return w.WriteLine;
+        return line => { lock (w) w.WriteLine(line); };
     }
+
+    /// <summary>Region of a point outside the map.hex grid.</summary>
+    public const string NoRegion = "";
+
+    /// <summary>Atlas3K's fallback region (3K's rivers step); kept until that step is ported.</summary>
+    public const string NonPlayable = "3k_main_reg_non_playable";
+
+    /// <summary>(layer name, id) of every layer file the .terry exports (ECLayerFile/ECFileLayer with export="true").</summary>
+    public static List<(string Name, string Id)> ExportedLayers(string terryPath) =>
+        XDocument.Load(terryPath).Descendants("entity")
+            .Where(e => (e.Element("ECLayerFile") is not null && (string?)e.Element("ECLayerExport")?.Attribute("export") == "true")
+                        || (string?)e.Element("ECFileLayer")?.Attribute("export") == "true")
+            .Select(e => ((string?)e.Attribute("name") ?? "", (string)e.Attribute("id")!))
+            .Where(l => l.Item1.Length > 0)
+            .ToList();
 }

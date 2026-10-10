@@ -16,7 +16,7 @@ public sealed class RiversStep : ICampaignBuildStep
     public IReadOnlyList<string> DependsOn => ["rasters"];
 
     /// <summary>Number river_N by the entity names (CA's shipped vanilla files) instead of BOB's numbering. Keep in step
-    /// with GlobalPropsBuilder.RiverNumbersByName.</summary>
+    /// with Atlas3K's 3K global_props builder (removed: WH3's river models are named by entity id).</summary>
     public bool RiverNumbersByName { get; init; }
 
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)

@@ -252,17 +252,6 @@ public class CampaignBuildTests
     }
 
     [Fact]
-    public void GlobalProps_BucketsAndCells_FollowVanillaRules()
-    {
-        Assert.Equal(31, Core.Campaign.Props.GlobalPropsBuilder.Bucket(""));
-        Assert.Equal(16, Core.Campaign.Props.GlobalPropsBuilder.Bucket("season_harvest"));
-        Assert.Equal(17, Core.Campaign.Props.GlobalPropsBuilder.Bucket("season_spring"));
-        Assert.Equal(18, Core.Campaign.Props.GlobalPropsBuilder.Bucket("season_summer,season_harvest"));
-        Assert.Equal(23, Core.Campaign.Props.GlobalPropsBuilder.Bucket("season_spring,season_summer,season_harvest,season_autumn"));
-        Assert.Equal(24, Core.Campaign.Props.GlobalPropsBuilder.Bucket("season_winter"));
-    }
-
-    [Fact]
     public void BmdRecords_Prop_RebuildsVanillaRecordsFromTheirOwnFields()
     {
         if (!File.Exists(Paths.GlobalPropsBin)) return;

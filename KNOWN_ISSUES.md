@@ -15,6 +15,11 @@
 - **Camera height map:** the `camera_heightmap` step samples the logic heights and the layers' height patches the way
   BOB's action does, but not BOB's tile terrain, and it ignores `cam_hmap_apply_blur`. It is not byte-identical to
   anything (BOB's own action fails without the `cam_hmap_*` rules).
+- **Global props:** `global_props.bin` matches BOB's content, not its bytes: BOB's own runs differ in record order
+  and in the numbering of the mountain bodies. Two differences remain:
+  - Props are put in quadtree cells by their models' real bounds, on purpose. BOB treats any model whose `.wsmodel`
+    isn't loose in the kit as a 2 × 2 × 2 cube, so a big prop can land in a cell smaller than itself.
+  - The river models still come from BOB (or an earlier build): the `rivers` step is not native yet.
 - **Prepare game data** extracts one map at a time. Run it again for another map.
 - Folder changes in Settings apply to windows opened after saving.
 - The build runs while editors stay open. Saving an edit during a build can make the output mix old and new data;

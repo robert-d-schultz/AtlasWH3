@@ -237,33 +237,4 @@ public class PrefabTests
         Directory.GetFiles(root, "*", SearchOption.AllDirectories)
             .Where(f => exclude is null || !f.StartsWith(exclude, StringComparison.OrdinalIgnoreCase))
             .ToDictionary(f => Path.GetRelativePath(root, f), f => Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(File.ReadAllBytes(f))));
-
-    // ---------------------------------------------------------------- build
-
-    [Fact]
-    public void GlobalProps_FlattensPrefabInstancesLikeHandPlacedProps()
-    {
-        if (!Directory.Exists(Paths.GameDataDir)) return; // game data not available on this machine
-        var dir = Directory.CreateTempSubdirectory();
-        try
-        {
-            var libRoot = MakeLibrary(Path.Combine(dir.FullName, "lib"));
-            var lib = new PrefabLibrary(libRoot, "campaign");
-            var withInstance = Path.Combine(dir.FullName, "a.layer");
-            File.WriteAllText(withInstance, Layer(Instance("1000000000000d1", "village", "100 5 100", "0 30 0")));
-            // The same layer expanded by hand (the expander's output written as plain props).
-            var expanded = LayerDocument.Parse(File.ReadAllText(withInstance));
-            expanded.ExpandPrefab("1000000000000d1", lib, intoFolder: false);
-            var byHand = Path.Combine(dir.FullName, "b.layer");
-            expanded.Save(byHand);
-
-            var packs = Formats.Packs.PackSet.OpenVanilla(Paths.GameDataDir);
-            var a = new Core.Campaign.Props.GlobalPropsBuilder(packs, 595.1, 541.78619) { Prefabs = lib }.Build("m", [("r", withInstance)]);
-            var b = new Core.Campaign.Props.GlobalPropsBuilder(packs, 595.1, 541.78619).Build("m", [("r", byHand)]);
-            Assert.Equal(b.Select(x => x.Name), a.Select(x => x.Name));
-            Assert.Equal(b.Select(x => Convert.ToHexString(x.Body)), a.Select(x => Convert.ToHexString(x.Body)));
-            Assert.True(a.Count > 1);
-        }
-        finally { dir.Delete(true); }
-    }
 }

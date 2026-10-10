@@ -381,6 +381,24 @@ scene is gone: the editors' ground height now uses the same WH3 ground (`TreeHei
 - BOB's tile terrain term and blur.
 Numbers in `docs/native_campaign_build.md`.
 
+**3.9 status (2026-10-09):** `GlobalPropsStep` is in the pipeline: `global_props.bin` and `global_props_sound.bin` (BMD
+v27, `Bmd27Body`, which round-trips all 166,549 bodies of BOB's IEE and Old World files). WH3's BOB is not
+byte-reproducible here: two runs on the same Old World sources differ in record order, entry order and the numbering of
+the mountains' one-prop buckets (address order). So parity is measured as content (each body's records as a set),
+on which two BOB runs agree 100%. With BOB's model boxes (a research switch, since removed): Old World 99.6% of 59,085
+groups, IEE 99.9% of 101,561, IEE sound file 98.7%; the same bodies and objects as BOB on both maps. The step boxes every
+model by its own bounds from the packs (decided 2026-10-09: there is no working_data for a model to be missing from);
+BOB boxes as 2 × 2 × 2 any model whose .wsmodel isn't loose in the kit, so Old World 436 objects and IEE 8,248 go to a
+coarser cell than BOB's (content parity 98.8% and 85.1%). IEE 17.6 s, Old World 5.2 s. Read off the data and qttoolutility: culture buckets (16 ×
+prefab_types value, one per culture name), WH3's ECTransform maths and its prefab flattening (through Euler degrees),
+the ear clipping, hidden groups in layers and prefabs. Left:
+- the in-game check;
+- the remaining ulps (effects inside prefabs, rotated sound emitters), see `docs/native_campaign_build.md`;
+- the river models (3.10): the step boxes rivers by the meshes already in the build or the kit's working_data;
+- the devastated project's `global_props[_sound]_devastation_<type>.bin` (they ship nowhere, §2) and the pieces'
+  objects (3.6), which now have a writer.
+Numbers in `docs/native_campaign_build.md`.
+
 Each step is done when:
 - it is native in the hybrid pipeline,
 - the game loads every fixture map and shows no visible difference from BOB's build,

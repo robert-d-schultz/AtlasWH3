@@ -75,31 +75,29 @@ public sealed class HexRegionLookup
         return _hex.RegionAt(c, r);
     }
 
-    /// <summary>The lookup for a map: its map.hex and the bounds of its campaign_map_playable_areas row in
-    /// EmpireDesignData (BOB takes the bounds from map_data.esf, which CAIME writes from that row). Null when either
-    /// is missing.</summary>
+    /// <summary>The lookup for a map: its map.hex and the map bounds BOB uses, the two vec2 values at the head of the
+    /// working map_data.esf (CAIME writes them from the campaign_map_playable_areas row; its floats can be an ulp off the
+    /// XML's decimal text, main190 986.05096 vs float(986.051), which moved one boundary prop). Without a map_data.esf the
+    /// row in EmpireDesignData is used. Null when neither is there. (WH3: Old World's playable-areas row carries IEE's
+    /// 1068.11 where its map_data.esf has 1367.396, and BOB follows the ESF.)</summary>
     public static HexRegionLookup? ForMap(ProjectPaths paths, out string reason)
     {
         var hexPath = Path.Combine(paths.AkDesignCampaignMapDir, "map.hex");
-        var areas = Path.Combine(paths.AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_map_playable_areas.xml");
         if (!File.Exists(hexPath)) { reason = $"no {hexPath}"; return null; }
-        if (!File.Exists(areas)) { reason = $"no {areas}"; return null; }
+        reason = "";
+        if (EsfHeaderBounds(Path.Combine(paths.AkWorkingCampaignMapDir, "map_data.esf")) is { } esf)
+            return new HexRegionLookup(MapHexFile.Read(hexPath), esf.MinX, esf.MinY, esf.MaxX);
+        var areas = Path.Combine(paths.AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_map_playable_areas.xml");
+        if (!File.Exists(areas)) { reason = $"no map_data.esf and no {areas}"; return null; }
         var row = XDocument.Load(areas).Descendants("campaign_map_playable_areas")
             .FirstOrDefault(e => (string?)e.Element("mapname") == paths.MapName);
-        if (row is null) { reason = $"no campaign_map_playable_areas row for {paths.MapName}"; return null; }
+        if (row is null) { reason = $"no map_data.esf and no campaign_map_playable_areas row for {paths.MapName}"; return null; }
         float F(string n) => float.Parse((string?)row.Element(n) ?? "0", CultureInfo.InvariantCulture);
-        reason = "";
-        var (minX, minY, maxX) = (F("minx"), F("miny"), F("maxx"));
-        // BOB reads the bounds from the compiled map_data.esf, whose floats can be an ulp off the XML's decimal text
-        // (main190: 986.05096 vs float(986.051)), which moves hex edges by an ulp (2026-10-05, one boundary prop)
-        if (EsfBounds(Path.Combine(paths.AkWorkingCampaignMapDir, "map_data.esf"), minX, minY, maxX) is { } esf)
-            (minX, minY, maxX) = esf;
-        return new HexRegionLookup(MapHexFile.Read(hexPath), minX, minY, maxX);
+        return new HexRegionLookup(MapHexFile.Read(hexPath), F("minx"), F("miny"), F("maxx"));
     }
 
-    /// <summary>The map bounds in map_data.esf's header: two vec2 values (ESF type 0x0c) holding (min x, min y) and
-    /// (max x, max y), accepted only when they are within 0.01 of the playable-area row.</summary>
-    internal static (float MinX, float MinY, float MaxX)? EsfBounds(string path, float minX, float minY, float maxX)
+    /// <summary>The first two vec2 values (ESF type 0x0c) of map_data.esf: (min x, min y), (max x, max y).</summary>
+    public static (float MinX, float MinY, float MaxX, float MaxY)? EsfHeaderBounds(string path)
     {
         if (!File.Exists(path)) return null;
         var b = new byte[4096];
@@ -108,8 +106,10 @@ public sealed class HexRegionLookup
         for (var i = 0; i + 18 <= n; i++)
         {
             if (b[i] != 0x0c || b[i + 9] != 0x0c) continue;
-            float x0 = BitConverter.ToSingle(b, i + 1), y0 = BitConverter.ToSingle(b, i + 5), x1 = BitConverter.ToSingle(b, i + 10);
-            if (Math.Abs(x0 - minX) <= 0.01f && Math.Abs(y0 - minY) <= 0.01f && Math.Abs(x1 - maxX) <= 0.01f) return (x0, y0, x1);
+            float x0 = BitConverter.ToSingle(b, i + 1), y0 = BitConverter.ToSingle(b, i + 5);
+            float x1 = BitConverter.ToSingle(b, i + 10), y1 = BitConverter.ToSingle(b, i + 14);
+            if (float.IsFinite(x0) && float.IsFinite(y1) && x1 > x0 && y1 > y0 && Math.Abs(x0) < 1e5f && Math.Abs(x1) < 1e5f && Math.Abs(y1) < 1e5f)
+                return (x0, y0, x1, y1);
         }
         return null;
     }

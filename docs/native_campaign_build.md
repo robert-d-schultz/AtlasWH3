@@ -15,8 +15,9 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `trees` | Campaign Trees | 2026-10-08, against the user's BOB lists. Old World: **byte-identical** (507,966 trees). IEE: every tree id, position and rotation identical; heights 238,143 of 253,903 bit-exact (93.8%), 253,446 within 1e-3, 457 beyond (max 3.1), see below. IEE 12 s, Old World 6 s. Not yet checked in game |
 | `global_map` | Global Tilemap, Campaign Global Blendmap | 2026-10-09, against the user's BOB output. Old World: `global_blend.dds`, `texture_arrays.xml` and `tile_list.bin` **byte-identical** (with `!cr_oldworld_campaign.pack` linked). IEE: `texture_arrays.xml` and `tile_list.bin` byte-identical; `global_blend.dds` header identical, 187,094 pixels differ, all in one 1240 × 556 px area of the `iee` blend layer, saved 2026-10-03, after that BOB run (2026-09-30). IEE 5 s, Old World 7 s. Not yet checked in game |
 | `masks` | Color Overlay, Color Overlay (Sea), Snow Mask, Corruption Mask, Event Area Mask | 2026-10-09. `colour_overlay.dds`, `lf_sea_colour.dds`, `snow_mask.dds`, `corruption_mask.dds`, `event_area_mask.dds`: **byte-identical** on IEE (against the user's BOB output, which a fresh BOB run reproduced) and Old World (against a fresh BOB run in the scratch kit: its working_data overlays were trimmed to 14 mips by `trim_mips.py`, and its event area TIF is newer than that run), every mip level. IEE 7 s, Old World 12 s. Not yet checked in game |
-| `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. Objects, sounds and rivers not yet (3.9). Cutting: IEE 4 s, Old World 7 s; the devastated build IEE 207 s. Not yet checked in game |
+| `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. Objects, sounds and rivers not yet: they need the global_props builder (3.9, now in) applied per piece. Cutting: IEE 4 s, Old World 7 s; the devastated build IEE 207 s. Not yet checked in game |
 | `lookup` | Texture / Convert lookup texture | 2026-10-09, against the user's BOB output (IEE) and the shipped packs (both). IEE: `.tga` and `.dds` **byte-identical** to BOB's and to `!cr_immortal_empires_expanded.pack`'s; `_minimap.tga` differs in 1,545 of 388,000 pixels, along region borders (see below). Old World: every pixel the same colour as the pack's, but the palette is ordered differently on purpose (see below). IEE 0.2 s, Old World 2.5 s |
+| `global_props` | Terry file (props export) | 2026-10-09, against BOB runs of the same sources (the scratch kit, Old World and IEE). BOB is not byte-reproducible here: two Old World runs of identical input differ in record order (20,912 bodies), entry order and the one-prop bucket numbers, so parity is **content parity** (every bucket body's records as a multiset; `gp27-diff`), on which two BOB runs agree 100%. Measured with BOB's model boxes (a research switch since removed): Old World 58,875 of 59,085 groups the same (99.6%), IEE 101,465 of 101,561 (99.9%); `global_props_sound.bin` IEE 3,172 of 3,215. The same bodies as BOB on both maps (60,753 and 102,578) and the same objects (132,644 and 1,326,436). The step boxes every model by its own bounds, so 436 Old World and 8,248 IEE objects go to a coarser cell than BOB's (Old World 98.8%, IEE 85.1%), see below. The v27 reader / writer round-trips all 166,549 bodies of both maps' BOB files. IEE 17.6 s, Old World 5.2 s (BOB's Terry file about 3 min on IEE). Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -267,6 +268,62 @@ the map's working_data and EmpireDesignData folders.
   and the rules.bob files (`campaigns\rules.bob`, then the map folder's).
 - **Open:** BOB's tile terrain T; the blur; entities inside groups (their parents' transforms; none in the fixtures);
   a BOB run with the cam_hmap keys set, as the reference.
+
+### global_props.bin and global_props_sound.bin (WH3)
+
+`GlobalPropsStep` / `Wh3GlobalPropsBuilder`, BMD v27 bodies in `Bmd27Body`. Read off BOB's output on the fixtures,
+qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frida file trace (2026-10-09):
+
+- **Bodies (v27):** no per-body preamble; every framing byte is the same in all 166,549 bodies of both maps
+  (`global_props_sound.bin`'s bodies carry (0, 0) where the props file's carry (64, 64) after the point lights).
+  Records: prop v30, VFX v11, light probe v3, terrain hole v3, point light v7, polygon mesh v4, spot light v8, sound v10,
+  composite scene v12, reference v9. The layout is WH3_visual_map_decompiler's `GlobalPropsParser`, with the bytes it
+  skips named from the layers (prop: visible_in_shroud, decal apply_to_terrain, receive_decals / decal
+  apply_to_objects, render_above_snow; a flag block of tactical-view visibility on props, VFX, lights, holes, polygons,
+  spots). Record culture masks are 1 everywhere but on sounds.
+- **Container:** 3K's. Cells ascending; in a cell, regions in CA hash-map order; per (cell, region) its bucket bodies
+  ascending, then the cell body; the root last. Sounds have their own file of bucket-16 bodies only (no cell or root
+  bodies), and each sound's (region, cell) also gets an empty bucket-16 body in global_props.bin.
+- **Buckets:** 16 × prefab_types value + 15 for props and VFX, + 0 for everything else (decals, lights, scenes, holes,
+  polygons). An object goes to one bucket per culture name in its culture_mask, duplicates kept (Kislev and Kislev
+  Prologue share 24, so 384 twice); no mask is BASE (1); a culture without a prefab_types row is NONE (0). The cell's
+  reference to a bucket carries bit value − 1. Props whose .wsmodel has an `add_terrain_height` material (the
+  campaign mountain shaders) get a body each, buckets 640 + n (n in BOB's address order: not reproducible), with
+  uses_terrain_vertex_offset set.
+- **Regions and cells:** the map.hex region under the object (`HexRegionLookup`, bounds from map_data.esf: Old World's
+  playable-areas row carries IEE's 1068.11, its ESF 1367.396). The quadtree covers the ESF bounds (Old World
+  0..1367.396 × 0..1368.743); boxes as 3K (model box through the world matrix, lights by radius, decals and the rest
+  points), except: a terrain hole's triangles all take the hole's outline box; rivers take their mesh's box; models
+  with an unexpected vertex stride load fine (no 3K-style [-1, 1] fallback).
+- **Model boxes (deliberately not BOB's):** BOB opens no geometry file for props (Frida trace: only its own river
+  meshes and the loose .wsmodel files). It resolves a .wsmodel's geometry only through a loose .wsmodel in the kit's
+  working_data, and a .rigid_model_v2 from the game's packs; anything else (a mod's model, a .wsmodel the kit doesn't
+  have loose) is boxed as [-1, 1]^3, so it lands in a finer cell than its size. The step boxes every model by its own
+  bounds from the game and mod packs: AtlasWH3 has no working_data for a model to be missing from. A model no pack
+  has (usually an unlinked pack, but a map may name a model another mod will supply) keeps BOB's [-1, 1]^3 box, and
+  the step lists those models in its notes. Likewise a mod model's skeleton sets "animated", which BOB only reads for
+  the game's own models.
+- **World matrices:** WH3's ECTransform is 3K's (`QtuTransform`) with radians = degrees × 0.017453294, cos = sin(h + π/2)
+  for x and y, the z small-angle case (h, 1 − h²/2), and no position × 0 terms (bit-exact on 21,725 of 21,851 Old World
+  props matched to one entity). Prefab children: the parent and child 3x3 multiplied in float, then
+  set_decomposed_transform (column lengths, trace-method quaternion), set_rotation's trip through Euler degrees (the
+  CRT's atan2f / asinf) and the matrix rebuilt; position ((t + r2·z) + r1·y) + r0·x (all 3,003 corruption-crack decals
+  tested). Entity-space points (holes, sound lines) go to the world in that same order. VFX: the world matrix times the
+  effect's scale as a full 3x3 product. Sound axes: the quaternion's z and y axes, unscaled.
+- **Polygons and holes:** the outline in entity space, ear-clipped in float from slot 1, staying on the slot after a clip
+  and back to 1 past the end, triangles written clockwise, the last as the ear at the current slot (1,252 of 1,253
+  polygon meshes and 164 of 166 Old World holes). Polygon vertices stay in entity space; hole vertices are placed.
+- **Fields from elsewhere:** cast_shadow is always 1; composite scenes' autoplay is always 1; use_dynamic_shadows on
+  `rigid_campaign_mountain_emissive` materials (all 8 such models, no other); "animated" when the game's RMV2 has a
+  skeleton; spot lights take the decomposed world rotation, angles (degrees × π) / 180, colour × (1/255) × intensity;
+  polygons that are tactical-view-only without tactical view drop the flag and clear the byte after visible_in_shroud;
+  sound masks have only their known cultures' bits; ECPolyline3D emitters are SST_LINE_LIST of every point.
+- **Layers:** every exported file layer; an `ECLayer export="false"` group hides its members (transitively), inside
+  prefabs too (marienburg_big's "houses").
+- **Not matched yet:** one-ulp transforms of effects inside prefabs (Old World's tow_torch), sound axes of rotated
+  emitters, the last byte of the 53 unknown bytes on 10 IEE river sounds, a spot light's length by an ulp, one polygon
+  BOB stops triangulating early. Not written: the devastated project's `global_props[_sound]_devastation_<type>.bin`,
+  which ship nowhere (plan §2).
 
 ### full_height_map.dds (BC6H_SF16)
 

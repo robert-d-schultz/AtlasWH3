@@ -11,8 +11,8 @@ retargeted to WH3 only.
 > projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list`,
 > `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless.
 > `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
-> campaign), so far without the pieces' objects. `lookup` and `camera_heightmap` are in too. The other steps are still
-> pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> campaign), so far without the pieces' objects. `lookup`, `camera_heightmap` and `global_props` (props, effects,
+> lights and sounds) are in too. The other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 
@@ -41,7 +41,8 @@ The goal is **one command that rebuilds the whole map from loose files**, with n
 | `devastation_pieces` | `pieces\event_*` for the main and devastated maps | Devastation pieces, without a fake campaign |
 | `lookup` | `*_lookup.tga` / `.dds`, `_minimap.tga` | Convert lookup texture |
 | `camera_heightmap` | `camera_heightmap.png` (with the props' height patches) | Generate Camera Height Map (fails in BOB) |
-| `global_props` + `rivers` | `global_props.bin`, `global_props_sound.bin`, devastation-type BMDs, `models\river_*` | the props / Terry export action |
+| `global_props` | `global_props.bin`, `global_props_sound.bin` | the Terry file action's props export |
+| `rivers` | `models\river_*` | the Terry file action's river export |
 | `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation (last) |
 
 Only BOB's default actions can run headless (the Terry file, the mask textures and Devastation pieces, as one group;
