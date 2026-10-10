@@ -54,13 +54,15 @@ public static class PackBuilder
     /// inside a <paramref name="replaceDirs"/> folder that the overrides don't have are dropped (e.g. stale generated
     /// meshes), but only in a folder the overrides put at least one file in, so a build that did not make a folder's
     /// files never empties it. <paramref name="output"/> may be the base pack itself (written to a temp file, then
-    /// swapped).</summary>
+    /// swapped). Base files under an <paramref name="owned"/> prefix (a step's own files, e.g.
+    /// terrain/campaigns/&lt;map&gt;/models/river_) that the overrides don't have are always dropped.</summary>
     public static Summary Merge(string basePack, string output, IReadOnlyDictionary<string, (string Rel, string Disk)> overrides,
-                                IEnumerable<string>? replaceDirs = null)
+                                IEnumerable<string>? replaceDirs = null, IEnumerable<string>? owned = null)
     {
         var pack = PackFile.Open(basePack);
         var dirs = (replaceDirs ?? []).Select(d => PackFile.Normalize(d.TrimEnd('/', '\\') + "/"))
-            .Where(d => overrides.Keys.Any(k => k.StartsWith(d, StringComparison.Ordinal))).ToList();
+            .Where(d => overrides.Keys.Any(k => k.StartsWith(d, StringComparison.Ordinal)))
+            .Concat((owned ?? []).Select(PackFile.Normalize)).ToList();
         var sources = new List<PackWriter.Source>();
         int kept = 0, replaced = 0, dropped = 0;
         foreach (var (key, entry) in pack.Entries)

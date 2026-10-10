@@ -66,8 +66,11 @@ public enum PatchMaskMode
     Vanilla,
 }
 
-/// <summary>Result of one build step.</summary>
-public sealed record StepResult(string Step, IReadOnlyList<string> Written, IReadOnlyList<string> Notes, TimeSpan Elapsed);
+/// <summary>Result of one build step. <see cref="Owns"/>: path prefixes (a folder ends in a separator) the step
+/// rewrites whole, so a pack merge drops every base file under them that the step did not write this time (river models
+/// of deleted rivers, pieces of areas no longer on the map), even when it wrote none.</summary>
+public sealed record StepResult(string Step, IReadOnlyList<string> Written, IReadOnlyList<string> Notes, TimeSpan Elapsed,
+                                IReadOnlyList<string>? Owns = null);
 
 /// <summary>One former BOB action, reimplemented natively.</summary>
 public interface ICampaignBuildStep

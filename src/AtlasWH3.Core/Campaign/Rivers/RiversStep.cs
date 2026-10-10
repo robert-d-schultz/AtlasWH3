@@ -45,7 +45,7 @@ public sealed class RiversStep : ICampaignBuildStep
         if (skipped.Count > 0)
             notes.Add($"{skipped.Count} {(skipped.Count == 1 ? "river" : "rivers")} with no segment or over {Wh3River.MaxVertices - 1} vertices (BOB writes none): "
                       + string.Join(", ", skipped.Take(10)) + (skipped.Count > 10 ? $" (+{skipped.Count - 10} more)" : ""));
-        return new StepResult(Name, written, notes, sw.Elapsed);
+        return new StepResult(Name, written, notes, sw.Elapsed, Owns: [Path.Combine(models, "river_")]);
     }
 
     /// <summary>The rivers BOB bakes: top-level entities with ECRiver and ECRiverSpline in the exported layers, outside

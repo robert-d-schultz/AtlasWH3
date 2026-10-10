@@ -146,7 +146,7 @@ public static partial class InfoCards
         new("profile.packBase", "Merge base",
             "Merge mode only: the pack to start from, e.g. your mod's pack with its DB tables. Empty merges into the output pack itself."),
         new("profile.replaceDirs", "Replace folders",
-            "Merge mode only: pack folders whose old files are dropped unless re-added, comma-separated, e.g. terrain/campaigns/{map}/pieces/. Stops deleted files from lingering. A folder the build put nothing in is left as it is."),
+            "Merge mode only: more pack folders whose old files are dropped unless re-added, comma-separated. Stops deleted files from lingering; a folder the build put nothing in is left as it is. Not needed for the build's own files: river models and event-area pieces the build no longer writes are always dropped."),
         new("profile.contents", "Pack contents",
             "Files and folders copied into the pack. When two rows give the same pack path, the later row wins."),
         new("profile.contents.source", "Source",

@@ -164,7 +164,7 @@ public sealed class BuildRunner
                         var r = new ItemResult(id, o.Status, seconds, o.Problems, o.Result?.Notes ?? [], o.Result?.Written.Count ?? 0);
                         lock (_items) _items.Add(r);
                         if (o.Status == "ok" && o.Result is { } done)
-                            lock (manifest) { manifest.Set(e.Step, done.Written); manifest.Save(manifestFile); }
+                            lock (manifest) { manifest.Set(e.Step, done.Written, done.Owns); manifest.Save(manifestFile); }
                         Write(id, $"{o.Status}{(o.Result is { } res ? $" {res.Elapsed.TotalSeconds:F1} s, {res.Written.Count} files" : "")}");
                         foreach (var p in o.Problems) Write(id, "! " + p);
                         foreach (var n in r.Notes) Write(id, NoteLine(n));
@@ -260,6 +260,7 @@ public sealed class BuildRunner
 
         var problems = new List<string>();
         var files = new Dictionary<string, (string Rel, string Disk)>();
+        var owned = new List<string>();   // the compiled steps' own prefixes this pack takes
         foreach (var c in settings.Contents)
         {
             if (c.Source == PackContent.CompiledSource)
@@ -267,6 +268,7 @@ public sealed class BuildRunner
                 var m = manifest();
                 var under = _project.Expand(c.Path, _paths).Replace('\\', '/').Trim('/');
                 var picked = m.Files.Where(f => under.Length == 0 || f.StartsWith(under + "/", StringComparison.OrdinalIgnoreCase)).ToList();
+                owned.AddRange(m.Owned.Where(o => under.Length == 0 || o.StartsWith(under + "/", StringComparison.OrdinalIgnoreCase)));
                 if (m.Steps.Count == 0) problems.Add($"{name}: nothing compiled into {m.Output} yet; run Compile first");
                 else if (picked.Count == 0) (c.Optional ? notes : problems).Add($"{(c.Optional ? WarningPrefix : "")}{name}: no compiled files under {under}/");
                 foreach (var rel in picked)
@@ -284,8 +286,10 @@ public sealed class BuildRunner
         }
         var excluded = settings.Exclude.Select(x => Formats.Packs.PackFile.Normalize(_project.Expand(x, _paths).Replace('\\', '/').Trim()))
             .Where(x => x.Length > 0).ToList();
-        foreach (var key in files.Keys.Where(k => excluded.Any(x => x.EndsWith('\\') ? k.StartsWith(x, StringComparison.Ordinal) : k == x)).ToList())
+        bool Excluded(string key) => excluded.Any(x => x.EndsWith('\\') ? key.StartsWith(x, StringComparison.Ordinal) : key == x);
+        foreach (var key in files.Keys.Where(Excluded).ToList())
             files.Remove(key);
+        owned.RemoveAll(o => Excluded(Formats.Packs.PackFile.Normalize(o)));
         if (problems.Count > 0) return (problems.Take(20).ToList(), 0);
         if (files.Count == 0) return ([$"{name}: nothing to pack"], 0);
         _cancel.ThrowIfCancellationRequested();
@@ -296,7 +300,7 @@ public sealed class BuildRunner
             var basePack = settings.Base.Length > 0 ? _project.Resolve(settings.Base, _paths) : output;
             if (!File.Exists(basePack)) return ([$"{name}: merge base pack {basePack} not found"], 0);
             Log("pack", $"merging {files.Count} files into {Path.GetFileName(basePack)} -> {output}");
-            summary = PackBuilder.Merge(basePack, output, files, settings.ReplaceDirs.Select(d => _project.Expand(d, _paths)));
+            summary = PackBuilder.Merge(basePack, output, files, settings.ReplaceDirs.Select(d => _project.Expand(d, _paths)), owned);
             notes.Add($"{name}: {summary.Kept} kept, {summary.Replaced} replaced, {summary.Added} added, {summary.Dropped} stale dropped");
         }
         else

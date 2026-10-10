@@ -66,7 +66,6 @@ public sealed class BuildProject
         {
             Output = "{project}\\{map}.pack",
             Contents = [new PackContent { Source = PackContent.CompiledSource }],
-            ReplaceDirs = [.. DefaultReplaceDirs],
         };
         var install = new InstallSettings();
         if (modPacks is [var modPack, ..])
@@ -86,10 +85,6 @@ public sealed class BuildProject
         };
     }
 
-    /// <summary>The folders a build rewrites whole (the event-area pieces and the river models), so a merge drops the
-    /// base pack's stale files in them (pieces of areas no longer on the map, rivers since deleted).</summary>
-    public static readonly IReadOnlyList<string> DefaultReplaceDirs =
-        ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{map}/models/", "terrain/campaigns/{devastated}/pieces/"];
 
     /// <summary>The editor / builder paths for this project, on top of <paramref name="defaults"/>.</summary>
     public ProjectPaths ToPaths(ProjectPaths? defaults = null)
@@ -199,7 +194,8 @@ public sealed class PackSettings
     public PackMode Mode { get; set; } = PackMode.New;
     public string Output { get; set; } = "";
     public string Base { get; set; } = "";
-    /// <summary>Merge: pack folders (e.g. terrain/campaigns/{map}/) whose base files are dropped unless re-added.</summary>
+    /// <summary>Merge: more pack folders whose base files are dropped unless re-added (only where the pack adds files).
+    /// The steps' own files need none: river models and pieces the build no longer writes are always dropped.</summary>
     public List<string> ReplaceDirs { get; set; } = [];
     /// <summary>Files or folders to pack; a later entry wins over an earlier one for the same pack path.</summary>
     public List<PackContent> Contents { get; set; } = [];

@@ -60,6 +60,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
         var written = new List<string>();
+        var owns = new List<string> { Path.Combine(ctx.TerrainOutDir, "pieces", "event_") };
         CampaignTileDatabase? db = null;
         CampaignTileDatabase TileDb() => db ??= TileMapValidator.LoadDatabase(ctx.Paths);
         PackSet? packs = null;
@@ -95,6 +96,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
 
             string? Source(string rel) => Terrain(build, devastated, rel);
             var outDir = Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
+            owns.Add(Path.Combine(outDir, "pieces", "event_"));
             var devastatedObjects = Objects(ctx, project, devastated, Packs, notes);
             var pieceAt = Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
                                 devastatedObjects);
@@ -113,7 +115,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                 written.Add(path);
             }
         }
-        return new StepResult(Name, written, notes, sw.Elapsed);
+        return new StepResult(Name, written, notes, sw.Elapsed, owns);
     }
 
     /// <summary>A project's layer objects, for the pieces' objects / bmd_objects_sound files (the global_props builder;

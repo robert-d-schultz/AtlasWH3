@@ -492,8 +492,11 @@ battle terrain, CAIME's and the game's files beside the map, and Old World ships
   `global_props_devastation_*`) and CAIME's inputs (`*_lookup.bmp`) never ship.
 - A project has a list of packs (`packs`; an older `pack` still loads), each with `exclude`, so Old World's split is two
   merges; `{devastated}` names the devastated project.
-- A replace folder (default: both `pieces\`, `models\`) drops a base file only where the build put files; compressed
-  base entries are copied as they are.
+- A step declares the files it rewrites whole (rivers `models\river_*`, the pieces step both `pieces\event_*`), the
+  manifest keeps that, and a merge always drops the base pack's files under them that the build no longer writes (a
+  deleted river's model, an area no longer on the map), even when it writes none. IEE: rivers alone drop the pack's
+  206 stale river model files. A profile's extra replace folders drop only where the build put files; compressed base
+  entries are copied as they are.
 - Default with a linked mod pack (`new-project --pack`, the GUI's linked packs): merge into a copy beside the project,
   then Install (backup, copy-then-swap, refused while `Warhammer3.exe` runs).
 IEE end to end (`build --segments validate,compile,pack`, scratch output): 513 s, of which the merge into a copy of the

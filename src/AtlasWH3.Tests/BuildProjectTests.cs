@@ -57,7 +57,8 @@ public class BuildProjectTests : IDisposable
         Assert.Equal(@"{project}\!cr_oldworld_campaign.pack", pack.Output);
         Assert.True(project.Build.Install.Enabled);
         var paths = project.ToPaths(new ProjectPaths());
-        Assert.Contains("terrain/campaigns/cr_oldworld_map_devastate_1/pieces/", pack.ReplaceDirs.Select(d => project.Expand(d, paths)));
+        Assert.Empty(pack.ReplaceDirs);   // the steps' own files (river models, pieces) are dropped without settings
+        Assert.Equal("cr_oldworld_map_devastate_1", project.Expand("{devastated}", paths));
         project.Build.DevastatedMap = "other_devastate";
         Assert.Equal("other_devastate", project.Expand("{devastated}", paths));
     }
@@ -100,6 +101,42 @@ public class BuildProjectTests : IDisposable
         Assert.Equal([@"terrain\campaigns\m\a.bin"], PackFile.Open(Path.Combine(paths.GameDataDir, "main.pack")).Entries.Keys);
         Assert.Equal([@"terrain\campaigns\m\pieces\event_1\mask", @"terrain\campaigns\m_devastate_1\event_tiles"],
                      PackFile.Open(Path.Combine(paths.GameDataDir, "devastate.pack")).Entries.Keys.OrderBy(k => k.Length));
+    }
+
+    [Fact]
+    public void MergeDropsTheStepsStaleFilesEvenWhenTheyWroteNone()
+    {
+        var output = Path.Combine(_dir, "out");
+        var paths = new ProjectPaths { MapName = "m", CacheRoot = Path.Combine(_dir, "cache"), OutputRoot = Path.Combine(_dir, "app") };
+        Write(output, "terrain/campaigns/m/a.bin", "a");
+        var manifestFile = BuildManifest.FileFor(paths, "m", output);
+        var manifest = BuildManifest.Load(manifestFile, output);
+        manifest.Set("heightmaps", [Path.Combine(output, @"terrain\campaigns\m\a.bin")]);
+        manifest.Set("rivers", [], [Path.Combine(output, @"terrain\campaigns\m\models\river_")]);   // every river deleted
+        manifest.Set("devastation_pieces", [], [Path.Combine(output, @"terrain\campaigns\m\pieces\event_")]);
+        manifest.Save(manifestFile);
+
+        var src = Path.Combine(_dir, "src");
+        Write(src, "terrain/campaigns/m/models/river_123.wsmodel", "deleted river");
+        Write(src, "terrain/campaigns/m/models/river_123.wsmodel.rigid_model_v2", "deleted river");
+        Write(src, "terrain/campaigns/m/models/hand_made.wsmodel", "not the build's");
+        Write(src, "terrain/campaigns/m/pieces/event_ff0000/mask", "goes to the other pack");
+        Write(src, "db/keep", "keep");
+        var basePack = Path.Combine(_dir, "base.pack");
+        PackBuilder.New(basePack, PackBuilder.FromFolder(src));
+
+        var project = new BuildProject { Map = "m" };
+        project.Build.Output = output;
+        project.Build.Packs =
+        [
+            new PackSettings { Mode = PackMode.Merge, Base = basePack, Output = Path.Combine(_dir, "out.pack"),
+                               Contents = [new PackContent { Source = PackContent.CompiledSource }], Exclude = ["terrain/campaigns/{map}/pieces/"] },
+        ];
+        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
+
+        Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
+        Assert.Equal([@"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\models\hand_made.wsmodel", @"terrain\campaigns\m\pieces\event_ff0000\mask"],
+                     PackFile.Open(Path.Combine(_dir, "out.pack")).Entries.Keys.Order());
     }
 
     [Fact]

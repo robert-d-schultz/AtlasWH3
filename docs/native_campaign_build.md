@@ -476,23 +476,26 @@ and installs it. Pack contents:
   paths under the output; with a `path`, only that pack folder. Nothing else in working_data is packed.
 - a file or folder on disk, as before.
 
+A step's own files are cleared out of the base pack: `rivers` owns `models\river_*` (named by entity id, as BOB's, so a
+deleted or re-made river leaves a stale model), `devastation_pieces` owns both folders' `pieces\event_*`. A merge drops
+every base file under those that the build did not write, also when it wrote none, unless the pack leaves the folder
+out (`exclude`).
+
 Old World's two packs, as shipped:
 
 ```json
 "packs": [
   { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign.pack", "output": "{project}\\!cr_oldworld_campaign.pack",
     "contents": [{ "source": "{compiled}" }],
-    "exclude": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"],
-    "replaceDirs": ["terrain/campaigns/{map}/models/"] },
+    "exclude": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"] },
   { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign_devastate.pack", "output": "{project}\\!cr_oldworld_campaign_devastate.pack",
     "contents": [{ "source": "{compiled}", "path": "terrain/campaigns/{map}/pieces" },
-                 { "source": "{compiled}", "path": "terrain/campaigns/{devastated}" }],
-    "replaceDirs": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/pieces/"] }
+                 { "source": "{compiled}", "path": "terrain/campaigns/{devastated}" }] }
 ]
 ```
 
-The main folder's `event_tiles`, `event_trees` and `event_vfx` then go to the first pack; the shipped
-`!cr_oldworld_campaign.pack` has none of them.
+The main folder's `event_tiles`, `event_trees` and `event_vfx` then go to the first pack. The shipped
+`!cr_oldworld_campaign.pack` has none of them, an oversight (the user, 2026-10-10): the build fixes it.
 
 ## Prop editing (AK layers)
 

@@ -15,6 +15,8 @@ public sealed class BuildManifest
     public string Output { get; set; } = "";
     /// <summary>Step name → the files it wrote, relative to <see cref="Output"/> (forward slashes).</summary>
     public SortedDictionary<string, List<string>> Steps { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Step name → the path prefixes it rewrites whole (<see cref="Campaign.StepResult.Owns"/>), relative.</summary>
+    public SortedDictionary<string, List<string>> Owns { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static string FileFor(ProjectPaths paths, string map, string output)
     {
@@ -29,7 +31,10 @@ public sealed class BuildManifest
         {
             var m = JsonSerializer.Deserialize<BuildManifest>(File.ReadAllText(file), BuildProject.Json);
             if (m is not null && Normal(m.Output).Equals(Normal(output), StringComparison.OrdinalIgnoreCase))
-                return new BuildManifest { Output = m.Output, Steps = new(m.Steps, StringComparer.OrdinalIgnoreCase) };
+                return new BuildManifest
+                {
+                    Output = m.Output, Steps = new(m.Steps, StringComparer.OrdinalIgnoreCase), Owns = new(m.Owns, StringComparer.OrdinalIgnoreCase),
+                };
         }
         return new BuildManifest { Output = Normal(output) };
     }
@@ -42,9 +47,12 @@ public sealed class BuildManifest
 
     /// <summary>Records what <paramref name="step"/> wrote (a folder stands for every file in it, as the pieces step
     /// reports its pieces); files outside the output folder (the cache) are left out.</summary>
-    public void Set(string step, IEnumerable<string> written)
+    public void Set(string step, IEnumerable<string> written, IEnumerable<string>? owns = null)
     {
         var root = Normal(Output) + Path.DirectorySeparatorChar;
+        Owns[step] = (owns ?? []).Select(Path.GetFullPath)
+            .Where(f => f.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            .Select(f => f[root.Length..].Replace('\\', '/')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         Steps[step] = written.Select(Path.GetFullPath)
             .SelectMany(f => Directory.Exists(f) ? Directory.EnumerateFiles(f, "*", SearchOption.AllDirectories) : [f])
             .Where(f => f.StartsWith(root, StringComparison.OrdinalIgnoreCase))
@@ -54,6 +62,9 @@ public sealed class BuildManifest
 
     /// <summary>Every recorded file (relative, forward slashes), each once.</summary>
     public IEnumerable<string> Files => Steps.Values.SelectMany(f => f).Distinct(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every owned prefix (relative, forward slashes), each once.</summary>
+    public IEnumerable<string> Owned => Owns.Values.SelectMany(f => f).Distinct(StringComparer.OrdinalIgnoreCase);
 
     private static string Normal(string path) => Path.GetFullPath(path).TrimEnd('\\', '/');
 }
