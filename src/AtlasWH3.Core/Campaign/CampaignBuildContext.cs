@@ -14,10 +14,6 @@ public sealed class CampaignBuildContext
     /// <summary>Cancels the build; long steps check it between rows / meshes, the pipeline between steps.</summary>
     public CancellationToken Cancel { get; init; }
 
-    /// <summary>rivers step: "bob" = BOB's own river meshes and height patches (identical to BOB's files apart from the
-    /// bytes BOB leaves uninitialised); "wide" = the wider game-valid water that also covers the land-mesh river holes.</summary>
-    public string RiverGeometry { get; init; } = "bob";
-
     /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
     public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
 

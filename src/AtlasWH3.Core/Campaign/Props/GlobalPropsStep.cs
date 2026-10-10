@@ -35,10 +35,6 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
             Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), ctx.MapName, root,
             (x, z) => lookup.RegionAt(x, z) ?? NoRegion)
         {
-            // the build's own files first, then what BOB left in the kit's working_data (river models until step 3.10)
-            LooseFile = rel => new[] { ctx.TargetRoot, Path.Combine(ctx.Paths.AssemblyKitRoot, "working_data") }
-                .Select(root => Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar)))
-                .Where(File.Exists).Select(File.ReadAllBytes).FirstOrDefault(),
             Trace = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
         };
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
@@ -75,9 +71,6 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
 
     /// <summary>Region of a point outside the map.hex grid.</summary>
     public const string NoRegion = "";
-
-    /// <summary>Atlas3K's fallback region (3K's rivers step); kept until that step is ported.</summary>
-    public const string NonPlayable = "3k_main_reg_non_playable";
 
     /// <summary>(layer name, id) of every layer file the .terry exports (ECLayerFile/ECFileLayer with export="true").</summary>
     public static List<(string Name, string Id)> ExportedLayers(string terryPath) =>

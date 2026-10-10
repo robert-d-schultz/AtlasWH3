@@ -11,8 +11,8 @@ public sealed class CampaignBuildPipeline
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
     /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phase 3). A <see cref="PendingStep"/> is
-    /// not native yet: Atlas3K's 3K version of it (Props.GlobalPropsStep, …) is kept as
-    /// the basis of the re-port, but writes 3K formats, so it is not in the pipeline.</summary>
+    /// not native yet: Atlas3K's 3K version of it (AiPathfindingStep) is kept as the basis of the re-port, but writes 3K
+    /// formats, so it is not in the pipeline.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
         new HeightmapsStep(),
@@ -20,8 +20,7 @@ public sealed class CampaignBuildPipeline
         new Trees.TreesStep(),
         new GlobalMapStep(),
         new MasksStep(),
-        new PendingStep("rivers", "Terry file (models\\river_<id>)", [],
-            "the 2-vertex ribbon river models of the ECRiver splines (Phase 3.10; Atlas3K's RiversStep writes 3K's 5-vertex rivers)"),
+        new Rivers.RiversStep(),
         new Props.GlobalPropsStep(),
         new DevastationPiecesStep(),
         new LookupStep(),

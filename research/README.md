@@ -44,7 +44,9 @@ step was pushed until its bytes matched BOB's, with three tools.
 
    Most functions keep their C++ names as exports. Use `bob_re/find_exports.py <substring>` to find a function in any
    kit DLL. The decompiles themselves are not in this repo, because they are CA's code: re-create them with Ghidra
-   (headless analyse plus a decompile script).
+   (headless analyse plus a decompile script). Without Ghidra, `bob_re/disasm_fn.py <dll> <rva>` disassembles one
+   function with capstone, following thunks and naming exports, imports and float constants; WH3's river bake was read
+   that way. Kit DLLs export more than pefile's default 8,192 names, so both scripts raise that limit.
 
 2. **Instrument BOB with Frida.** Decompiles show *what* a function does. A dump of BOB's live state at the function
    boundary shows *which* inputs and order BOB actually uses. That settled every case where the decompile looked right
@@ -68,7 +70,8 @@ step was pushed until its bytes matched BOB's, with three tools.
    *where* and *why*:
    - `tilelist_fields.py`, `tilelist_area.py`, `sim_compare.py` and `sim_first_divergence.py` for tile lists;
    - `props/run_parity.sh` for global props;
-   - `rivers/river_cmp.py` for rivers;
+   - `rivers/river_cmp.py` for 3K's rivers, `rivers/wh3_tessellate.py` for WH3's (positions, uv, frame bytes and
+     indices per river against BOB's meshes);
    - `trees/lf_exact.py` for tree heights.
 
    Walking placements in BOB's own order and stopping at the first difference is what exposed every root cause below.

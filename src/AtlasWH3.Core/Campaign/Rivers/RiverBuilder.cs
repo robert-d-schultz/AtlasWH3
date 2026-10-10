@@ -56,7 +56,7 @@ public static class RiverBuilder
                 D((string?)spline.Attribute("spline_step_size") ?? "1.5"),
                 (string?)spline.Attribute("terrain_relative") == "true",
                 (string?)spline.Attribute("reverse_direction") == "true",
-                (string?)spline.Attribute("material") ?? WsModel.RiverMaterial, points));
+                (string?)spline.Attribute("material") ?? "", points));
         }
         return result;
     }

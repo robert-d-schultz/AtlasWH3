@@ -18,6 +18,7 @@ Three Kingdoms record, kept for the method and the 3K rules that still hold.
 | `devastation_pieces` | Devastation pieces | 2026-10-09, against IEE's mod pack (BOB's pieces cut from the pack's own map textures), the user's Old World working_data and a fresh BOB run. Cut from the same map textures: every piece texture (all mips), `texture_info` and `mask` **byte-identical** (IEE 248 pieces, Old World 254). `tile_list`: the same road tiles in every piece; `event_tiles` the same set, numbered in BOB's hash-map order (not reproducible), so the indices differ. `tree_list` and `event_trees`: byte-identical on Old World (254 pieces, 261 types); IEE's pack ships a newer tree list than its pieces were cut from. Devastated folder, built from IEE's devastated project in the cache: `corruption_mask`, `lf_sea_colour`, `snow_mask`, `shroud_heights`, `tile_mask`, `mask`, `texture_info` byte-identical with the pack's in all 248 pieces, road and tree lists the same tiles and trees, `event_trees` identical; `full_height_map` is AtlasWH3's BC6H. Objects, sounds and rivers not yet: they need the global_props builder (3.9, now in) applied per piece. Cutting: IEE 4 s, Old World 7 s; the devastated build IEE 207 s. Not yet checked in game |
 | `lookup` | Texture / Convert lookup texture | 2026-10-09, against the user's BOB output (IEE) and the shipped packs (both). IEE: `.tga` and `.dds` **byte-identical** to BOB's and to `!cr_immortal_empires_expanded.pack`'s; `_minimap.tga` differs in 1,545 of 388,000 pixels, along region borders (see below). Old World: every pixel the same colour as the pack's, but the palette is ordered differently on purpose (see below). IEE 0.2 s, Old World 2.5 s |
 | `global_props` | Terry file (props export) | 2026-10-09, against BOB runs of the same sources (the scratch kit, Old World and IEE). BOB is not byte-reproducible here: two Old World runs of identical input differ in record order (20,912 bodies), entry order and the one-prop bucket numbers, so parity is **content parity** (every bucket body's records as a multiset; `gp27-diff`), on which two BOB runs agree 100%. Measured with BOB's model boxes (a research switch since removed): Old World 58,875 of 59,085 groups the same (99.6%), IEE 101,465 of 101,561 (99.9%); `global_props_sound.bin` IEE 3,172 of 3,215. The same bodies as BOB on both maps (60,753 and 102,578) and the same objects (132,644 and 1,326,436). The step boxes every model by its own bounds, so 436 Old World and 8,248 IEE objects go to a coarser cell than BOB's (Old World 98.8%, IEE 85.1%), see below. The v27 reader / writer round-trips all 166,549 bodies of both maps' BOB files. IEE 17.6 s, Old World 5.2 s (BOB's Terry file about 3 min on IEE). Not yet checked in game |
+| `rivers` | Terry file (river models) | 2026-10-09, against four BOB runs: the user's working_data (IEE 60 rivers, Old World 127) and the scratch kit's fresh runs (IEE all 266, Old World 127). Every `river_<id>.wsmodel.rigid_model_v2` **byte-identical** apart from the two bytes BOB leaves uninitialised (0x31A–0x31B), every `.wsmodel` byte-identical; reversed rivers, a first point off the origin and 2310-row waterfalls included. `global_props` now boxes and places rivers from this bake: content parity unchanged, no river record differs. IEE 8 s, Old World 0.8 s. Not yet checked in game |
 
 ### tile_list.bin and tile_mask.dds (WH3)
 
@@ -293,7 +294,8 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
 - **Regions and cells:** the map.hex region under the object (`HexRegionLookup`, bounds from map_data.esf: Old World's
   playable-areas row carries IEE's 1068.11, its ESF 1367.396). The quadtree covers the ESF bounds (Old World
   0..1367.396 × 0..1368.743); boxes as 3K (model box through the world matrix, lights by radius, decals and the rest
-  points), except: a terrain hole's triangles all take the hole's outline box; rivers take their mesh's box; models
+  points), except: a terrain hole's triangles all take the hole's outline box; rivers take the box of their mesh as
+  the `rivers` step bakes it (`Wh3River`, no file read), and are raised by their spline's first-point height; models
   with an unexpected vertex stride load fine (no 3K-style [-1, 1] fallback).
 - **Model boxes (deliberately not BOB's):** BOB opens no geometry file for props (Frida trace: only its own river
   meshes and the loose .wsmodel files). It resolves a .wsmodel's geometry only through a loose .wsmodel in the kit's
@@ -324,6 +326,44 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
   emitters, the last byte of the 53 unknown bytes on 10 IEE river sounds, a spot light's length by an ulp, one polygon
   BOB stops triangulating early. Not written: the devastated project's `global_props[_sound]_devastation_<type>.bin`,
   which ship nowhere (plan §2).
+
+### models\river_&lt;id&gt; (WH3)
+
+`RiversStep` / `Wh3River`. One `river_<entity id>.wsmodel` + `.wsmodel.rigid_model_v2` per top-level entity with
+`ECRiver` and `ECRiverSpline` in an exported layer, outside non-exported groups (the entities `global_props` places).
+Read off warscape.modder.x64.dll (kit of 2026-09; capstone, `research/bob_re/disasm_fn.py`), prototyped in float32 in
+`research/rivers/wh3_tessellate.py`, then ported. Call chain: bob_terrain 0x2ddf0 → `QTU::to_warscape_spline`
+(qttoolutility 0xa3810) → `TOOLDATABUILDER::process_river_spline` → `WARSCAPE::tessellate_spline` (0x72c120) →
+`MODEL_PROCESSOR::open_river_spline` / `write` (3K's).
+
+- **Spline input** (`to_warscape_spline`, called with 0.2 and no world matrix): the points in the entity's frame, each
+  segment p_i, p_i + tangent_out_i, p_i+1 + tangent_in_i+1, p_i+1 with the two point widths. reverse_direction walks
+  the points last to first with each point's tangents swapped. Steps: columns 5 × 0.2 = 1.0, rows 0.2, uv 0.1.
+- **First point:** the heights are taken relative to the stored first point's y, and `global_props` raises the prop
+  by it. Old World's 19261f91ac8e913 (first point y −0.757, entity y +0.757): BOB's mesh starts at y 0 and its prop
+  sits at y 0. x and z are not rebased: 15 IEE rivers with first points 1e-6 off in x or z match only unshifted.
+- **4-D segments** (0x7109a0, 0x736b60): (x, y, z, width) controls, widths clamped to ≥ 0.01, inner widths
+  0.75·w0 + 0.25·w1 and 0.25·w0 + 0.75·w1. A segment whose end equals its start is dropped. Degenerate ends take
+  midpoints and the straight length; otherwise the length is 3K's 1001-step float32 rectangle sum of |B′(u)| over xyz.
+- **Evaluation** (0x741410): power-basis weights with w0 = (d − 3c) + (−a + 3b) (3K: ((−a + 3b) − 3c) + d), each channel
+  (P0·w0 + P1·w1) + (P2·w2 + P3·w3). Position weights (u³, u², u, 1), derivative (u·3·u, u + u, 1, 0). t outside
+  [0, 1] is wrapped with fmodf; the segment search and local u are 3K's.
+- **Grid** (0x7111b0, 0x733340): columns = ⌈clamp(width(t = 0) / 1.0, 1, 10)⌉ + 1, from the width at the **start**
+  (2 for a river starting at most 1 wide, 3 up to 2, 4 up to 3); n = ⌈max(L / 0.2, 1)⌉ steps, row k at t = k·(1/n).
+  Per row: P = eval(t), D = deriv(t), (dx, dz) normalised; off = (j / (cols − 1))·w − w/2; vertex
+  (dz·off + Px, Py, −(off·dx) + Pz), u = 0.1·off, v = 0.1·t·L. No half floats, no snap pass, no dropped triangles
+  (3K had all three) and no height patches.
+- **Faces and frames** (0x733980, 0x710be0): per quad (A, B, C), (C, B, D); normalised face normals summed per vertex
+  and normalised ((0, 1, 0) for degenerate faces); tangent n × X = (0, nz, −ny), below length 0.001 (ny, −nx, 0), not
+  normalised; bitangent n × t. 0x71fc60 writes each as trunc((v + 1)·127.5) in z, y, x order.
+- **File** (3K's MODEL_PROCESSOR): vertices renumbered by first use, winding flipped, float positions relative to the
+  box centre (stored in the material block), bounds = the box, normals decoded (b/255·2 − 1) and re-encoded, the
+  fourth bytes and the colour 0. Header: material 68, LOD quality 0, shader block `rigid_default` with byte 24 = 0x44
+  (3K: `00 ff ff ff` and other stray bytes); 0x31A–0x31B are uninitialised in BOB (81 values over 187 files), written
+  0. tessellate_spline fails at 65,535 vertices or more; the step writes nothing for such a river, as for one with no
+  segment, and lists it.
+- **`.wsmodel`:** 2-space indent, LF, no final newline, geometry `terrain/campaigns/<map>/models/river_<id>…`, the
+  spline's material.
 
 ### full_height_map.dds (BC6H_SF16)
 
@@ -511,7 +551,7 @@ The decompiled algorithm is written up in `docs/bob_re_global_mesh.md`. Native v
 - **Skirts:** double-sided quads 1.0 below boundary edges next to holes or the map edge.
 - **Land compressed map:** the final surface rasterised onto the grid, with header (0, −50, 0, 0, max, 0) and 0 = hole.
 
-### Rivers (`BobRiver`, default; `RiverBuilder` with `--river-geometry wide`)
+### Rivers (3K: Atlas3K's `BobRiver`, removed in AtlasWH3 Phase 3.10; WH3's bake is *models\river_&lt;id&gt; (WH3)*)
 
 - **Source:** every `ECRiverSpline` entity in the AK layers.
 - **Numbering:** BOB's (`RiverNumbering.Bob`, see the global_props regions note) whenever the map.hex region lookup is available, so the models, height patches and `global_props.bin` match a BOB build. `RiverNumbersByName` (rivers step and `GlobalPropsBuilder`, keep both in step) numbers by the entity name (`river_N`) instead, which is CA's numbering in the shipped vanilla files. Height patches carry the model's number.

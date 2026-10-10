@@ -11,8 +11,8 @@ retargeted to WH3 only.
 > projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list`,
 > `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless.
 > `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
-> campaign), so far without the pieces' objects. `lookup`, `camera_heightmap` and `global_props` (props, effects,
-> lights and sounds) are in too. The other steps are still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+> campaign), so far without the pieces' objects. `lookup`, `camera_heightmap`, `global_props` (props, effects,
+> lights and sounds) and `rivers` (the river meshes, identical to BOB's) are in too. Only `hlp_spd` is still pending. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
 
 ## Why
 

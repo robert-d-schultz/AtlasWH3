@@ -352,7 +352,7 @@ XML database, dropping the mods' tree types; Old World's extra devastate pieces 
 `!cr_oldworld_campaign.pack` (Oct 6) ships an `event_area_mask.dds` with every pixel 255, BOB's from before the event
 area TIF was painted (the devastate folder's is right). Left:
 - the objects and sounds (`objects`, `bmd_objects_sound`, `_devastation_<type>`, `.culture`): BMD v27 bodies, with 3.9;
-- the `rivers` files (lava river splines; IEE's main map has 2), with 3.10;
+- the `rivers` files (lava river splines; IEE's main map has 2), which 3.10's bake now makes possible;
 - the devastated folder's `environment_collection.xml` (BOB's Terry file action) and `lf_normal.dds` (NVTT; cut from
   working_data's for now);
 - the in-game check.
@@ -394,9 +394,25 @@ prefab_types value, one per culture name), WH3's ECTransform maths and its prefa
 the ear clipping, hidden groups in layers and prefabs. Left:
 - the in-game check;
 - the remaining ulps (effects inside prefabs, rotated sound emitters), see `docs/native_campaign_build.md`;
-- the river models (3.10): the step boxes rivers by the meshes already in the build or the kit's working_data;
 - the devastated project's `global_props[_sound]_devastation_<type>.bin` (they ship nowhere, §2) and the pieces'
   objects (3.6), which now have a writer.
+Numbers in `docs/native_campaign_build.md`.
+
+**3.10 status (2026-10-09):** `RiversStep` (`Wh3River`) is in the pipeline: `models\river_<entity id>.wsmodel` and
+`.wsmodel.rigid_model_v2` for every river of the exported layers. Against four BOB runs (the user's working_data: IEE
+60 rivers, Old World 127; the scratch kit's fresh runs: IEE all 266, Old World 127) every model is identical apart from
+the two bytes BOB leaves uninitialised, and every `.wsmodel` is identical. Read off warscape (no Ghidra here: capstone,
+`research/bob_re/disasm_fn.py`) and prototyped in `research/rivers/wh3_tessellate.py`. WH3's bake is not 3K's: a 4-D
+spline (x, y, z, width) evaluated in a different order, rows every L / ⌈L / 0.2⌉ at t = k / n, a column count from the
+**start** width (⌈clamp(w(0), 1, 10)⌉ + 1, so the survey's "2-vertex ribbon" holds only for rivers under 1 wide),
+float positions in the entity's frame, and no snap pass, half floats or height patches. Found on the way: BOB takes a
+spline's heights relative to its stored first point and raises the prop by it (Old World's 19261f91ac8e913; x and z
+are not rebased, as 15 IEE rivers show), which `global_props` now does too; `global_props` boxes rivers by this bake,
+so the working_data lookup is gone. Content parity unchanged (Old World 98.83%, IEE 85.09%, IEE sound file 98.66%),
+with no river record differing. IEE 8 s, Old World 0.8 s. Atlas3K's 3K river bake (`BobRiver`, river numbering,
+`--river-geometry`) is removed. Left:
+- the in-game check;
+- the pieces' `rivers` files (3.6), which can now be cut from this bake.
 Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:

@@ -185,16 +185,22 @@ public sealed class RigidModelV2
         VertexStride = 16,
     };
 
-    /// <summary>River meshes. The two bytes at material offset 0x222 (file 0x31A) are uninitialised memory in BOB
-    /// and differ per river in vanilla; they are written as zero.</summary>
-    public static RigidModelV2 NewRiver((float X, float Y, float Z) pivot) => new()
+    /// <summary>River meshes as WH3's BOB writes them (every IEE and Old World river: LOD quality 0, shader byte 24
+    /// 0x44). The two bytes at material offset 0x222 (file 0x31A) are uninitialised memory in BOB and differ per river;
+    /// they are written as zero.</summary>
+    public static RigidModelV2 NewRiver((float X, float Y, float Z) pivot)
     {
-        Material = 68,
-        LodQuality = [0x00, 0xFF, 0xFF, 0xFF],
-        Shader = ShaderBlock([0xA5, 0x70, 0xCF, 0x28, 0xFA, 0x7F, 0, 0]),
-        MaterialBlock = RiverMaterial(pivot),
-        VertexStride = 48,
-    };
+        var shader = ShaderBlock(new byte[8]);
+        shader[24] = 0x44;
+        return new RigidModelV2
+        {
+            Material = 68,
+            LodQuality = [0, 0, 0, 0],
+            Shader = shader,
+            MaterialBlock = RiverMaterial(pivot),
+            VertexStride = 48,
+        };
+    }
 
     private static byte[] ShaderBlock(byte[] tail8)
     {

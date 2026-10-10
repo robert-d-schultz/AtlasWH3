@@ -1,12 +1,14 @@
 """Search every DLL in the kit's binaries folder for exports containing all of the given substrings.
-usage: find_exports.py <substring> [substring ...]"""
+usage: find_exports.py <substring> [substring ...] (KIT_BINARIES overrides the WH3 kit's binaries folder)"""
 import glob, os, sys
 import pefile
-B = r"C:\Program Files (x86)\Steam\steamapps\common\Total War THREE KINGDOMS\assembly_kit\binaries"
+
+MAX_EXPORTS = 0x100000   # kit DLLs export more than pefile's default 8192 names
+B = os.environ.get("KIT_BINARIES", r"D:\SteamLibrary\steamapps\common\Total War WARHAMMER III\assembly_kit\binaries")
 keys = sys.argv[1:]
 for dll in sorted(glob.glob(os.path.join(B, "*.dll"))):
     try:
-        pe = pefile.PE(dll, fast_load=True)
+        pe = pefile.PE(dll, fast_load=True, max_symbol_exports=MAX_EXPORTS)
         pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_EXPORT"]])
     except Exception:
         continue

@@ -84,9 +84,6 @@ public sealed class Wh3GlobalPropsBuilder
 
     public List<string> Notes { get; } = [];
 
-    /// <summary>A loose file of the build by its pack path (the river models BOB wrote, or step 3.10's), or null.</summary>
-    public Func<string, byte[]?>? LooseFile { get; init; }
-
     /// <summary>Optional trace: one line per placed object (kind, entity id, identity, x, z, box, cell, region).</summary>
     public Action<string>? Trace { get; init; }
 
@@ -150,7 +147,7 @@ public sealed class Wh3GlobalPropsBuilder
     }
 
     /// <summary>Ids owned (through Logical associations, transitively) by an ECLayer with export="false".</summary>
-    private static HashSet<string> HiddenMembers(XElement root, List<XElement> entities)
+    internal static HashSet<string> HiddenMembers(XElement root, List<XElement> entities)
     {
         var groups = entities.Where(e => e.Element("ECLayer") is not null).ToDictionary(e => (string)e.Attribute("id")!, e => e);
         var members = new Dictionary<string, List<string>>();
@@ -209,10 +206,24 @@ public sealed class Wh3GlobalPropsBuilder
 
         if (e.Element("ECRiver") is not null)
         {
-            // models/river_<entity id>: BOB boxes it by the river mesh it wrote (no mesh: the root cell)
+            // models/river_<entity id>, boxed by the mesh the rivers step bakes (no mesh: the root cell). The mesh's
+            // heights are relative to the spline's first point, so BOB raises the prop by that point's height (Old
+            // World's river 19261f91ac8e913: y 0.757 -> 0)
             var model = $"terrain/campaigns/{_mapName}/models/river_{(string?)e.Attribute("id")}.wsmodel";
-            var box = RiverBox(model, world);
-            var o = Add("prop", b => { var r = PropRecord(b, model, world, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.B2 = 0; b.Props.Add(r); }, box);
+            var spline = Rivers.Wh3River.Read(e);
+            var placed = world;
+            if (spline is not null)
+            {
+                var (px, py, pz) = world.Apply(0, spline.BaseHeight, 0);
+                placed = world with { X = px, Y = py, Z = pz };
+            }
+            var baked = spline is null ? null : Rivers.Wh3River.Build(spline);
+            var box = baked is null ? null : MeshBox(baked.Bounds[..3], baked.Bounds[3..], placed);
+            var o = AddObj(new Obj
+            {
+                Kind = "prop", Id = id, InnerId = innerId, Sub = _sub++, X = placed.X, Z = placed.Z, Box = box, Cultures = cultures,
+                Add = b => { var r = PropRecord(b, model, placed, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.B2 = 0; b.Props.Add(r); },
+            });
             o.RootCell = box is null;
             return;
         }
@@ -504,20 +515,6 @@ public sealed class Wh3GlobalPropsBuilder
             if (!found) _missingModels.Add(path);
         }
         return result;
-    }
-
-    private float[]? RiverBox(string model, Xf world)
-    {
-        if (LooseFile?.Invoke(model + ".rigid_model_v2") is not { } bytes) return null;
-        try
-        {
-            var meshes = RigidModel.Read(bytes).Lods.SelectMany(l => l.Meshes).ToList();
-            if (meshes.Count == 0) return null;
-            float[] min = [meshes.Min(q => q.BoundsMin[0]), meshes.Min(q => q.BoundsMin[1]), meshes.Min(q => q.BoundsMin[2])];
-            float[] max = [meshes.Max(q => q.BoundsMax[0]), meshes.Max(q => q.BoundsMax[1]), meshes.Max(q => q.BoundsMax[2])];
-            return MeshBox(min, max, world);
-        }
-        catch (Exception ex) when (ex is InvalidDataException or ArgumentException or IndexOutOfRangeException) { return null; }
     }
 
     /// <summary>The model box's 8 corners through the world matrix, x/z min/max (3K's bob_terrain FUN_18005e050).</summary>

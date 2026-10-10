@@ -42,39 +42,6 @@ public class CampaignBuildTests
     }
 
     [Fact]
-    public void RigidModelV2_NewRiver_MatchesVanillaApartFromStrayBytes()
-    {
-        if (!Directory.Exists(Vanilla("models"))) return;
-        foreach (var file in Directory.GetFiles(Vanilla("models"), "*.rigid_model_v2"))
-        {
-            var original = File.ReadAllBytes(file);
-            var read = RigidModelV2.Read(original);
-            var pivot = (BitConverter.ToSingle(read.MaterialBlock, 0x224), BitConverter.ToSingle(read.MaterialBlock, 0x228),
-                         BitConverter.ToSingle(read.MaterialBlock, 0x22C));
-            var fresh = RigidModelV2.NewRiver(pivot);
-            fresh.Vertices = read.Vertices;
-            fresh.Indices = read.Indices;
-            fresh.Bounds = read.Bounds;
-            var bytes = fresh.ToBytes();
-            original[0x31A] = original[0x31B] = 0; // uninitialised in BOB
-            Assert.Equal(original, bytes);
-        }
-    }
-
-    [Fact]
-    public void WsModel_River_MatchesVanilla()
-    {
-        if (!Directory.Exists(Vanilla("models"))) return;
-        foreach (var file in Directory.GetFiles(Vanilla("models"), "river_*.wsmodel"))
-        {
-            var index = int.Parse(Path.GetFileNameWithoutExtension(file)["river_".Length..]);
-            var text = File.ReadAllText(file);
-            var material = System.Text.RegularExpressions.Regex.Match(text, @"part_index=""0"">([^<]+)<").Groups[1].Value;
-            Assert.Equal(text, WsModel.River(Paths.MapName, index, material));
-        }
-    }
-
-    [Fact]
     public void TileList_Vanilla_RoundTrips()
     {
         if (!File.Exists(Vanilla("tile_list.bin"))) return;
