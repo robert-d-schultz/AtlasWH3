@@ -542,8 +542,11 @@ gone (4.2). Install was tested on a scratch data folder, not the game's. Left: t
 where the gap is small or a mismatch is visible)
 - [ ] 4.7 `trees`: the 457 IEE heights not explained (3.2).
 - [ ] 4.8 `global_props`: the remaining ulps (effects inside prefabs, rotated sound emitters) (3.9).
-- [ ] 4.9 `camera_heightmap`: a BOB run with the `cam_hmap_*` keys in rules.bob as the reference, then BOB's
-  tile-terrain term and blur (needs Phase 1's CHMF / RMV2 v7 tile meshes) (3.8).
+- [x] ~~4.9 `camera_heightmap`: a BOB run with the `cam_hmap_*` keys in rules.bob as the reference, then BOB's
+  tile-terrain term and blur (3.8).~~ **Dropped 2026-10-10:** no BOB parity for this file. With the keys set (0.25,
+  8 samples per unit, no blur) BOB's action runs, but on IEE it had filled 69 of 486 rows after 90 minutes on three
+  threads (about 10 hours in all), nearly all of it in the height-patch lookups (warscape 0x5b5c30), so the run was
+  cancelled. `camera_heightmap` is AtlasWH3's own: judged in game and against the user's hand-made files, not BOB's.
 
 BC6H/BCn byte parity is out of scope unless AMDCompress's behaviour turns out to be cheap to match. The in-game checks
 of 3.1–3.10 are done in one pass once 4.1–4.3 are in.
