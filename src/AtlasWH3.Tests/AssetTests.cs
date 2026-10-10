@@ -9,12 +9,12 @@ namespace AtlasWH3.Tests;
 
 public class AssetTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
+    private static readonly ProjectPaths Paths = new() { GameDataDir = TestKits.Wh3GameData, AssemblyKitRoot = TestKits.Wh3Kit };
     private static readonly Lazy<ModelLibrary?> Library = new(() => Directory.Exists(Paths.GameDataDir) ? ModelLibrary.ForGame(Paths) : null);
 
-    private const string Tree = "rigidmodels/campaign/vegetation/temperate/temperate_tree_metasequoia_harvest_large_2.wsmodel";
-    private const string Hall = "rigidmodels/campaign/settlements/3k_dlc06_nanman_hall_3.rigid_model_v2";
-    private const string Decal = "rigidmodels/campaign/decals/abandoned_settlement_decal_1.rigid_model_v2";
+    private const string Tree = "rigidmodels/campaign/vegetation/trees/chs_tree_pine_large_01.wsmodel";
+    private const string Hall = "rigidmodels/campaign/settlements/beastmen/bst_herdstone_main.rigid_model_v2";
+    private const string Decal = "rigidmodels/campaign/decals/burnt_earth/burnt_earth_1.rigid_model_v2";
 
     [Fact]
     public void ModelFiles_Parse()
@@ -48,7 +48,7 @@ public class AssetTests
     public void RigidModel_PositionsMatchTheGeometryReader()
     {
         if (Library.Value is not { } lib) return; // game data not available on this machine
-        foreach (var path in new[] { Hall, "rigidmodels/campaign/vegetation/temperate/temperate_tree_metasequoia_large_2.rigid_model_v2" })
+        foreach (var path in new[] { Hall, "rigidmodels/campaign/vegetation/trees/gen_tree_pine_large_01.rigid_model_v2" })
         {
             var bytes = lib.Source.Read(path);
             var full = RigidModel.Read(bytes);
@@ -68,9 +68,9 @@ public class AssetTests
         Assert.Empty(tree.Problems);
         Assert.Equal(3, tree.Lods.Count);
         Assert.All(tree.Lods[0], m => Assert.True(m.AlphaTest));
-        Assert.Contains(tree.Lods[0], m => m.BaseColour!.EndsWith("temperate_trees_base_colour.dds", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tree.Lods[0], m => m.BaseColour!.EndsWith("gen_tree_pine_base_colour.dds", StringComparison.OrdinalIgnoreCase));
         var hall = lib.Load(Hall)!;
-        Assert.Equal(5, hall.Lods[0].Count);
+        Assert.Equal(3, hall.Lods[0].Count);
         Assert.All(hall.Lods[0], m => Assert.True(lib.Source.Exists(m.BaseColour!)));
         // Decal stubs become a textured quad over the unit box.
         var decal = lib.Load(Decal)!;
@@ -83,26 +83,15 @@ public class AssetTests
     public void Dds_DecodesTheRequestedMip()
     {
         if (Library.Value is not { } lib) return;
-        var bytes = lib.Source.Read("RigidModels/campaign/vegetation/textures/temperate_trees_base_colour.dds");
+        var bytes = lib.Source.Read("RigidModels/campaign/vegetation/textures/gen_tree_pine_base_colour.dds");
         var full = DdsTexture.Decode(bytes);
         var small = DdsTexture.DecodeMip(bytes, 128);
-        Assert.Equal((1024, 1024), (full.Width, full.Height));
+        Assert.Equal((256, 256), (full.Width, full.Height));
         Assert.Equal((128, 128), (small.Width, small.Height));
-        Assert.Contains(small.Rgba.Where((_, i) => i % 4 == 3), a => a < 128); // BC1 punch-through alpha survives
+        Assert.Contains(small.Rgba.Where((_, i) => i % 4 == 3), a => a < 128); // the leaves' cut-out alpha survives (DX10 header)
         // The small mip is a downscale of the top one: average colours agree.
         static double Mean(byte[] rgba) => rgba.Where((_, i) => i % 4 == 1).Average(b => (double)b);
         Assert.InRange(Mean(small.Rgba) - Mean(full.Rgba), -12, 12);
-    }
-
-    [Fact]
-    public void HeaderBounds_CoverUndecodableModels()
-    {
-        if (Library.Value is not { } lib) return;
-        const string lily = "rigidmodels/campaign/vegetation/water_lily/water_lily_2.rigid_model_v2";
-        Assert.Null(lib.Load(lily)); // vertex format 12 is not decoded
-        var b = lib.Bounds(lily);
-        Assert.NotNull(b);
-        Assert.True(b![3] > b[0] && b[5] > b[2]);
     }
 
     [Fact]
@@ -122,32 +111,14 @@ public class AssetTests
         var dir = Directory.CreateTempSubdirectory();
         try
         {
-            var path = Path.Combine(dir.FullName, "rigidmodels", "campaign", "settlements");
+            var path = Path.Combine(dir.FullName, "rigidmodels", "campaign", "settlements", "beastmen");
             Directory.CreateDirectory(path);
-            File.WriteAllText(Path.Combine(path, "3k_dlc06_nanman_hall_3.rigid_model_v2"), "override");
+            File.WriteAllText(Path.Combine(path, "bst_herdstone_main.rigid_model_v2"), "override");
             var src = new AssetSource(lib.Source.Vanilla, [dir.FullName]);
             Assert.Equal("override"u8.ToArray(), src.Read(Hall));
             Assert.EndsWith(".rigid_model_v2", src.Locate(Hall));
             Assert.EndsWith(".pack", src.Locate(Tree)); // everything else still comes from the packs
         }
         finally { dir.Delete(true); }
-    }
-
-    /// <summary>Campaign tile bmd_data.bin: the same v35 body as global_props; props in 32 units per tile-map cell
-    /// with z north from the tile's south-west corner; the river tiles' unknown sound section ends the read.</summary>
-    [Fact]
-    public void TileBmd_ReadsMountainAndCrossingProps()
-    {
-        if (Library.Value is not { } lib) return;
-        var mountain = AtlasWH3.Formats.Props.GlobalProps.ReadBody(lib.Source.Read("terrain/tiles/campaign/mountains_subtropical/6x4_b3/bmd_data.bin"));
-        Assert.Equal(252, mountain.Props.Count);
-        Assert.All(mountain.Props, p => Assert.InRange(p.Transform.X, -10, 6 * 32 + 10));
-        Assert.All(mountain.Props, p => Assert.InRange(p.Transform.Z, -10, 4 * 32 + 10));
-        Assert.All(mountain.Props, p => Assert.StartsWith("BHM_", p.HeightMode)); // ABSOLUTE trees, CUSTOM_VERTEX_OFFSETTING rocks
-
-        var crossing = AtlasWH3.Formats.Props.GlobalProps.ReadBody(lib.Source.Read("terrain/tiles/campaign/river_crossing/cross_3/bmd_data.bin"));
-        var bridge = Assert.Single(crossing.Props, p => p.Path.Contains("bridge_medium"));
-        Assert.InRange(bridge.Transform.X, 0, 64);
-        Assert.InRange(bridge.Transform.Z, 0, 64);
     }
 }

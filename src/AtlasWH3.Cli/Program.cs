@@ -74,7 +74,7 @@ switch (command)
         PropsDump(paths, args.Skip(1).ToArray());
         break;
     case "parity":
-        return ParityCheck(args.Skip(1).ToArray());
+        return ParityCheck(paths, args.Skip(1).ToArray());
     case "validate-tilemap":
         return ValidateTilemap(paths, args.Skip(1).ToArray());
     case var c when PropCommands.Names.Contains(c):
@@ -101,6 +101,8 @@ switch (command)
         return DbCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when BobCommands.Names.Contains(c):
         return BobCommands.Run(paths, c, args.Skip(1).ToArray());
+    case var c when FixtureCommands.Names.Contains(c):
+        return FixtureCommands.Run(paths, c, args.Skip(1).ToArray());
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
         Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
@@ -109,7 +111,9 @@ switch (command)
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
         Console.WriteLine("                [--out <dir>] [--pack-output <file>] [--json]      a project's build (as the GUI's Build window)");
         Console.WriteLine("          new-project <file.atlaswh3>                          project with the default build profile (global --map / --ak)");
-        Console.WriteLine("          parity <builtDir> <referenceDir> [--mask-junk] [--json]");
+        Console.WriteLine("          parity <builtDir> <referenceDir>|--fixture <name> [--mask-junk] [--json]   (--fixture: the fixture's frozen working_data)");
+        Console.WriteLine("          fixture-freeze <name> --maps a,b [--packs p,q] [--replace] | fixture-list | fixture-check [name] | fixture-delete <name>");
+        Console.WriteLine("                                         frozen map sources + BOB outputs + mod packs for the parity tests [--store dir]");
         Console.WriteLine("          hlp-spd [--in <dir: pathfinding.ppd + map_data.esf>] [--out <dir>] [--compare <dir with reference hlp/spd>] [--only hlp|spd] [--legacy-stl]");
         Console.WriteLine("                                         campaign AI pathfinding data (hlp_data.esf / spd_data.esf) without the game");
         Console.WriteLine("          validate-tilemap [--tilemap <png>] [--climate-dir <dir>] [--db <_tile_database>] [--simulate] [--overlay <png>] [--tilemap-only] [--json]");
@@ -261,11 +265,16 @@ static int ValidateTilemap(ProjectPaths paths, string[] a)
     return report.Errors > 0 ? 1 : 0;
 }
 
-static int ParityCheck(string[] a)
+static int ParityCheck(ProjectPaths paths, string[] a)
 {
     var maskJunk = TakeFlag(ref a, "--mask-junk");
     var json = TakeFlag(ref a, "--json");
-    if (a.Length < 2) { Console.Error.WriteLine("parity <builtDir> <referenceDir> [--mask-junk] [--json]"); return 2; }
+    if (Array.IndexOf(a, "--fixture") is var f and >= 0 && f + 1 < a.Length)
+    {
+        var fixture = FixtureCommands.Open(FixtureCommands.Store(paths, a), a[f + 1]);
+        a = [.. a.Where((_, i) => i != f && i != f + 1), Path.Combine(fixture.MapsRoot, "working_data")];
+    }
+    if (a.Length < 2) { Console.Error.WriteLine("parity <builtDir> <referenceDir>|--fixture <name> [--mask-junk] [--json]"); return 2; }
     var results = Parity.Compare(a[0], a[1], maskJunk);
     if (json)
         Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));

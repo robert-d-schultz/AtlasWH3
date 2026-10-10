@@ -83,9 +83,9 @@ public class PropToolsTests
     }
 
     [Fact]
-    public void Placement_ComponentLayoutMatchesVanillaKitProps()
+    public void Placement_ComponentLayoutMatchesKitProps()
     {
-        var dir = TestKits.VanillaPaths.AkTerrainDir;
+        var dir = TestKits.Paths(TestKits.Iee).AkTerrainDir;
         if (!Directory.Exists(dir)) return; // kit not available on this machine
         var vanilla = Directory.EnumerateFiles(dir, "*.layer")
             .Select(f => File.ReadAllText(f))
@@ -235,8 +235,8 @@ public class PropToolsTests
         {
             var paths = new ProjectPaths
             {
-                AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData, MapName = map, OutputRoot = tmp.FullName,
-                ModPacks = [Path.Combine(TestKits.Wh3GameData, pack)],
+                AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData, MapName = map, OutputRoot = tmp.FullName,
+                ModPacks = [TestKits.Pack(pack)],
             };
             var treeList = Path.Combine(paths.AkWorkingCampaignMapDir, "display", "trees", "trees.campaign_tree_list");
             if (!File.Exists(Path.Combine(paths.AkTerrainDir, map + ".terry")) || !File.Exists(treeList) || !File.Exists(paths.ModPacks[0])) return;

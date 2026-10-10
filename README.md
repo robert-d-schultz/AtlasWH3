@@ -84,6 +84,18 @@ dotnet test src/AtlasWH3.Tests
 Needs the .NET 10 SDK (`global.json` takes any 10.0 feature band from 10.0.100). Tests that need a game install or kit
 data skip when it is missing.
 
+The data tests run on two fixture maps, IEE (`cr_combi_expanded_map_1`) and Old World (`cr_oldworld_map_1`). Freeze
+them right after a BOB run, so the tests keep comparing those sources with those BOB outputs while the maps change:
+
+```
+AtlasWH3.Cli fixture-freeze iee --maps cr_combi_expanded_map_1,cr_combi_expanded_map_devastate_1 --packs !cr_immortal_empires_expanded.pack
+AtlasWH3.Cli fixture-freeze oldworld --maps cr_oldworld_map_1,cr_oldworld_map_devastate_1 --packs !cr_oldworld_campaign.pack,!cr_oldworld_campaign_devastate.pack
+AtlasWH3.Cli fixture-check
+```
+
+A fixture lives in `atlaswh3_fixtures` beside the kit, as hard links (no extra disk space). Without one, the tests read
+the live kit. Add `--replace` to freeze a fixture again.
+
 ## Licence
 
 [MIT](LICENSE), as Atlas3K. The libraries it uses keep their own licences; see

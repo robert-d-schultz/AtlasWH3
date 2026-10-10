@@ -90,8 +90,8 @@ public sealed class TerrainCompositeTests : IDisposable
     public void Iee_CompositesMatchBob()
     {
         const string map = "cr_combi_expanded_map_1";
-        var terry = Path.Combine(TestKits.Wh3Kit, "raw_data", "terrain", "campaigns", map, map + ".terry");
-        var built = Path.Combine(TestKits.Wh3Kit, "working_data", "terrain", "campaigns", map);
+        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
+        var built = Path.Combine(TestKits.Kit(map), "working_data", "terrain", "campaigns", map);
         if (!File.Exists(terry) || !File.Exists(Path.Combine(built, "shroud_heights.dds"))) return;
         var p = TerryProject.Load(terry);
 

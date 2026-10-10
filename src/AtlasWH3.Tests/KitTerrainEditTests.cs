@@ -114,40 +114,32 @@ public class KitTerrainEditTests
         Directory.Delete(dir, true);
     }
 
-    /// <summary>The kits' own TIFs (vanilla and 190E, when installed): an unchanged save is byte-identical (heights are
-    /// patched in place; the LZW tree map is rewritten, so only its pixels are compared when it was not written by us).</summary>
+    /// <summary>The fixture maps' tree TIFs: an unchanged save keeps every pixel (the LZW tree map is rewritten, so its
+    /// bytes are compared only when it is uncompressed). WH3's height TIFs are float32, which the 16-bit painter does not
+    /// edit yet (Phase 5).</summary>
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void KitTifs_UnchangedSave_IsByteIdentical(bool expanded)
+    [InlineData(TestKits.Iee)]
+    [InlineData(TestKits.OldWorld)]
+    public void KitTreeTifs_UnchangedSave_KeepsPixels(string mapName)
     {
-        var paths = expanded ? TestKits.VanillaPaths with { AssemblyKitRoot = TestKits.Expanded } : TestKits.VanillaPaths;
+        var paths = TestKits.Paths(mapName);
         if (!Directory.Exists(paths.AkTerrainDir)) return;
         var dir = TempDir();
         var checkedFiles = 0;
-        foreach (var source in Directory.EnumerateFiles(paths.AkTerrainDir, "*.tif")
-                     .Where(f => Path.GetFileName(f).Contains(".height.") || Path.GetFileName(f).Contains(".sea_height.") || Path.GetFileName(f).Contains(".tree.")))
+        foreach (var source in Directory.EnumerateFiles(paths.AkTerrainDir, "*.tif").Where(f => Path.GetFileName(f).Contains(".tree.")))
         {
             var copy = Path.Combine(dir, Path.GetFileName(source));
             File.Copy(source, copy);
             var before = File.ReadAllBytes(copy);
-            if (copy.Contains(".tree."))
-            {
-                var (map, palette) = TiffMap.ReadPalette8(copy);
-                TiffMap.SavePalette8Like(copy, map, palette);
-                Assert.Equal(map.Data, TiffMap.ReadPalette8(copy).Indices.Data);
-                if (TiffMap.ReadLayout(source).Compression == 1) Assert.Equal(before, File.ReadAllBytes(copy));
-            }
-            else
-            {
-                Assert.True(TiffMap.SaveGray16Like(copy, TiffMap.ReadGray16(copy)));
-                Assert.Equal(before, File.ReadAllBytes(copy));
-            }
+            var (map, palette) = TiffMap.ReadPalette8(copy);
+            TiffMap.SavePalette8Like(copy, map, palette);
+            Assert.Equal(map.Data, TiffMap.ReadPalette8(copy).Indices.Data);
+            if (TiffMap.ReadLayout(source).Compression == 1) Assert.Equal(before, File.ReadAllBytes(copy));
             File.Delete(copy);
             checkedFiles++;
         }
         Directory.Delete(dir, true);
-        Assert.True(checkedFiles >= 3, $"{checkedFiles} kit TIFs checked in {paths.AkTerrainDir}");
+        Assert.True(checkedFiles >= 1, $"{checkedFiles} tree TIFs checked in {paths.AkTerrainDir}");
     }
 
     // ---------------------------------------------------------------- brush math

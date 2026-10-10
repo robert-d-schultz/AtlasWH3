@@ -10,7 +10,7 @@ namespace AtlasWH3.Tests;
 /// read back from the tile lists BOB made for the user's maps.</summary>
 public class TileListWriterTests
 {
-    private static ProjectPaths Paths(string map) => new() { MapName = map, AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData };
+    private static ProjectPaths Paths(string map) => new() { MapName = map, AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData };
     private static string Terry(string map) => Path.Combine(Paths(map).AkTerrainDir, map + ".terry");
 
     /// <summary>BOB's placement, read back from tile_list.bin: layer 2 = records of an also_place target set (sea) lying

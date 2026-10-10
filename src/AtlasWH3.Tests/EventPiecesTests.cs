@@ -93,7 +93,7 @@ public class EventPiecesTests
     public void Write_MatchesIeePack()
     {
         var reference = Path.Combine(Defaults.LocalData, "pack_refs", "iee", "terrain", "campaigns", "cr_combi_expanded_map_1");
-        var paths = new ProjectPaths { MapName = "cr_combi_expanded_map_1", AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData };
+        var paths = TestKits.Paths(TestKits.Iee);
         var ctx = new CampaignBuildContext(paths, Path.Combine(Path.GetTempPath(), "atlaswh3_pieces_test"));
         if (!Directory.Exists(reference) || !File.Exists(ctx.TerryFile)) return;
         try

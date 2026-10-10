@@ -15,23 +15,6 @@ public class CampaignBattleTests
     // ---------------------------------------------------------------- codec
 
     [Fact]
-    public void Vanilla_battle_locations_map_roundtrips_byte_exact()
-    {
-        var packs = PackSet.OpenVanilla(Defaults.GameData, n => n.StartsWith("fast", StringComparison.OrdinalIgnoreCase));
-        var bytes = packs.TryRead("terrain/battles/3k_main_map/battle_locations_map.bin");
-        Assert.NotNull(bytes);
-        var map = BattleLocations.Read(bytes);
-        Assert.Equal(892, map.Width);
-        Assert.Equal(703, map.Height);
-        Assert.Equal(1296, map.AreaCount);
-        Assert.Equal([BattleLocations.Ambush, BattleLocations.Standard, BattleLocations.Encampments, BattleLocations.Unfortified, BattleLocations.Gate],
-                     map.Lists.Select(l => l.Key));
-        Assert.True(map.Write().AsSpan().SequenceEqual(bytes));
-        // the battle landmass is the "sea" meta item (CA-internal labels), found from the area centres
-        Assert.Equal(1, map.LandIndex);
-    }
-
-    [Fact]
     public void Edited_map_roundtrips_and_snapshots_are_deep_copies()
     {
         var map = SmallMap();
@@ -171,30 +154,6 @@ public class CampaignBattleTests
         Assert.StartsWith(BattlesTable.Metadata, tsv[1]);
         Assert.Equal("siege", BattlesTable.TypeForList(BattleLocations.Standard));
         Assert.Equal("unfortified_settlement", BattlesTable.TypeForList(BattleLocations.Unfortified));
-    }
-
-    [Fact]
-    public void Vanilla_battles_table_is_scanned_without_a_schema()
-    {
-        var packs = PackSet.OpenVanilla(Defaults.GameData, n => n.StartsWith("database", StringComparison.OrdinalIgnoreCase));
-        var bytes = packs.TryRead("db/battles_tables/data__");
-        Assert.NotNull(bytes);
-        var rows = BattlesTable.ScanBinary(bytes).ToDictionary(r => r.MapPath, r => r.Type);
-        Assert.Equal("siege", rows[@"terrain\battles\settlement_city_han_a_small_walled\"]);
-        Assert.Equal("unfortified_settlement", rows[@"terrain\battles\resource_han_lumber_a_small\"]);
-        Assert.Equal("gate_battle", rows[@"terrain\battles\gate_battles_b_both_deployments\"]);
-        Assert.True(rows.Count > 100);
-    }
-
-    [Fact]
-    public void Vanilla_redirect_targets_embed_their_centre()
-    {
-        var catalog = new RedirectCatalog(PackSet.OpenVanilla(Defaults.GameData).TryRead);
-        Assert.True(catalog.TryValidateEmbed("settlement_city_han_a_small", out _));
-        Assert.True(catalog.TryValidateEmbed("resource_han_lumber_a_small", out _));
-        Assert.False(catalog.TryValidateEmbed("resource_han_tools_a_regular_small", out var why));
-        Assert.Contains("hole", why);
-        Assert.False(catalog.TryValidateEmbed("no_such_folder", out _));
     }
 
     // ---------------------------------------------------------------- saving

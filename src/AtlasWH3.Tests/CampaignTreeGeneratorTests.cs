@@ -17,11 +17,11 @@ public class CampaignTreeGeneratorTests
     public static readonly (string Map, string ModPack)[] Fixtures =
         [("cr_combi_expanded_map_1", "!cr_immortal_empires_expanded.pack"), ("cr_oldworld_map_1", "!cr_oldworld_campaign.pack")];
 
-    private static string Terry(string map) => Path.Combine(TestKits.Wh3Kit, "raw_data", "terrain", "campaigns", map, map + ".terry");
+    private static string Terry(string map) => Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
     private static string TreeList(string map) =>
-        Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "display", "trees", "trees.campaign_tree_list");
-    private static string MapData(string map) => Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "map_data.esf");
-    private static string ModPack(string pack) => Path.Combine(TestKits.Wh3GameData, pack);
+        Path.Combine(TestKits.Kit(map), "working_data", "campaign_maps", map, "display", "trees", "trees.campaign_tree_list");
+    private static string MapData(string map) => Path.Combine(TestKits.Kit(map), "working_data", "campaign_maps", map, "map_data.esf");
+    private static string ModPack(string pack) => TestKits.Pack(pack);
 
     private static bool Have(string map, string pack) =>
         File.Exists(Terry(map)) && File.Exists(TreeList(map)) && File.Exists(MapData(map)) && File.Exists(ModPack(pack));

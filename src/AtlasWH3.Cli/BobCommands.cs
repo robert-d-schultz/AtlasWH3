@@ -8,6 +8,8 @@ using AtlasWH3.Core.Bob;
 /// bob-* commands: BOB headless, always in an isolated scratch kit (never the user's kit).
 ///  - bob-actions: the WH3 campaign actions and the step each belongs to
 ///  - bob-scratch --maps a,b [--scratch dir] [--outputs]: create or refresh the scratch kit from the kit (--ak)
+///  - bob-scratch --fixture name [--maps a,b] [--outputs]: the same, with the maps' sources (and outputs) from a frozen
+///    fixture (fixture-freeze); --maps defaults to the fixture's
 ///  - bob-run --maps a,b [--scratch dir] [--timeout min] [--config-only] [--fresh]: one silent BOB run (the default
 ///    actions: masks, Terry file, Devastation pieces) of the maps in the scratch kit (--fresh: clear their outputs first)
 /// </summary>
@@ -46,8 +48,11 @@ static class BobCommands
 
     private static JsonNode Scratch(ProjectPaths paths, string[] a)
     {
+        var fixture = Option(a, "--fixture") is { } name ? FixtureCommands.Open(FixtureCommands.Store(paths, a), name) : null;
+        var maps = fixture is not null && Option(a, "--maps") is null ? fixture.Manifest.Maps.ToList() : Maps(a);
         var r = ScratchKit.Create(paths.AssemblyKitRoot, ScratchRoot(paths, a),
-            new ScratchKit.Options { Maps = Maps(a), IncludeOutputs = a.Contains("--outputs") }, m => Console.Error.WriteLine(m));
+            new ScratchKit.Options { Maps = maps, IncludeOutputs = a.Contains("--outputs"), MapSources = fixture?.MapSources },
+            m => Console.Error.WriteLine(m));
         return new JsonObject { ["scratch"] = r.Root, ["copied"] = r.Copied, ["unchanged"] = r.Unchanged, ["gb_copied"] = Math.Round(r.BytesCopied / 1e9, 2) };
     }
 

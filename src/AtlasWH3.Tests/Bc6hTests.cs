@@ -128,7 +128,7 @@ public sealed class Bc6hTests
     public void Heightmaps_LogicMapAndShroudMatchBob()
     {
         const string map = "cr_combi_expanded_map_1";
-        var terry = Path.Combine(TestKits.Wh3Kit, "raw_data", "terrain", "campaigns", map, map + ".terry");
+        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
         var logic = CompiledFormatTests.Built(map, "full_logic_map.compressed_map");
         var shroud = CompiledFormatTests.Built(map, "shroud_heights.dds");
         if (!File.Exists(terry) || !File.Exists(logic) || !File.Exists(shroud)) return;

@@ -12,8 +12,8 @@ public class EnvironmentTests
     public void Build_IeeDevastated_MatchesBob()
     {
         const string map = "cr_combi_expanded_map_devastate_1";
-        var terry = Path.Combine(TestKits.Wh3Kit, "raw_data", "terrain", "campaigns", map, map + ".terry");
-        var bob = Path.Combine(TestKits.Wh3Kit, "working_data", "terrain", "campaigns", map, "environment_collection.xml");
+        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
+        var bob = Path.Combine(TestKits.Kit(map), "working_data", "terrain", "campaigns", map, "environment_collection.xml");
         if (!File.Exists(terry) || !File.Exists(bob)) return;
         var (text, spheres, cylinders) = EnvironmentStep.Build(TerryProject.Load(terry));
         Assert.Equal((1, 65), (spheres, cylinders));

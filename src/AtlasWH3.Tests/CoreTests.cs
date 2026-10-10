@@ -9,8 +9,6 @@ namespace AtlasWH3.Tests;
 
 public class CoreTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
-
     [Fact]
     public void TreeList_RoundTrips_Synthetic()
     {
@@ -27,14 +25,6 @@ public class CoreTests
         Assert.Equal(0xFF, back.Types[0].Instances[1].Tag);
         Assert.Equal(4u, back.Version);
         Assert.Equal(24 + 2 + 8 + 4 + 2 * 15, bytes.Length);
-    }
-
-    [Fact]
-    public void TreeList_RoundTrips_Vanilla()
-    {
-        if (!File.Exists(Paths.TreeList)) return; // data not available on this machine
-        var original = File.ReadAllBytes(Paths.TreeList);
-        Assert.Equal(original, CampaignTreeList.Read(original).ToBytes());
     }
 
     [Fact]

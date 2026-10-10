@@ -3,7 +3,7 @@ namespace AtlasWH3.Core;
 /// <summary>Where the tool reads compiled data, writes assembly-kit sources, and finds game packs.</summary>
 public sealed record ProjectPaths
 {
-    public string MapName { get; init; } = "wh3_main_combi_map_1";
+    public string MapName { get; init; } = MapCatalog.DefaultMap;
     /// <summary>Folder holding the compiled terrain\ and campaign_maps\ trees (vanilla files extracted at first run).</summary>
     public string VanillaRoot { get; init; } = Defaults.CompiledRoot;
     /// <summary>Assembly kit install. Override from the CLI with <c>--ak &lt;root&gt;</c>.</summary>

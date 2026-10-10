@@ -71,7 +71,7 @@ public class MapHexTests
     {
         foreach (var (map, w, h) in new[] { ("cr_combi_expanded_map_1", 1600, 970), ("cr_oldworld_map_1", 2048, 1774) })
         {
-            var path = Path.Combine(TestKits.Wh3Kit, "raw_data", "EmpireDesignData", "campaign_maps", map, "map.hex");
+            var path = Path.Combine(TestKits.Kit(map), "raw_data", "EmpireDesignData", "campaign_maps", map, "map.hex");
             if (!System.IO.File.Exists(path)) continue;
             var hex = MapHexFile.Read(path);
             Assert.Equal((0x14, w, h), (hex.Version, hex.Width, hex.Height));

@@ -55,19 +55,6 @@ public static class TerrainDds
         return raster;
     }
 
-    public static void WriteL16(string path, Raster<ushort> raster)
-    {
-        // DDPF_LUMINANCE (0x20000), 16-bit, mask 0xFFFF. BOB (and so vanilla) leaves dwFlags, dwPitchOrLinearSize
-        // and dwCaps at 0; clearing them makes the file byte-identical to BOB's output.
-        var header = DdsHeader.BuildUncompressed(raster.Width, raster.Height, 16, 0xFFFF, 0, 0, 0, 0x20000);
-        Array.Clear(header, 8, 4);    // dwFlags
-        Array.Clear(header, 20, 4);   // dwPitchOrLinearSize
-        Array.Clear(header, 108, 4);  // dwCaps
-        using var fs = File.Create(path);
-        fs.Write(header);
-        fs.Write(MemoryMarshal.AsBytes(raster.Data.AsSpan()));
-    }
-
     /// <summary>global_blend.dds: 2 x 8-bit channels. Channel 0 = texture group (0-31), channel 1 = climate index
     /// (0 cold, 1 arid, 2 temperate, 3 sub_tropical).</summary>
     public static (Raster<byte> Group, Raster<byte> Extra) ReadBlend(string path)

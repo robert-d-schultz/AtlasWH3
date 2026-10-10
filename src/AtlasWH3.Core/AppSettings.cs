@@ -23,7 +23,7 @@ public sealed class AppSettings
     public string CacheFolder { get; set; } = "";
     /// <summary>Default tile map source (kit, file or pack) when no project sets one; null = the kit.</summary>
     public Campaign.TileMapCheck.TileMapSource? TileMap { get; set; }
-    /// <summary>The map the Start screen opens editors on; empty = 3k_dlc07_main_map.</summary>
+    /// <summary>The map the Start screen opens editors on; empty = <see cref="MapCatalog.DefaultMap"/>.</summary>
     public string MapName { get; set; } = "";
     /// <summary>Mod packs linked as read-only sources (compiled map files, DB tables, assets), highest priority first.
     /// Never written: edits go to the assembly kit or the output folder.</summary>

@@ -28,7 +28,7 @@ public sealed record MapEntry(string Name, IReadOnlySet<MapOrigin> Origins, IRea
 /// </summary>
 public static class MapCatalog
 {
-    public const string DefaultMap = "3k_dlc07_main_map";
+    public const string DefaultMap = "wh3_main_combi_map_1";
 
     /// <summary>Maps in the kit's raw_data\terrain\campaigns that have a .terry project.</summary>
     public static IReadOnlyList<string> KitMaps(string assemblyKitRoot)

@@ -26,7 +26,7 @@ public class Wh3RiverTests
     [InlineData(OldWorld, 127, true)]
     public void Step_MatchesBob(string map, int expected, bool scratchKit)
     {
-        var kit = scratchKit ? ScratchKit.DefaultRoot(TestKits.Wh3Kit) : TestKits.Wh3Kit;
+        var kit = scratchKit ? ScratchKit.DefaultRoot(TestKits.Wh3Kit) : TestKits.Kit(map);
         var bob = Path.Combine(kit, "working_data", "terrain", "campaigns", map, "models");
         if (!Directory.Exists(bob)) return;
         var target = Path.Combine(Path.GetTempPath(), $"atlaswh3_rivers_test_{map}_{scratchKit}");

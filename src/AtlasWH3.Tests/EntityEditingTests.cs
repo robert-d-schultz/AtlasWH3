@@ -7,7 +7,6 @@ namespace AtlasWH3.Tests;
 
 public class EntityEditingTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
 
     private const string Layer = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -202,22 +201,32 @@ public class EntityEditingTests
         finally { dir.Delete(true); }
     }
 
+    /// <summary>Every project and layer of the fixture maps and the kit's prefabs: Terry's own files byte for byte, the
+    /// others (decompiler-written IEE layers, a few CA prefabs) with the same content (<see cref="TerryLayout"/>).</summary>
     [Fact]
-    public void KitProjects_RoundTripByteIdentical()
+    public void KitProjects_RoundTrip()
     {
-        var raw = Path.Combine(Paths.AssemblyKitRoot, "raw_data");
-        if (!Directory.Exists(raw)) return; // kit not available on this machine
-        var files = Directory.EnumerateFiles(raw, "*.*", SearchOption.AllDirectories)
+        // the fixture maps' projects and the kit's prefabs
+        var roots = new[] { TestKits.Paths(TestKits.Iee).AkTerrainDir, TestKits.Paths(TestKits.OldWorld).AkTerrainDir,
+                            Path.Combine(TestKits.Wh3Kit, "raw_data", "art", "prefabs") }.Where(Directory.Exists).ToList();
+        if (roots.Count == 0) return; // kit not available on this machine
+        var files = roots.SelectMany(r => Directory.EnumerateFiles(r, "*.*", SearchOption.AllDirectories))
             .Where(f => f.EndsWith(".terry") || f.EndsWith(".terry.user") || f.EndsWith(".layer")).ToList();
+        Assert.NotEmpty(files);
         var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var terrys = 0;
         Parallel.ForEach(files, f =>
         {
             var text = File.ReadAllText(f);
             System.Xml.Linq.XDocument doc;
             try { doc = TerryXml.Parse(text); }
-            catch (System.Xml.XmlException) { return; } // one CA prefab layer is malformed XML
-            if (TerryXml.ToText(doc.Root!, TerryXml.NewlineOf(text)) != text) failures.Add(f);
+            catch (System.Xml.XmlException) { return; } // ten CA prefab files are malformed XML
+            // and one (dwf_capture_point_10) has a stray attribute line as text inside an entity, which the writer drops
+            if (doc.Root!.DescendantNodes().OfType<System.Xml.Linq.XText>().Any(t => t.Parent!.HasElements && !string.IsNullOrWhiteSpace(t.Value))) return;
+            if (TerryLayout.IsTerrys(text)) Interlocked.Increment(ref terrys);
+            if (TerryLayout.Check(text, TerryXml.ToText(doc.Root!, TerryXml.NewlineOf(text))) is { } why) failures.Add($"{f}: {why}");
         });
-        Assert.Empty(failures);
+        Assert.True(failures.IsEmpty, string.Join("\n", failures));
+        Assert.True(terrys > files.Count / 2, $"only {terrys} of {files.Count} files are in Terry's layout");
     }
 }

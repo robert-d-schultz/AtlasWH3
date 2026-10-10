@@ -127,7 +127,8 @@ is CA's shipped `wh3_main_combi_map_1` file, built from the decompiled vanilla p
 - About 50k lines of C#: App 17k, Core 19k, Formats 9k, Cli 2.7k, Tests 4.9k. There are 106 `3k_` literals; "Atlas3K"
   appears in 257 files.
 - **It does not build yet.** `global.json` pins SDK 9.0.312, but this machine has 9.0.301, 10.0.203 and 10.0.302.
-- The tests (`TestKits.cs`) expect 3K kit data, so they will all need WH3 fixtures.
+- The tests (`TestKits.cs`) expect 3K kit data, so they will all need WH3 fixtures. (Done in 4.6: every 3K test was
+  moved to the WH3 fixtures or removed.)
 
 **The survey** ([`surveys/warhammer3.md`](surveys/warhammer3.md))
 - It is the step-by-step technical baseline.
@@ -240,14 +241,15 @@ The editors, the build and parity all need this foundation.
   - BC6H `full_height_map.dds` (done: decoder and encoder, `Bc6h`)
   - `map_data.esf` with `REGION_AREA_INDEX`
   - hlp/spd v1 (read only)
-- [ ] **Fixtures:** freeze one source + BOB-output snapshot per fixture map outside the kit (`%LocalAppData%\AtlasWH3\
-  fixtures\<map>\<date>`), with a manifest of hashes and the game build.
+- [x] **Fixtures** (done in 4.6 as `fixture-freeze`, beside the kit rather than in %LocalAppData%, so the files can be
+  hard links): freeze one source + BOB-output snapshot per fixture map outside the kit, with a manifest and the game
+  build.
   - IEE first, then Old World. Each needs a fresh full BOB run from the frozen sources, done once and scripted.
   - Then a "decompiled vanilla IE" fixture: the decompiler's Terry project of `wh3_main_combi_map_1`, with CA's
     shipped files as the reference.
   - Record which files of a build actually ship in the mod pack, especially from the devastate folder (only
     `pieces\`, or also `global_props_devastation_*` and the rasters?).
-- [ ] Rewrite `TestKits` against the fixtures. Tests skip cleanly when a fixture is missing, as they do now.
+- [x] Rewrite `TestKits` against the fixtures (4.6). Tests skip cleanly when a fixture is missing, as they do now.
 
 ### Phase 2: One-click build, hybrid (1–1.5 weeks)
 
@@ -470,8 +472,40 @@ Left: the in-game check (an area devastates and restores, with its objects and l
   today `lookup_tweak.py`) into the step (3.7).
 - [x] 4.5 Pack and install for WH3: `data` folder, the `Warhammer3.exe` running check (Phase 2), so a full rebuild is
   one command from `raw_data` to an installed pack.
-- [ ] 4.6 Fixtures and `TestKits` (Phase 1): frozen source + output snapshots, so the parity work below has regression
+- [x] 4.6 Fixtures and `TestKits` (Phase 1): frozen source + output snapshots, so the parity work below has regression
   tests.
+
+**4.6 status (2026-10-10):** `fixture-freeze <name> --maps a,b --packs p,q` (`KitFixture`) freezes maps' folders
+(raw_data and working_data, main and devastated) and their mod packs into `atlaswh3_fixtures\<name>` beside the kit.
+`maps\` and `packs\` are hard links: no disk space, and Terry and the pack install replace a file when they save it, so
+the link keeps the frozen bytes. `kit\` is an assembly kit of junctions (into `maps\` for the frozen folders, to the
+live kit for the rest). `manifest.json` records every file's size and time, the game build, and the sources newer than
+their map's BOB outputs. `fixture-check` finds a file rewritten in place (a hard link shares its size and time);
+`fixture-delete` removes the junctions, never the kit behind them.
+- Frozen: `iee` (both IEE maps and the IEE pack: 822 files, 9.1 GB, in 4 s) and `oldworld` (both maps, both packs:
+  8,741 files, 18.4 GB). Old World's pair matches. IEE's sources have edits from 2026-10-03/05, after its BOB outputs
+  (2026-09-29/30); its manifest lists them. Freeze IEE again after its next BOB reprocess.
+- `TestKits.Kit(map)` / `Pack(name)` / `Built(map, ..)` / `Paths(map, packs)` read the frozen fixture that holds the
+  map, else the live kit. A fixture that changed fails its tests, naming the files. `bob-scratch --fixture <name>` builds
+  BOB's scratch kit from the frozen sources; `parity <built> --fixture <name>` compares with its frozen working_data.
+- The 3K tests: moved to WH3 where the code is WH3's (assets and models, map.hex, the hex region lookup, the map
+  audit, the map catalog, Terry projects and configuration, tree TIFs, prop placement, the river models, the
+  global_props container, the tile hf maps, the tile validator's palette and layout checks, the tile simulator, the
+  tile map editor, tile holes); removed where it is 3K's (lf_height_map, climate_map and global meshes, BMD v35, 3K
+  river height patches, 3K's tile database folder, 3K's campaign battles data, the Guandu and 190E data). Dead 3K
+  code went with them (`CompiledTerrainExporter`, `TerrainDds.WriteL16`, the validator's CAIME/Attila colour hints,
+  which called WH3's own sea colour wrong). `MapCatalog.DefaultMap` was still 3K's, so a remembered map never
+  applied; it is now `wh3_main_combi_map_1`.
+- Terry XML round trip: Terry's own files (all of Old World's, most prefabs) come back byte for byte. 210 of IEE's 226
+  layers were written by the decompiler (tab indent, a `<!-- province -->` comment), and some CA prefabs by other
+  tools: they come back with the same elements and attributes in Terry's layout, without the comment. So an edit in
+  AtlasWH3 rewrites such a layer as Terry would.
+- Found for Phase 5: the tile validator's set categories (`TileMapValidator.Category`) and reference tile map are 3K's,
+  so its line, coast and cliff rules see every WH3 set as plain area. The campaign battles reader does not read WH3's
+  `battle_locations_map.bin` (none of 357). The 3K global_props region reader (`GlobalProps.ReadRegions`,
+  props-to-layers) does not read v27. WH3's tile `bmd_data.bin` is BMD v26. WH3's height TIFs are float32, which the
+  terrain painter's 16-bit save does not handle. IEE's map audit finds one model path with a doubled slash
+  (`mudbanks//gen_mudbank_01`).
 
 **4.4 status (2026-10-10):** the user lists the regions (decided 2026-10-10: a list the user provides, not chosen
 by the step). Build profile "Lookup: regions past 1024" (`LookupLast`), CLI `--lookup-last <region,..|file.txt>`:
@@ -524,7 +558,7 @@ and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they
   `ECVisibilitySettingsCampaign`, `ECPropHeightPatch`), a culture-mask view in place of the season view, and WH3
   prefabs.
 - **Tile map painter:** WH3 tile sets (`cliff_gen`, `roads_grey`, `river_mouth`, …) and the Errors tab against the
-  WH3 rules from 3.6.
+  WH3 rules from 3.6. The validator's set categories and reference tile map are still 3K's (4.6).
 - **Terrain painter:** float32 heights, shroud height, colour overlay, corruption and snow layers, and Terry's
   compositing rules.
 - **Campaign battles window:** WH3 `battle_locations_map.bin` / catchments and battle tables.
@@ -551,7 +585,8 @@ depend on any external tool.
 ## 7. Verification
 
 - **Unit:** format round trips (read → write → same bytes) on every fixture file.
-- **Parity:** `Cli parity <step> --fixture <map>` against the frozen BOB output, with masked bytes as in Atlas3K.
+- **Parity:** `Cli parity <built> --fixture <name>` against the frozen BOB output (`fixture-freeze`, 4.6), with
+  masked bytes as in Atlas3K; the data tests read the same fixtures through `TestKits`.
 - **Round trip:** the decompiler takes AtlasWH3's compiled output back to a Terry project, which should match the
   source within the decompiler's known losses.
 - **In game:** a short checklist per fixture map:

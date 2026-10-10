@@ -13,10 +13,10 @@ public class GlobalMapTests
 {
     private const string OldWorld = "cr_oldworld_map_1", Iee = "cr_combi_expanded_map_1";
     /// <summary>Old World's mod pack: its asset db adds the texture group mud_dry_darklands.</summary>
-    private static string OldWorldPack => Path.Combine(TestKits.Wh3GameData, "!cr_oldworld_campaign.pack");
+    private static string OldWorldPack => TestKits.Pack(TestKits.OldWorldPack);
 
     private static ProjectPaths Paths(string map, params string[] modPacks) =>
-        new() { MapName = map, AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData, ModPacks = modPacks };
+        new() { MapName = map, AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData, ModPacks = modPacks };
 
     /// <summary>The whole step on Old World (2026-10-09): global_blend.dds, texture_arrays.xml and tile_list.bin
     /// byte-identical to BOB's, with the root tile list taken from working_data.</summary>

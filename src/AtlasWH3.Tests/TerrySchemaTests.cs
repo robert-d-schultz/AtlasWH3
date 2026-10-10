@@ -6,7 +6,6 @@ namespace AtlasWH3.Tests;
 
 public class TerrySchemaTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
 
     private const string Config = """
         <configuration version="1">
@@ -90,10 +89,10 @@ public class TerrySchemaTests
         var schema = ComponentSchema.Embedded;
         Assert.True(schema.EntitiesScanned > 0);
         Assert.Contains(schema.Find("ECTransform")!.Fields, f => f.Name == "position" && f.Type == FieldType.Vec3);
-        var cfgPath = Path.Combine(Paths.AssemblyKitRoot, EntityConfiguration.RelativePath);
+        var cfgPath = Path.Combine(TestKits.Wh3Kit, EntityConfiguration.RelativePath);
         if (!File.Exists(cfgPath)) return; // kit not available on this machine
         var cfg = EntityConfiguration.Load(cfgPath);
-        Assert.Equal(55, cfg.Types.Count);
+        Assert.Equal(59, cfg.Types.Count);
         Assert.All(cfg.ComponentTypes, c => Assert.NotNull(schema.Find(c)));
     }
 }

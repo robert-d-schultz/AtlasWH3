@@ -8,8 +8,6 @@ namespace AtlasWH3.Tests;
 
 public class PrefabTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
-
     // ---------------------------------------------------------------- transforms
 
     private static double[] Mul(double[] a, double[] b)

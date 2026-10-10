@@ -85,7 +85,7 @@ public static partial class InfoCards
         new("profile.header.project", "Project", "Which map this project builds and where its sources come from."),
         new("profile.name", "Name", "A display name for the project, shown in the window title. It does not affect the build."),
         new("profile.map", "Map",
-            "The campaign map folder name, e.g. 3k_main_map or 3k_dlc07_main_map. Every step reads and writes this map's folders."),
+            "The campaign map folder name, e.g. wh3_main_combi_map_1 or cr_oldworld_map_1. Every step reads and writes this map's folders."),
         new("profile.kit", "Assembly kit",
             "The Assembly Kit root whose raw_data and working_data are built. Empty uses the default kit from Settings; the game's own files are never changed."),
         new("profile.gameData", "Game data",

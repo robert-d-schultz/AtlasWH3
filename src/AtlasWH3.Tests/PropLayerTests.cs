@@ -7,8 +7,6 @@ namespace AtlasWH3.Tests;
 
 public class PropLayerTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
-
     [Fact]
     public void MetaTags_Decode_UsesFlagsAndMask_InNaturalOrder()
     {
@@ -55,7 +53,7 @@ public class PropLayerTests
     [Fact]
     public void LayerWriter_PutsTaggedObjects_UnderTagLayers()
     {
-        var region = new RegionObjects("3k_test_region");
+        var region = new RegionObjects("wh3_test_region");
         region.Props.Add(Prop("a.wsmodel", 10, "building_level_3,building_level_4", ""));
         region.Props.Add(Prop("b.wsmodel", 20, "", "season_harvest"));
         region.Props.Add(Prop("c.wsmodel", 30, "building_level_3,building_level_4", ""));
@@ -85,26 +83,6 @@ public class PropLayerTests
         // Moving the layer after an expansion shifts objects only; tag layers have no transform.
         var (_, stats) = LayerShifter.Shift(text, 1, 2);
         Assert.Equal(4, stats.Shifted);
-    }
-
-    [Fact]
-    public void GlobalProps_Vanilla_KeepsTagsAndSeasons()
-    {
-        var path = Paths.GlobalPropsBin;
-        if (!File.Exists(path)) return; // data not available on this machine
-        var regions = GlobalProps.Load(path).ReadRegions(Paths.MapName);
-
-        Assert.Equal(264, regions.Count);
-        var tagged = regions.Sum(r => r.Props.Count(p => p.Tags != "") + r.Vfx.Count(v => v.Tags != "")
-                                      + r.PointLights.Count(l => l.Tags != "") + r.CompositeScenes.Count(c => c.Tags != ""));
-        Assert.Equal(42_512, tagged);
-
-        var hulao = regions.Single(r => r.Region == "3k_dlc06_hulao_pass");
-        Assert.Contains(hulao.Props, p => p.Tags == "building_level_1,building_level_2,building_level_3,building_level_4,building_level_5");
-        Assert.Contains(regions.SelectMany(r => r.PointLights), l => l.Tags.Split(',').Contains("night"));
-        // Harvest-coloured trees only show in harvest.
-        Assert.All(regions.SelectMany(r => r.Props).Where(p => p.Path.Contains("katsura_harvest")),
-            p => Assert.Equal("season_harvest", p.Seasons));
     }
 
     private static PropRecord Prop(string path, float x, string tags, string seasons) =>

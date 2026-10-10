@@ -5,88 +5,31 @@ using AtlasWH3.Formats.Models;
 
 namespace AtlasWH3.Tests;
 
-/// <summary>Native replacements for BOB's campaign actions, byte-compared against vanilla 3k_dlc07_main_map.</summary>
+/// <summary>Native replacements for BOB's campaign actions and their file formats, against BOB's output for the fixture
+/// maps.</summary>
 public class CampaignBuildTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
-    private static string Vanilla(params string[] relative) => Path.Combine([Paths.TerrainDir, .. relative]);
-
+    /// <summary>BOB's river models (IEE's working_data models\river_*.rigid_model_v2) read and write back byte for byte.</summary>
     [Fact]
-    public void RigidModelV2_Vanilla_AllTerrainMeshes_RoundTripByteIdentical()
+    public void RigidModelV2_BobRiverModels_RoundTripByteIdentical()
     {
-        if (!Directory.Exists(Vanilla("global_meshes"))) return;
-        var files = Directory.GetFiles(Vanilla("global_meshes"), "*.rigid_model_v2")
-            .Concat(Directory.GetFiles(Vanilla("models"), "*.rigid_model_v2"));
+        var dir = TestKits.Built(TestKits.Iee, "models");
+        if (!Directory.Exists(dir)) return;
+        var files = Directory.GetFiles(dir, "*.rigid_model_v2");
+        Assert.NotEmpty(files);
         foreach (var file in files)
         {
             var original = File.ReadAllBytes(file);
-            Assert.Equal(original, RigidModelV2.Read(original).ToBytes());
+            Assert.True(original.AsSpan().SequenceEqual(RigidModelV2.Read(original).ToBytes()), Path.GetFileName(file));
         }
-    }
-
-    [Fact]
-    public void RigidModelV2_NewTerrainTile_HeadersMatchVanilla()
-    {
-        if (!Directory.Exists(Vanilla("global_meshes"))) return;
-        foreach (var (pattern, sea) in new[] { ("land_mesh_*.rigid_model_v2", false), ("sea_mesh_*.rigid_model_v2", true) })
-        foreach (var file in Directory.GetFiles(Vanilla("global_meshes"), pattern).Take(20))
-        {
-            var original = File.ReadAllBytes(file);
-            var read = RigidModelV2.Read(original);
-            var fresh = RigidModelV2.NewTerrainTile(sea);
-            fresh.Vertices = read.Vertices;
-            fresh.Indices = read.Indices;
-            fresh.SetTileBounds(read.Bounds[0], read.Bounds[2], read.Bounds[3], read.Bounds[5]);
-            Assert.Equal(original, fresh.ToBytes());
-        }
-    }
-
-    [Fact]
-    public void TileList_Vanilla_RoundTrips()
-    {
-        if (!File.Exists(Vanilla("tile_list.bin"))) return;
-        var root = File.ReadAllBytes(Vanilla("tile_list.bin"));
-        Assert.Equal(root, TileList.Read(root).ToBytes());
-    }
-
-    [Fact]
-    public void HeightPatchCollection_Vanilla_RoundTrips()
-    {
-        var path = Vanilla("height_patches", "rivers.height_patch_collection");
-        if (!File.Exists(path)) return;
-        var original = File.ReadAllBytes(path);
-        Assert.Equal(original, HeightPatchCollection.Read(original).ToBytes());
-    }
-
-    [Fact]
-    public void LookupTexture_VanillaBmp_MatchesBobTgaAndDds()
-    {
-        var bmp = Path.Combine(Paths.AkDesignCampaignMapDir, "3k_main_lookup.bmp");
-        var working = Paths.AkWorkingCampaignMapDir;
-        if (!File.Exists(bmp) || !File.Exists(Path.Combine(working, "3k_main_lookup.tga"))) return;
-        var lookup = LookupTexture.FromBmp(bmp);
-        Assert.Equal(File.ReadAllBytes(Path.Combine(working, "3k_main_lookup.tga")), lookup.ToTga());
-        Assert.Equal(File.ReadAllBytes(Path.Combine(working, "3k_main_lookup.dds")), lookup.ToDds());
-    }
-
-    [Fact]
-    public void LookupTexture_GuanduBobSet_MatchesIncludingMinimap()
-    {
-        var dir = @"Z:\Claude\TerryClone\research\guandu\pack_mapcheck_212629\campaign_maps\3k_guandu_map";
-        var stem = Path.Combine(dir, "3k_guandu_start_pos_lookup");
-        if (!File.Exists(stem + ".bmp")) return;
-        var lookup = LookupTexture.FromBmp(stem + ".bmp");
-        Assert.Equal(File.ReadAllBytes(stem + ".tga"), lookup.ToTga());
-        Assert.Equal(File.ReadAllBytes(stem + ".dds"), lookup.ToDds());
-        Assert.Equal(File.ReadAllBytes(stem + "_minimap.tga"), lookup.Minimap().ToTga());
     }
 
     [Fact]
     public void LookupTexture_Iee_MatchesBobTgaAndDds()
     {
         const string map = "cr_combi_expanded_map_1";
-        var bmp = Path.Combine(TestKits.Wh3Kit, "raw_data", "EmpireDesignData", "campaign_maps", map, "cr_combi_expanded_lookup.bmp");
-        var stem = Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "cr_combi_expanded_lookup");
+        var bmp = Path.Combine(TestKits.Kit(map), "raw_data", "EmpireDesignData", "campaign_maps", map, "cr_combi_expanded_lookup.bmp");
+        var stem = Path.Combine(TestKits.Kit(map), "working_data", "campaign_maps", map, "cr_combi_expanded_lookup");
         if (!File.Exists(bmp) || !File.Exists(stem + ".tga")) return;
         var lookup = LookupTexture.FromBmp(bmp);
         Assert.Equal(File.ReadAllBytes(stem + ".tga"), lookup.ToTga());
@@ -130,9 +73,9 @@ public class CampaignBuildTests
     public void LookupStep_OldWorldRegionList_MatchesShippedPack()
     {
         const string map = "cr_oldworld_map_1";
-        var pack = Path.Combine(TestKits.Wh3GameData, "!cr_oldworld_campaign.pack");
+        var pack = TestKits.Pack(TestKits.OldWorldPack);
         var list = Path.Combine(RepoRoot(), "research", "lookup", "oldworld_lookup_last.txt");
-        var paths = new ProjectPaths { MapName = map, AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData, ModPacks = [pack] };
+        var paths = new ProjectPaths { MapName = map, AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData, ModPacks = [pack] };
         if (!File.Exists(pack) || !File.Exists(list) || !File.Exists(Path.Combine(paths.AkDesignCampaignMapDir, "cr_oldworld_lookup.bmp"))) return;
         var outDir = Path.Combine(Path.GetTempPath(), $"atlaswh3_lookup_{Guid.NewGuid():N}");
         try
@@ -197,111 +140,15 @@ public class CampaignBuildTests
         Assert.Equal(new byte[] { 0, 0, 0, 0, 1, 0x12, 0x34, 0, 0xFF, 0xFF, 0, 7, 0, 8 }, rows);
     }
 
+    /// <summary>The global_props.bin container (the BMD v27 bodies are GlobalPropsTests') splits and packs back byte for byte.</summary>
     [Fact]
     public void GlobalProps_Container_RoundTripsByteIdentical()
     {
-        if (!File.Exists(Paths.GlobalPropsBin)) return;
-        var original = File.ReadAllBytes(Paths.GlobalPropsBin);
+        var path = TestKits.Built(TestKits.Iee, "global_props.bin");
+        if (!File.Exists(path)) return;
+        var original = File.ReadAllBytes(path);
         var props = Formats.Props.GlobalProps.Read(original);
-        Assert.Equal(original, Formats.Props.GlobalProps.Pack(props.Bodies()));
-    }
-
-    [Fact]
-    public void TileDatabase_ParsesVanillaTile()
-    {
-        var file = Path.Combine(Path.GetDirectoryName(Paths.VanillaRoot)!, "terrain", "tiles", "campaign", "_tile_database", "tiles", "mountains_cold_11x11_diamond.bin");
-        if (!File.Exists(file)) return;
-        var tile = TileDatabase.Parse(File.ReadAllBytes(file));
-        Assert.Equal("mountains_cold", tile.Category);
-        Assert.Equal((11, 11), (tile.Width, tile.Height));
-        Assert.Equal(121, tile.Mask.Length);
-        Assert.StartsWith(@"terrain\tiles\campaign\mountains_c", tile.Path);
-        Assert.False(tile.SubtileValid(0, 0));   // diamond corner
-        Assert.True(tile.SubtileValid(5, 5));    // centre
-    }
-
-    [Fact]
-    public void LfSampler_ReproducesVanillaLandMeshHeights()
-    {
-        var mesh = Vanilla("global_meshes", "land_mesh_40.rigid_model_v2");
-        if (!File.Exists(mesh)) return;
-        var model = RigidModelV2.Read(File.ReadAllBytes(mesh));
-        var lf = CompressedMap.Read(Vanilla("lf_height_map.compressed_map"));
-        const float tile = 595.1f / 1784f;
-        var sampler = new Core.Campaign.Terrain.LfSampler(lf, 1784 * tile, 1405 * tile, tile);
-        var errors = new List<float>();
-        for (var v = 0; v < model.VertexCount; v += 3)
-        {
-            var x = BitConverter.ToSingle(model.Vertices, v * 16);
-            var y = BitConverter.ToSingle(model.Vertices, v * 16 + 4);
-            var z = BitConverter.ToSingle(model.Vertices, v * 16 + 8);
-            errors.Add(MathF.Abs(sampler.Height(x, z) - y));
-        }
-        errors.Sort();
-        // within ~20 ulps (not yet bit-exact, see docs/bob_re_global_mesh.md); skirts (y - 1) are the tail
-        Assert.True(errors[errors.Count / 2] < 1e-4f, $"median {errors[errors.Count / 2]}");
-    }
-
-    [Fact]
-    public void Rivers_BuildFromSplineLayer()
-    {
-        var layer = Path.Combine(Paths.AkTerrainDir, Paths.MapName + ".1972bd217a4938e.layer");
-        if (!File.Exists(layer)) return;
-        var rivers = Core.Campaign.Rivers.RiverBuilder.ReadLayer(layer);
-        Assert.Equal(24, rivers.Count);
-        var river = rivers.Single(r => r.Number == 0);
-        var sections = Core.Campaign.Rivers.RiverBuilder.Sample(river, null);
-        Assert.True(sections.Count > 10);
-        var model = Core.Campaign.Rivers.RiverBuilder.BuildModel(sections, 595.1f, 541.78619f);
-        Assert.Equal(sections.Count * 5, model.VertexCount);
-        Assert.Equal(48, model.VertexStride);
-        Assert.Equal(68, model.Material);
-        // round trip through the RMV2 reader
-        var back = RigidModelV2.Read(model.ToBytes());
-        Assert.Equal(model.Indices, back.Indices);
-        // vanilla river_0 lies around (115, 410)
-        Assert.InRange((model.Bounds[0] + model.Bounds[3]) / 2, 105, 125);
-        Assert.InRange((model.Bounds[2] + model.Bounds[5]) / 2, 400, 420);
-    }
-
-    [Fact]
-    public void BmdBody_Vanilla_AllBodiesRoundTripByteIdentical()
-    {
-        if (!File.Exists(Paths.GlobalPropsBin)) return;
-        var props = Formats.Props.GlobalProps.Load(Paths.GlobalPropsBin);
-        var count = 0;
-        foreach (var (name, body) in props.Bodies())
-        {
-            var parsed = Formats.Props.BmdBody.Parse(body);
-            Assert.True(body.AsSpan().SequenceEqual(parsed.ToBytes()), name);
-            count++;
-        }
-        Assert.Equal(8891, count);
-    }
-
-    [Fact]
-    public void BmdRecords_Prop_RebuildsVanillaRecordsFromTheirOwnFields()
-    {
-        if (!File.Exists(Paths.GlobalPropsBin)) return;
-        var gp = Formats.Props.GlobalProps.Load(Paths.GlobalPropsBin);
-        var checkedCount = 0;
-        foreach (var (_, bytes) in gp.Bodies().Take(400))
-            foreach (var rec in Formats.Props.BmdBody.Parse(bytes).Props)
-            {
-                var m = new double[9];
-                for (var c = 0; c < 3; c++)
-                    for (var r = 0; r < 3; r++)
-                        m[r * 3 + c] = BitConverter.ToSingle(rec, 24 + (c * 3 + r) * 4);
-                var pos = (BitConverter.ToSingle(rec, 60), BitConverter.ToSingle(rec, 64), BitConverter.ToSingle(rec, 68));
-                var strLen = BitConverter.ToUInt16(rec, Formats.Props.BmdRecords.PropHeadSize);
-                var tail = Formats.Props.BmdRecords.PropHeadSize + 2 + strLen;
-                var rebuilt = Formats.Props.BmdRecords.Prop(rec, BitConverter.ToUInt32(rec, 2), BitConverter.ToUInt64(rec, 8), BitConverter.ToUInt64(rec, 16),
-                    m, pos, rec[72] == 1, rec[75] == 1, rec[76] == 1, rec[77] == 1, rec[78] == 1, BitConverter.ToUInt32(rec, 96),
-                    rec[100] == 1, rec[101] == 1, rec[tail + 4] == 1, rec[tail + 5] == 1, rec[tail + 23] == 1);
-                Assert.Equal(rec, rebuilt);
-                checkedCount++;
-            }
-        Assert.True(checkedCount > 1000);
+        Assert.True(original.AsSpan().SequenceEqual(Formats.Props.GlobalProps.Pack(props.Bodies())));
     }
 
     [Fact]
@@ -318,78 +165,24 @@ public class CampaignBuildTests
         }
     }
 
+    /// <summary>WH3's tile hf maps (compressed_map version 3, in the vanilla packs) decode. (The encoder does not
+    /// reproduce CA's v3 bytes; nothing writes hf maps.)</summary>
     [Fact]
-    public void CompressedMap_Version2_HfMapsDecode()
+    public void CompressedMap_TileHfMapsDecode()
     {
-        // version 2: lo/hi only (3 river and roads_tracks junction hf maps in terrain2.pack), kept at header[1] / [4]
-        if (!Directory.Exists(Paths.GameDataDir)) return;
-        var packs = AtlasWH3.Formats.Packs.PackSet.OpenVanilla(Paths.GameDataDir);
-        var bytes = packs.TryRead("terrain/tiles/campaign/river/junction6_c/hf_height_map.compressed_map");
-        if (bytes is null) return;
-        var map = CompressedMap.Decode(bytes);
-        Assert.Equal(2, map.Version);
-        Assert.Equal(513, map.Raster.Width);
-        Assert.True(map.Header[1] < 0f && map.Header[4] > 0f, $"lo {map.Header[1]} hi {map.Header[4]}");
-        Assert.Contains(map.Raster.Data, v => v != map.Raster.Data[0]);
-    }
-
-    [Fact]
-    public void TileHfHeight_VanillaTrees_MatchShippedHeights()
-    {
-        if (!File.Exists(Vanilla("tile_list.bin")) || !File.Exists(Paths.TreeList) || !Directory.Exists(Paths.GameDataDir)) return;
-        var packs = AtlasWH3.Formats.Packs.PackSet.OpenVanilla(Paths.GameDataDir);
-        var prefix = AtlasWH3.Formats.Packs.PackFile.Normalize(TileDatabase.Folder);
-        var db = TileDatabase.Load(packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(prefix, StringComparison.Ordinal))
-            .Distinct().Select(k => packs.TryRead(k)).OfType<byte[]>());
-        var terrain = new AtlasWH3.Core.Campaign.Terrain.TileHfHeight(TileList.Read(Vanilla("tile_list.bin")), db, packs.TryRead,
-            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.Terrain.TileHfHeight.TileSize3K);
-        var trees = AtlasWH3.Formats.Trees.CampaignTreeList.Load(Paths.TreeList);
-        int n = 0, exact = 0, close = 0;
-        var misses = new List<string>();
-        foreach (var t in trees.Types.SelectMany(type => type.Instances))
+        if (!Directory.Exists(TestKits.Wh3GameData)) return;
+        var packs = AtlasWH3.Formats.Packs.PackSet.OpenVanilla(TestKits.Wh3GameData);
+        var keys = packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.EndsWith("hf_height_map.compressed_map", StringComparison.Ordinal)).Distinct().ToList();
+        Assert.Equal(135, keys.Count);
+        var varied = 0;
+        foreach (var key in keys)
         {
-            var y = terrain.Height(t.X, t.Z / AtlasWH3.Core.Campaign.Trees.TreeHeightField.ZScale);
-            n++;
-            if (BitConverter.SingleToInt32Bits(y) == BitConverter.SingleToInt32Bits(t.Y)) exact++;
-            else if (misses.Count < 60) misses.Add(FormattableString.Invariant($"{t.X:R},{t.Z:R},{t.Y:R},{y:R}"));
-            if (Math.Abs(y - t.Y) <= 1e-5f) close++;
+            var map = CompressedMap.Decode(packs.TryRead(key)!);
+            Assert.Equal(3, map.Version);
+            Assert.True(map.Raster.Width > 1 && map.Raster.Height > 1, key);   // 9 x 9 up to 513 x 257, by tile
+            Assert.True(map.Header[1] <= map.Header[4], key);
+            if (map.Raster.Data.Any(v => v != map.Raster.Data[0])) varied++;
         }
-        // 2026-10-04: 205,765 of 205,767 bit-exact against CA's shipped list (was 61.46%): lf scaled with
-        // TERRAIN_RENDER_SETUP's 1100 / 240 and (1/25.6)*T, height 0 outside the bounds and where no tile answers.
-        // Left: one tree 1 ulp off on an hf tile, one where BOB rejects the sub-tile.
-        Assert.True(exact >= n - 2, $"bit-exact {exact} of {n}, within 1e-5 {close}; first misses: " + string.Join(" ; ", misses));
-        Assert.True(close >= n - 1, $"within 1e-5 {close} of {n}");
+        Assert.Equal(104, varied);   // the others are flat
     }
-
-    [Fact]
-    public void TileHfHeight_VanillaTrees_MatchBobOwnOutput()
-    {
-        // BOB's own fresh "Campaign Trees" output on the vanilla kit (2026-10-04 Frida run)
-        var bobList = Path.Combine(Paths.OutputRoot, "bob_runs", "frida_ctrees_vanilla1", "trees_bob.campaign_tree_list");
-        var gm = Vanilla(Path.Combine("global_map", "tile_list.bin"));
-        if (!File.Exists(Vanilla("tile_list.bin")) || !File.Exists(bobList) || !File.Exists(gm) || !Directory.Exists(Paths.GameDataDir)) return;
-        var packs = AtlasWH3.Formats.Packs.PackSet.OpenVanilla(Paths.GameDataDir);
-        var prefix = AtlasWH3.Formats.Packs.PackFile.Normalize(TileDatabase.Folder);
-        var db = TileDatabase.Load(packs.Packs.SelectMany(p => p.Entries.Keys).Where(k => k.StartsWith(prefix, StringComparison.Ordinal))
-            .Distinct().Select(k => packs.TryRead(k)).OfType<byte[]>());
-        var list = TileList.Read(Vanilla("tile_list.bin"));
-        var terrain = new AtlasWH3.Core.Campaign.Terrain.TileHfHeight(list, db, packs.TryRead,
-            CompressedMap.Read(Vanilla("lf_height_map.compressed_map")), AtlasWH3.Core.Campaign.Terrain.TileHfHeight.TileSize3K)
-            { BobCells = true, CellScaleX = Env("ATLASWH3_TREE_IX"), CellScaleZ = Env("ATLASWH3_TREE_IZ") };
-        var trees = AtlasWH3.Formats.Trees.CampaignTreeList.Load(bobList);
-        int n = 0, exact = 0;
-        var misses = new List<string>();
-        foreach (var t in trees.Types.SelectMany(type => type.Instances))
-        {
-            var y = terrain.TreeHeight(t.X, t.Z);
-            n++;
-            if (BitConverter.SingleToInt32Bits(y) == BitConverter.SingleToInt32Bits(t.Y)) exact++;
-            else if (misses.Count < 20) misses.Add(FormattableString.Invariant($"{t.X:R},{t.Z:R},{t.Y:R},{y:R}"));
-        }
-        Assert.True(exact == n, $"bit-exact {exact} of {n}; misses: " + string.Join(" ; ", misses));
-    }
-
-    private static float Env(string name) =>
-        float.TryParse(Environment.GetEnvironmentVariable(name), System.Globalization.NumberStyles.Float,
-                       System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : float.NaN;
 }

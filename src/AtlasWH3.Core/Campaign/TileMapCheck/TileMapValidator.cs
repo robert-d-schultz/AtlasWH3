@@ -455,7 +455,7 @@ public static class TileMapValidator
             var (nearest, distance) = Nearest(colour, groups);
             if (hexes.Count >= SystematicColourHexes && distance > NearColour || hexes.Count >= SystematicNearColourHexes)
                 add("palette.unknown", TileMapFinding.Error,
-                    $"colour {colour:x6} is no 3K tile set / tile / variation colour{AttilaHint(colour)}: {hexes.Count:N0} hexes get no tile (nearest: {nearest})",
+                    $"colour {colour:x6} is no tile set / tile / variation colour: {hexes.Count:N0} hexes get no tile (nearest: {nearest})",
                     map.HasHexLayout ? hexes : null, hexes.Count);
             else
             {
@@ -487,15 +487,6 @@ public static class TileMapValidator
         }
         return best;
     }
-
-    private static string AttilaHint(uint colour) => colour switch
-    {
-        0x538dd5 => " (CAIME/Attila sea: use generic_sea 3971b7)",
-        0x5a7647 => " (CAIME/Attila land: use generic 96aa64)",
-        0x956826 => " (CAIME/Attila road: use roads_tracks 5d0018)",
-        0xfe0000 => " (CAIME/Attila cliff: use blockout_cliff f9ad69)",
-        _ => "",
-    };
 
     // ---------------------------------------------------------------- hex rules
 

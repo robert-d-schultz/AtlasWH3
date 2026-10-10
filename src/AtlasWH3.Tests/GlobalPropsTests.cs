@@ -244,7 +244,7 @@ public class GlobalPropsTests
     {
         var kit = ScratchKit.DefaultRoot(TestKits.Wh3Kit);
         var bobFile = Path.Combine(kit, "working_data", "terrain", "campaigns", OldWorld, "global_props.bin");
-        var pack = Path.Combine(TestKits.Wh3GameData, "!cr_oldworld_campaign.pack");
+        var pack = TestKits.Pack(TestKits.OldWorldPack);
         if (!File.Exists(bobFile) || !File.Exists(pack)) return;
         var target = Path.Combine(Path.GetTempPath(), "atlaswh3_global_props_test");
         try

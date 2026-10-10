@@ -10,7 +10,7 @@ public class MasksTests
     private const string OldWorld = "cr_oldworld_map_1", Iee = "cr_combi_expanded_map_1";
 
     private static ProjectPaths Paths(string map) =>
-        new() { MapName = map, AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData };
+        new() { MapName = map, AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData };
 
     /// <summary>
     /// The whole step against BOB's output (2026-10-09). IEE: all five files byte-identical to the user's working_data,

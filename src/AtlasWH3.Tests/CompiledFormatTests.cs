@@ -9,7 +9,7 @@ public class CompiledFormatTests
     public static readonly string[] Maps = ["cr_combi_expanded_map_1", "cr_oldworld_map_1"];
 
     public static string Built(string map, params string[] path) =>
-        Path.Combine([TestKits.Wh3Kit, "working_data", "terrain", "campaigns", map, .. path]);
+        TestKits.Built(map, path);
 
     [Fact]
     public void TileList_V2_RoundTrips()
@@ -32,7 +32,7 @@ public class CompiledFormatTests
     {
         foreach (var map in Maps)
         {
-            var file = Path.Combine(TestKits.Wh3Kit, "working_data", "campaign_maps", map, "display", "trees", "trees.campaign_tree_list");
+            var file = Path.Combine(TestKits.Kit(map), "working_data", "campaign_maps", map, "display", "trees", "trees.campaign_tree_list");
             if (!File.Exists(file)) continue;
             var bytes = File.ReadAllBytes(file);
             var list = CampaignTreeList.Read(bytes);

@@ -1,4 +1,3 @@
-using AtlasWH3.Core;
 using AtlasWH3.Core.Campaign.Props;
 using AtlasWH3.Formats.Maps;
 using Xunit;
@@ -7,29 +6,25 @@ namespace AtlasWH3.Tests;
 
 public class HexRegionLookupTests
 {
-    private static readonly ProjectPaths Kit190E = new ProjectPaths
-    {
-        MapName = "3k_190e_expanded_map",
-        AssemblyKitRoot = TestKits.Expanded,
-    };
-
+    /// <summary>IEE's lookup (its map.hex over the map_data.esf bounds): every hex centre falls back in its own hex and
+    /// region, and the quadtree root spans the map.</summary>
     [Fact]
-    public void MapHexFile_ReadsGridAndRegions()
+    public void Lookup_HexCentresMapBackToTheirHexAndRegion()
     {
-        var path = Path.Combine(Kit190E.AkDesignCampaignMapDir, "map.hex");
-        if (!File.Exists(path)) return;
-        var hex = MapHexFile.Read(path);
-        Assert.Equal((1478, 1133), (hex.Width, hex.Height));
-        Assert.Equal(340, hex.LandRegions.Count);
-        Assert.Equal(96, hex.SeaRegions.Count);
-    }
-
-    [Fact]
-    public void Lookup_PutsARiverEntityInItsSeaRegion()
-    {
-        var lookup = HexRegionLookup.ForMap(Kit190E, out var why);
+        var lookup = HexRegionLookup.ForMap(TestKits.Paths(TestKits.Iee), out var why);
         if (lookup is null) return;
-        // river_0's ECRiver entity in the main190 rivers layer; BOB gives the river model this region
-        Assert.StartsWith("3k_main_riv_sea_", lookup.RegionAt(289.0825, 635.8125));
+        var hex = lookup.Hex;
+        Assert.Equal((1600, 970), (hex.Width, hex.Height));
+        for (var r = 0; r < hex.Height; r += 7)
+            for (var c = 0; c < hex.Width; c += 5)
+            {
+                var (x, z) = lookup.HexCentre(c, r);
+                Assert.Equal((c, r), lookup.HexAt(x, z));
+                Assert.Equal(hex.RegionAt(c, r), lookup.RegionAt(x, z));
+            }
+        var (x0, z0, x1, z1) = lookup.QuadRoot;
+        Assert.Equal((0f, 0f), (x0, z0));
+        Assert.Equal(1068.1111f, x1, 3);
+        Assert.Equal(748.5708f, z1, 3);
     }
 }

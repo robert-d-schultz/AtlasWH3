@@ -32,41 +32,36 @@ public class MapCatalogTests
     public void MapsIn_reads_terrain_and_campaign_maps_folders()
     {
         var maps = MapCatalog.MapsIn([
-            "terrain/campaigns/3k_190e_expanded_map/lf_height_map.dds",
+            "terrain/campaigns/cr_combi_expanded_map_1/full_height_map.dds",
             @"campaign_maps\other_map\display\trees\trees.campaign_tree_list",
             "terrain/campaigns/readme.txt",           // a file, not a map folder
             "terrain/tiles/campaign/x/y.bmd",
             "db/start_pos_tables/data__",
         ]);
-        Assert.Equal(["3k_190e_expanded_map", "other_map"], maps);
+        Assert.Equal(["cr_combi_expanded_map_1", "other_map"], maps);
     }
 
     [Fact]
-    public void Expanded_kit_lists_the_custom_map()
+    public void Wh3_kit_lists_the_fixture_maps()
     {
-        if (!Directory.Exists(TestKits.Expanded)) return;
-        var maps = MapCatalog.KitMaps(TestKits.Expanded);
-        Assert.Contains("3k_190e_expanded_map", maps);
-        Assert.Contains("3k_190e_expanded_map", MapCatalog.All(TestKits.Expanded, []).Select(m => m.Name));
-    }
-
-    [Fact]
-    public void Vanilla_kit_lists_the_main_map()
-    {
-        if (!Directory.Exists(TestKits.Vanilla)) return;
-        Assert.Contains(MapCatalog.DefaultMap, MapCatalog.KitMaps(TestKits.Vanilla));
+        if (!Directory.Exists(TestKits.Wh3Kit)) return;
+        var maps = MapCatalog.KitMaps(TestKits.Wh3Kit);
+        Assert.Contains(TestKits.Iee, maps);
+        Assert.Contains(TestKits.OldWorld, maps);
+        Assert.Contains(TestKits.Iee, MapCatalog.All(TestKits.Wh3Kit, []).Select(m => m.Name));
     }
 
     [Fact]
     public void Linked_map_pack_is_found_read_only()
     {
-        var pack = Path.Combine(Defaults.GameData, "!!190_expanded_region_test_main190.pack");
+        var pack = TestKits.Pack(TestKits.IeePack);
         if (!File.Exists(pack)) return;
         var before = (File.GetLastWriteTimeUtc(pack), new FileInfo(pack).Length);
-        var all = MapCatalog.All(TestKits.Expanded, [pack]);
-        var expanded = all.Single(m => m.Name == "3k_190e_expanded_map");
-        Assert.Contains(MapOrigin.Pack, expanded.Origins);
-        Assert.Equal([pack], expanded.Packs);
+        var all = MapCatalog.All(TestKits.Kit(TestKits.Iee), [pack]);
+        var iee = all.Single(m => m.Name == TestKits.Iee);
+        Assert.Equal([MapOrigin.Kit, MapOrigin.Pack], iee.Origins.Order());
+        Assert.Equal([pack], iee.Packs);
+        Assert.DoesNotContain(MapOrigin.Pack, all.Single(m => m.Name == TestKits.OldWorld).Origins);
         Assert.Equal(before, (File.GetLastWriteTimeUtc(pack), new FileInfo(pack).Length));
     }
 
@@ -106,13 +101,13 @@ public class MapCatalogTests
         {
             var pack = Path.Combine(dir, "mod.pack");
             File.WriteAllBytes(pack, []);
-            var s = new AppSettings { MapName = "3k_190e_expanded_map", LinkedPacks = [pack, Path.Combine(dir, "gone.pack")] };
-            var paths = MapCatalog.WithSelection(TestKits.VanillaPaths, s);
-            Assert.Equal("3k_190e_expanded_map", paths.MapName);
+            var s = new AppSettings { MapName = TestKits.Iee, LinkedPacks = [pack, Path.Combine(dir, "gone.pack")] };
+            var paths = MapCatalog.WithSelection(new ProjectPaths(), s);
+            Assert.Equal(TestKits.Iee, paths.MapName);
             Assert.Equal([pack], paths.ModPacks);
 
             // a map or packs given on the command line win
-            var cli = TestKits.VanillaPaths with { MapName = "cli_map", ModPacks = ["cli.pack"] };
+            var cli = new ProjectPaths { MapName = "cli_map", ModPacks = ["cli.pack"] };
             var kept = MapCatalog.WithSelection(cli, s);
             Assert.Equal("cli_map", kept.MapName);
             Assert.Equal(["cli.pack"], kept.ModPacks);
@@ -123,13 +118,13 @@ public class MapCatalogTests
 
 public class SourceGuardTests
 {
-    private const string Data = @"C:\Games\Three Kingdoms\data";
+    private const string Data = @"C:\Games\Warhammer III\data";
 
     [Theory]
-    [InlineData(@"C:\Games\Three Kingdoms\data")]
-    [InlineData(@"C:\Games\Three Kingdoms\data\")]
-    [InlineData(@"C:\Games\Three Kingdoms\DATA\terrain\campaigns\x\lf_height_map.dds")]
-    [InlineData(@"C:\Games\Three Kingdoms\data\..\data\db")]
+    [InlineData(@"C:\Games\Warhammer III\data")]
+    [InlineData(@"C:\Games\Warhammer III\data\")]
+    [InlineData(@"C:\Games\Warhammer III\DATA\terrain\campaigns\x\full_height_map.dds")]
+    [InlineData(@"C:\Games\Warhammer III\data\..\data\db")]
     [InlineData(@"D:\anywhere\some.pack")]
     [InlineData(@"D:\mods\linked.PACK")]
     public void Refuses_game_data_and_packs(string path)
@@ -139,8 +134,8 @@ public class SourceGuardTests
     }
 
     [Theory]
-    [InlineData(@"C:\Games\Three Kingdoms\assembly_kit_190E\raw_data\terrain\campaigns\x\x.terry")]
-    [InlineData(@"C:\Games\Three Kingdoms\data_backup\file.dds")]
+    [InlineData(@"C:\Games\Warhammer III\assembly_kit\raw_data\terrain\campaigns\x\x.terry")]
+    [InlineData(@"C:\Games\Warhammer III\data_backup\file.dds")]
     [InlineData(@"C:\Users\me\AppData\Local\AtlasWH3\vanilla")]
     [InlineData("")]
     public void Allows_kit_output_and_cache(string path)
@@ -152,7 +147,7 @@ public class SourceGuardTests
     [Fact]
     public void ProjectPaths_overload_uses_its_game_data_and_mod_packs()
     {
-        var paths = TestKits.VanillaPaths with { GameDataDir = Data, ModPacks = [@"D:\mods\linked.pack"] };
+        var paths = new ProjectPaths { GameDataDir = Data, ModPacks = [@"D:\mods\linked.pack"] };
         Assert.Throws<UnauthorizedAccessException>(() => SourceGuard.EnsureWritable(Path.Combine(Data, "x.txt"), paths));
         SourceGuard.EnsureWritable(paths.AkTerrainDir, paths);
     }

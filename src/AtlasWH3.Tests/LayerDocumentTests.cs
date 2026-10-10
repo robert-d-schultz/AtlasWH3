@@ -8,11 +8,9 @@ namespace AtlasWH3.Tests;
 
 public class LayerDocumentTests
 {
-    private static readonly ProjectPaths Paths = TestKits.VanillaPaths;
-
     private static string Sample()
     {
-        var region = new RegionObjects("3k_test_region");
+        var region = new RegionObjects("wh3_test_region");
         region.Props.Add(Prop("a.wsmodel", 10, "building_level_3,building_level_4", ""));
         region.Props.Add(Prop("b.wsmodel", 20, "", "season_harvest"));
         region.Props.Add(Prop("c.wsmodel", 30, "building_level_3,building_level_4", ""));
@@ -29,16 +27,19 @@ public class LayerDocumentTests
         Assert.Equal(text, LayerDocument.Parse(text).ToText());
     }
 
+    /// <summary>The fixture maps' layers: Old World's (Terry's) byte for byte, IEE's decompiler-written ones with the same
+    /// content (<see cref="TerryLayout"/>).</summary>
     [Fact]
-    public void Unedited_AkLayers_RoundTripByteIdentical()
+    public void Unedited_AkLayers_RoundTrip()
     {
-        if (!Directory.Exists(Paths.AkTerrainDir)) return; // data not available on this machine
-        var files = Directory.GetFiles(Paths.AkTerrainDir, "*.layer");
+        var dirs = new[] { TestKits.Iee, TestKits.OldWorld }.Select(m => TestKits.Paths(m).AkTerrainDir).Where(Directory.Exists).ToList();
+        if (dirs.Count == 0) return; // kit not available on this machine
+        var files = dirs.SelectMany(d => Directory.GetFiles(d, "*.layer")).ToList();
         Assert.NotEmpty(files);
         Parallel.ForEach(files, f =>
         {
             var text = File.ReadAllText(f);
-            Assert.True(text == LayerDocument.Parse(text).ToText(), $"{Path.GetFileName(f)} does not round-trip");
+            Assert.Null(TerryLayout.Check(text, LayerDocument.Parse(text).ToText()) is { } why ? $"{Path.GetFileName(f)}: {why}" : null);
         });
     }
 
@@ -137,7 +138,7 @@ public class LayerDocumentTests
             File.WriteAllText(Path.Combine(paths.AkTerrainDir, "m.terry"), """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project version="14"><entities>
-                  <entity id="1aaa" name="3k_test_region"><ECLayerFile/><ECLayerExport export="true"/></entity>
+                  <entity id="1aaa" name="wh3_test_region"><ECLayerFile/><ECLayerExport export="true"/></entity>
                 </entities></project>
                 """);
             var layerPath = Path.Combine(paths.AkTerrainDir, "m.1aaa.layer");
