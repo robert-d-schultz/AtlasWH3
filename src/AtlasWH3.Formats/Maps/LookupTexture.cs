@@ -69,6 +69,22 @@ public sealed class LookupTexture
         return new LookupTexture(width, height, palette, indices);
     }
 
+    /// <summary>
+    /// The same image with the palette entries of <paramref name="colours"/> moved to the end (the rest, then these,
+    /// each in their old order) and every index remapped. The game reads only the first 1024 entries, so a map with
+    /// more regions than that names the ones that can go without (Old World's <c>lookup_tweak.py</c>).
+    /// </summary>
+    public LookupTexture MoveToEnd(IReadOnlySet<uint> colours)
+    {
+        var order = Enumerable.Range(0, Palette.Count).Where(i => !colours.Contains(Palette[i]))
+            .Concat(Enumerable.Range(0, Palette.Count).Where(i => colours.Contains(Palette[i]))).ToArray();
+        var remap = new ushort[order.Length];
+        for (var n = 0; n < order.Length; n++) remap[order[n]] = (ushort)n;
+        var indices = new ushort[Indices.Length];
+        for (var i = 0; i < indices.Length; i++) indices[i] = remap[Indices[i]];
+        return new LookupTexture(Width, Height, order.Select(i => Palette[i]).ToList(), indices);
+    }
+
     public LookupTexture Minimap()
     {
         int w = Width / 4, h = Height / 4;

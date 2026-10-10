@@ -64,7 +64,7 @@ public sealed class TreeDatabase
     public static TreeDatabase FromPacks(PackSet packs)
     {
         var ids = new Dictionary<string, TreeId>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in Rows(packs, "campaign_tree_ids_tables"))
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_ids_tables"))
         {
             var id = (string)t.Get(row, "tree_id")!;
             var colour = (uint)(Convert.ToInt32(t.Get(row, "colour_r")) << 16 | Convert.ToInt32(t.Get(row, "colour_g")) << 8 |
@@ -72,31 +72,16 @@ public sealed class TreeDatabase
             ids.TryAdd(id, new TreeId(id, t.Get(row, "can_be_removed") is true, colour));
         }
         var variants = new Dictionary<(string, string), Variant>();
-        foreach (var (t, row) in Rows(packs, "campaign_tree_variants_tables"))
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_variants_tables"))
         {
             var v = new Variant((string)t.Get(row, "tree_id")!, (string)t.Get(row, "tree_type")!, (string)t.Get(row, "tree_rigid")!);
             variants.TryAdd((v.TreeId.ToLowerInvariant(), v.TreeType.ToLowerInvariant()), v);
         }
         var cultures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in Rows(packs, "campaign_tree_type_cultures_tables"))
+        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_type_cultures_tables"))
             cultures.TryAdd((string)t.Get(row, "culture")!, (string)t.Get(row, "tree_type")!);
         if (ids.Count == 0) throw new FileNotFoundException("no campaign_tree_ids_tables in the packs");
         return new TreeDatabase(ids, [.. variants.Values], cultures);
-    }
-
-    /// <summary>The rows of every file of <paramref name="table"/>, highest-priority pack first (a file name shadowed by a
-    /// higher-priority pack is read from that pack only).</summary>
-    private static IEnumerable<(DbBinaryTable.Table Table, object?[] Row)> Rows(PackSet packs, string table)
-    {
-        var prefix = PackFile.Normalize($"db/{table}/");
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var pack in packs.Packs)
-        foreach (var file in pack.Entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal))
-        {
-            if (!seen.Add(file)) continue;
-            var t = DbBinaryTable.Read(table, pack.TryRead(file)!);
-            foreach (var row in t.Rows) yield return (t, row);
-        }
     }
 
     /// <summary>The model of <paramref name="treeId"/> for <paramref name="treeType"/>, else its BASE model, else any.</summary>

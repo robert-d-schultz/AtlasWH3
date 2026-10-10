@@ -14,6 +14,10 @@ public sealed class CampaignBuildContext
     /// <summary>Cancels the build; long steps check it between rows / meshes, the pipeline between steps.</summary>
     public CancellationToken Cancel { get; init; }
 
+    /// <summary>lookup step: regions whose palette entries go to the end, past the 1024 the game reads (region keys, or
+    /// text files of them; <see cref="LookupStep.RegionList"/>).</summary>
+    public IReadOnlyList<string> LookupLastRegions { get; init; } = [];
+
     /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
     public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
 

@@ -99,6 +99,67 @@ public class CampaignBuildTests
     }
 
     [Fact]
+    public void LookupTexture_MoveToEnd_KeepsEveryPixelsColour()
+    {
+        var bmp = Path.Combine(Path.GetTempPath(), $"atlaswh3_lookup_{Guid.NewGuid():N}.bmp");
+        // 4 × 1, 24-bit bottom-up: red, green, red, blue
+        byte[] pixels = [0, 0, 255, 0, 255, 0, 0, 0, 255, 255, 0, 0];
+        var header = new byte[54];
+        "BM"u8.CopyTo(header);
+        BitConverter.GetBytes(54 + pixels.Length).CopyTo(header, 2);
+        BitConverter.GetBytes(54).CopyTo(header, 10);
+        BitConverter.GetBytes(40).CopyTo(header, 14);
+        BitConverter.GetBytes(4).CopyTo(header, 18);
+        BitConverter.GetBytes(1).CopyTo(header, 22);
+        BitConverter.GetBytes((short)1).CopyTo(header, 26);
+        BitConverter.GetBytes((short)24).CopyTo(header, 28);
+        File.WriteAllBytes(bmp, [.. header, .. pixels]);
+        try
+        {
+            var lookup = LookupTexture.FromBmp(bmp);
+            var moved = lookup.MoveToEnd(new HashSet<uint> { 0xFF0000 });
+            Assert.Equal([0x00FF00u, 0x0000FF, 0xFF0000], moved.Palette);
+            Assert.Equal([2, 0, 2, 1], moved.Indices.Select(i => (int)i));
+        }
+        finally { File.Delete(bmp); }
+    }
+
+    /// <summary>The user's lookup_tweak.py list as region keys (research/lookup) reproduces the shipped Old World lookup:
+    /// .tga, .dds and _minimap.tga byte for byte.</summary>
+    [Fact]
+    public void LookupStep_OldWorldRegionList_MatchesShippedPack()
+    {
+        const string map = "cr_oldworld_map_1";
+        var pack = Path.Combine(TestKits.Wh3GameData, "!cr_oldworld_campaign.pack");
+        var list = Path.Combine(RepoRoot(), "research", "lookup", "oldworld_lookup_last.txt");
+        var paths = new ProjectPaths { MapName = map, AssemblyKitRoot = TestKits.Wh3Kit, GameDataDir = TestKits.Wh3GameData, ModPacks = [pack] };
+        if (!File.Exists(pack) || !File.Exists(list) || !File.Exists(Path.Combine(paths.AkDesignCampaignMapDir, "cr_oldworld_lookup.bmp"))) return;
+        var outDir = Path.Combine(Path.GetTempPath(), $"atlaswh3_lookup_{Guid.NewGuid():N}");
+        try
+        {
+            var ctx = new CampaignBuildContext(paths, outDir) { LookupLastRegions = [list] };
+            var result = new LookupStep().Run(ctx);
+            Assert.DoesNotContain(result.Notes, n => n.StartsWith("lookup region list"));
+            Assert.Contains("cr_oldworld_lookup.bmp: 302 of 1327 palette entries moved to the end (the region list, and black)", result.Notes);
+            Assert.DoesNotContain(result.Notes, n => n.StartsWith("elector_counts_small") || n.StartsWith("wh3_main_hef_court_small"));
+            var shipped = Formats.Packs.PackFile.Open(pack);
+            byte[] Shipped(string file) => shipped.TryRead(Formats.Packs.PackFile.Normalize($"campaign_maps/{map}/{file}"))!;
+            byte[] Ours(string file) => File.ReadAllBytes(Path.Combine(ctx.CampaignMapOutDir, file));
+            Assert.Equal(Shipped("cr_oldworld_lookup.tga"), Ours("cr_oldworld_lookup.tga"));
+            Assert.Equal(Shipped("cr_oldworld_lookup.dds"), Ours("cr_oldworld_lookup.dds"));
+            Assert.Equal(Shipped("cr_oldworld_lookup_minimap.tga"), Ours("cr_oldworld_lookup_minimap.tga"));
+        }
+        finally { if (Directory.Exists(outDir)) Directory.Delete(outDir, true); }
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "AtlasWH3.slnx"))) dir = Path.GetDirectoryName(dir);
+        return dir ?? throw new DirectoryNotFoundException("AtlasWH3.slnx not found above the test binaries");
+    }
+
+    [Fact]
     public void PropTransform_Matrix_InvertsFromColumns()
     {
         var rng = new Random(3);

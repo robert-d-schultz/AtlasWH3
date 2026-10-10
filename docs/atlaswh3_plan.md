@@ -360,8 +360,7 @@ to the shipped pack's, the minimap differs along region borders (BOB samples up 
 enough, the user's call). There is no palette-alpha fix to make: the alpha-0 elector_counts palette the survey saw is a
 different source image. Old World's shipped lookup has the same colour in every pixel, but **the user reordered its
 palette by hand** (`lookup_tweak.py`): the game reads only 1024 palette entries and Old World has more settlement
-regions than that. **Circle back:** build that reorder into the step instead of the hand-kept colour list. Left: the
-in-game check. Numbers in `docs/native_campaign_build.md`.
+regions than that. The reorder is now a build setting (Phase 4.4). Left: the in-game check. Numbers in `docs/native_campaign_build.md`.
 
 **3.8 status (2026-10-09):** `CameraHeightmapStep` is in the pipeline. WH3's generator (read off the kit) is 3K's:
 BOB's grid, cell sampling and PNG encoding carry over, and the grid is the tile map × `cam_hmap_resolution_scale`. Why
@@ -467,12 +466,23 @@ Left: the in-game check (an area devastates and restores, with its objects and l
 `docs/native_campaign_build.md`.
 
 **Leftovers from Phases 1–3**
-- [ ] 4.4 Lookup: build Old World's palette reorder (more settlement regions than the game's 1024 palette entries,
+- [x] 4.4 Lookup: build Old World's palette reorder (more settlement regions than the game's 1024 palette entries,
   today `lookup_tweak.py`) into the step (3.7).
 - [ ] 4.5 Pack and install for WH3: `data` folder, the `Warhammer3.exe` running check (Phase 2), so a full rebuild is
   one command from `raw_data` to an installed pack.
 - [ ] 4.6 Fixtures and `TestKits` (Phase 1): frozen source + output snapshots, so the parity work below has regression
   tests.
+
+**4.4 status (2026-10-10):** the user lists the regions (decided 2026-10-10: a list the user provides, not chosen
+by the step). Build profile "Lookup: regions past 1024" (`LookupLast`), CLI `--lookup-last <region,..|file.txt>`:
+region keys, or text files of them. The step finds each region's colour in `regions_tables` (r, g, b, which CAIME
+paints the BMP with) from the mod packs and vanilla, and moves those palette entries and black (hexes without a region)
+to the end of any lookup with more than 1024 entries, in the `.tga`, `.dds` and `_minimap.tga` alike. The small
+lookups (`elector_counts_small`, `wh3_main_hef_court_small`) hold region colours too and are left in BOB's order. With
+`lookup_tweak.py`'s list as region keys (`research/lookup/oldworld_lookup_last.txt`, 301 regions) all three Old World
+files are **byte-identical** to `!cr_oldworld_campaign.pack`'s. The step names the regions still past entry 1024: on
+Old World one, `cr_oldworld_region_skull_guardian` (1,327 entries, 302 moved, so 1,025 are left in front; the shipped
+file has the same). Left: the in-game check.
 
 **Parity** (the Atlas3K method: disassembly of the WH3 DLLs, Frida on `bob.modder.x64.exe`, field-level diffs; only
 where the gap is small or a mismatch is visible)

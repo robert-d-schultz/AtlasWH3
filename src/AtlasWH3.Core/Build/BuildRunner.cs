@@ -322,6 +322,7 @@ public sealed class BuildRunner
     {
         AcceptedTileMapIssues = _project.Build.AcceptTileMap.ToHashSet(),
         PatchMask = _project.Build.PatchMask,
+        LookupLastRegions = _project.Build.LookupLast.Select(e => LookupStep.IsFile(e) ? _project.Resolve(e, _paths) : e).ToList(),
         DevastatedMap = CampaignBuildContext.DevastatedSetting(_project.Build.DevastatedMap),
         Cancel = _cancel,
     };

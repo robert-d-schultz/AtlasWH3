@@ -24,7 +24,7 @@ public sealed class DbSchema
         "campaign_tree_ids_tables", "campaign_tree_types_tables", "campaign_tree_type_cultures_tables", "campaign_tree_variants_tables",
         "prefab_types_tables", "cultures_tables", "bmd_export_types_tables",
         "campaign_map_event_areas_tables", "campaign_map_event_area_types_tables", "campaign_map_event_area_province_region_junctions_tables",
-        "region_to_province_junctions_tables", "battles_tables",
+        "region_to_province_junctions_tables", "battles_tables", "regions_tables",
     ];
 
     /// <summary>RPFM's WH3 schema: %AppData%\FrodoWazEre\rpfm\config\schemas\schema_wh3.ron.</summary>

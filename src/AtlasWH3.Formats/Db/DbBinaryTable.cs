@@ -1,4 +1,5 @@
 using System.Text;
+using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Formats.Db;
 
@@ -18,6 +19,21 @@ public static class DbBinaryTable
         public int Index(string column) => Array.FindIndex(Columns, c => c.Name == column);
         public object? Get(object?[] row, string column) => Index(column) is var i and >= 0 ? row[i]
             : throw new KeyNotFoundException($"{Name} v{Version} has no column {column}");
+    }
+
+    /// <summary>The rows of every file of <paramref name="table"/>, highest-priority pack first (a file name shadowed by a
+    /// higher-priority pack is read from that pack only).</summary>
+    public static IEnumerable<(Table Table, object?[] Row)> PackRows(PackSet packs, string table)
+    {
+        var prefix = PackFile.Normalize($"db/{table}/");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pack in packs.Packs)
+        foreach (var file in pack.Entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            if (!seen.Add(file)) continue;
+            var t = Read(table, pack.TryRead(file)!);
+            foreach (var row in t.Rows) yield return (t, row);
+        }
     }
 
     /// <summary>The table file's version (0 when it has no version marker).</summary>

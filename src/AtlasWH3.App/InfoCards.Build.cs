@@ -103,6 +103,8 @@ public static partial class InfoCards
             "Tile-map validator error codes to let through instead of stopping the build, comma-separated, e.g. layout.mesh_columns. Only for errors you know the game tolerates."),
         new("profile.patchMask", "Patch mask",
             "How tile_list writes patch_mask.dds, the per-patch mask the game hides the sea floor under land with. Fitted (default) spreads the cells over the whole tile map, as the game reads them. Vanilla is BOB's: its rows fall short of the north edge, so the sea floor pokes out under land, worst in the north."),
+        new("profile.lookupLast", "Lookup: regions past 1024",
+            "Regions whose lookup palette entries go to the end, comma-separated region keys or a .txt file of them (one per line, # comments; relative to the project folder). The game reads only the first 1024 palette entries, so on a map with more regions than that, list the ones that can go without (wastelands, unreachable or tiny regions). The .tga, .dds and _minimap.tga are reordered together, and hexes without a region (black) go to the end with them. Empty (default): BOB's order. The lookup step names the regions left past entry 1024."),
         new("profile.devastatedMap", "Devastated project",
             "The devastated version of the map whose event-area pieces devastation_pieces cuts too, by its raw_data folder name. Empty (default): {map}_devastate_1 when the kit has it. none: no devastated pieces. It is an input, not a second campaign: no campaign_maps folder or second compile is needed."),
         new("profile.clean", "Delete before compile",

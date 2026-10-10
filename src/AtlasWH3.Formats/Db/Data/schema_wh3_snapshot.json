@@ -1416,6 +1416,132 @@
           ]
         ]
       }
+    ],
+    "regions_tables": [
+      {
+        "version": 6,
+        "fields": [
+          [
+            "key",
+            "StringU8"
+          ],
+          [
+            "r",
+            "I32"
+          ],
+          [
+            "g",
+            "I32"
+          ],
+          [
+            "b",
+            "I32"
+          ],
+          [
+            "owner_bundle",
+            "OptionalStringU8"
+          ],
+          [
+            "faction_swapping_id",
+            "StringU8"
+          ],
+          [
+            "hidden_settlement_override",
+            "Boolean"
+          ]
+        ]
+      },
+      {
+        "version": 5,
+        "fields": [
+          [
+            "key",
+            "StringU8"
+          ],
+          [
+            "r",
+            "I32"
+          ],
+          [
+            "g",
+            "I32"
+          ],
+          [
+            "b",
+            "I32"
+          ],
+          [
+            "owner_bundle",
+            "OptionalStringU8"
+          ],
+          [
+            "faction_swapping_id",
+            "StringU8"
+          ]
+        ]
+      },
+      {
+        "version": 4,
+        "fields": [
+          [
+            "key",
+            "StringU8"
+          ],
+          [
+            "r",
+            "I32"
+          ],
+          [
+            "g",
+            "I32"
+          ],
+          [
+            "b",
+            "I32"
+          ],
+          [
+            "owner_bundle",
+            "OptionalStringU8"
+          ]
+        ]
+      },
+      {
+        "version": 0,
+        "fields": [
+          [
+            "key",
+            "StringU8"
+          ],
+          [
+            "r",
+            "I32"
+          ],
+          [
+            "g",
+            "I32"
+          ],
+          [
+            "b",
+            "I32"
+          ],
+          [
+            "owner_bundle",
+            "OptionalStringU8"
+          ],
+          [
+            "faction_swapping_id",
+            "StringU8"
+          ],
+          [
+            "hidden_settlement_override",
+            "Boolean"
+          ],
+          [
+            "terrain_patch_area",
+            "OptionalStringU8"
+          ]
+        ]
+      }
     ]
   }
 }

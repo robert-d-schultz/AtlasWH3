@@ -57,6 +57,8 @@ public sealed class BuildProfileEditor : ScrollViewer
         form.Children.Add(Field("Accepted tile-map errors", () => string.Join(", ", b.AcceptTileMap), v => b.AcceptTileMap = Split(v, ','),
                                 key: "profile.acceptTileMap"));
         form.Children.Add(Combo("Patch mask", Enum.GetValues<PatchMaskMode>(), () => b.PatchMask, v => b.PatchMask = v, "profile.patchMask"));
+        form.Children.Add(Field("Lookup: regions past 1024", () => string.Join(", ", b.LookupLast), v => b.LookupLast = Split(v, ','),
+                                key: "profile.lookupLast"));
         form.Children.Add(Field("Devastated project", () => b.DevastatedMap, v => b.DevastatedMap = v.Trim(), key: "profile.devastatedMap"));
         form.Children.Add(Field("Delete before compile", () => string.Join(", ", b.Clean), v => b.Clean = Split(v, ','),
                                 key: "profile.clean"));

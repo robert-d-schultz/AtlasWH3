@@ -84,7 +84,7 @@ public sealed class CampaignBuildPipeline
                 {
                     AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
                     PatchMask = ctx.PatchMask, CampaignMapName = ctx.CampaignMapName, HeightMapBlocks = ctx.HeightMapBlocks,
-                    DevastatedMap = ctx.DevastatedMap,
+                    DevastatedMap = ctx.DevastatedMap, LookupLastRegions = ctx.LookupLastRegions,
                 };
                 var problems = step.CheckInputs(stepCtx);
                 if (problems.Count > 0)
