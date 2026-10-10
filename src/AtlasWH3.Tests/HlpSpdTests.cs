@@ -58,7 +58,8 @@ public class HlpSpdTests
         spd.Magic = CaabWriter.MagicCaab;
         Assert.True(refSpd.AsSpan().SequenceEqual(spd.ToBytes()), "spd_data.esf differs");
         var refHlp = Read("wh3_main_prologue_map", "hlp_data.esf");
-        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), HlpData.Read(refHlp).Timestamp);
+        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), HlpData.Read(refHlp).Timestamp,
+                                   options: new HlpBuilder.Options { LegacyCentrePath = true });
         hlp.Magic = CaabWriter.MagicCaab;
         Assert.True(refHlp.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
@@ -89,18 +90,25 @@ public class HlpSpdTests
         Assert.True(area >= n * 8 * 0.9998, $"area costs {area}/{n * 8}");
     }
 
-    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10): 671 of 695 areas identical, and from CA's own
-    /// transitions the region tables at 99.95 % of costs and 98 % of hop counts.</summary>
+    private static int IdenticalAreas(HlpData hlp, HlpData reference)
+    {
+        var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
+        return hlp.Nodes.SelectMany(n => n.Areas).Count(a => refAreas.TryGetValue(a.Area, out var r) &&
+            a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
+    }
+
+    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10, an older game build's file: legacy centre
+    /// paths): 671 of 695 areas identical, and from CA's own transitions the region tables at 99.95 % of costs and 98 %
+    /// of hop counts.</summary>
     [Fact]
     public void Combi_NativeHlp_Parity()
     {
         var (_, ppd, regions) = Inputs("wh3_main_combi_map_1");
         var reference = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
-        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp);
-        var refAreas = reference.Nodes.SelectMany(n => n.Areas).ToDictionary(a => a.Area);
-        var same = hlp.Nodes.SelectMany(n => n.Areas).Count(a => refAreas.TryGetValue(a.Area, out var r) &&
-            a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
-        Assert.True(same >= 668, $"{same}/{refAreas.Count} identical areas");
+        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp,
+                                   options: new HlpBuilder.Options { LegacyCentrePath = true });
+        var same = IdenticalAreas(hlp, reference);
+        Assert.True(same >= 668, $"{same} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
         HlpRegionTables.Fill(fromRef, wrapLikeGame: true);
@@ -113,6 +121,18 @@ public class HlpSpdTests
         Assert.True(costs >= fromRef.RegionCosts.Length - 200, $"region costs {costs}");
         Assert.True(hops >= fromRef.RegionHops.Length - 8000, $"region hops {hops}");
         Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
+    }
+
+    /// <summary>Guards the current exe's centre paths on combi map 7 (2026-10-10; ring-3 settlement goal, settlement
+    /// ends trimmed): 709 of 720 areas identical (640 with the legacy centre paths).</summary>
+    [Fact]
+    public void Combi7_NativeHlp_Parity()
+    {
+        var (_, ppd, regions) = Inputs("wh3_main_combi_map_7");
+        var reference = HlpData.Read(Read("wh3_main_combi_map_7", "hlp_data.esf"));
+        var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp);
+        var same = IdenticalAreas(hlp, reference);
+        Assert.True(same >= 707, $"{same} identical areas");
     }
 
     /// <summary>The region tables sum in wrapping u32: Old World's 38 unreachable matrix pairs (0xFFFFFFFF) are steps of

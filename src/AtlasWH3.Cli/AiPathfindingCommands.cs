@@ -11,6 +11,7 @@ using AtlasWH3.Formats.Maps;
 ///   hlp-spd --in &lt;dir with pathfinding.ppd, map_data.esf&gt; [--out &lt;dir&gt;] [--compare &lt;dir with reference esf&gt;]
 ///           [--only hlp|spd] [--legacy-stl] [--threshold f] [--centre-blocked] [--threads n]
 ///           [--wrap-like-game] (hlp region tables with the game's wrapping u32 sums, for parity; default: corrected)
+///           [--legacy-centre] (hlp centre paths of older game builds: vanilla chaos 1-4, combi 1-4, prologue, darklands)
 /// Research (with --compare, spd): --diag-slot k [--diag-count n] (cheapest diverging cells), --edge-costs (edge costs
 /// the reference implies), --slot-edges [--all-edges], --show x,y;.., --hexmap-flags, --area-diffs.
 ///   esf-roundtrip &lt;file.esf&gt;...: CAAB/CBAB files through EsfTree and CaabWriter, byte for byte.
@@ -180,6 +181,7 @@ static class AiPathfindingCommands
                 RefineThreshold = float.Parse(Option(a, "--threshold") ?? "0", CultureInfo.InvariantCulture),
                 MaxThreads = threads,
                 WrapLikeGame = a.Contains("--wrap-like-game"),
+                LegacyCentrePath = a.Contains("--legacy-centre"),
             };
             if (Option(a, "--edges") is { } eh) // research: the A* grid's edges around hexes
             {

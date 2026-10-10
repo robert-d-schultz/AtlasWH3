@@ -12,7 +12,8 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///     of a land/sea hex of the area; land/sea hexes of other areas are collected per neighbouring area (a border
 ///     segment, in order of discovery) and not expanded.
 ///  3. Each pair of segments (A→B, B→A), in area order: a path between the two centres (line-tiebroken search refined
-///     by CAMPAIGN_PATHFINDER::refine_path); its last hex in B's segment and first hex in A's segment are the first
+///     by CAMPAIGN_PATHFINDER::refine_path; towards a settlement it ends 3 hexes from it, and settlement ends are
+///     trimmed, see CentrePath); its last hex in B's segment and first hex in A's segment are the first
 ///     transition; then clusters of the remaining border hexes (sets ordered by descending x, y) give more transitions,
 ///     each erasing border hexes closer than 10 hexes. A transition's cost is the path cost between its two hexes,
 ///     every settlement open, with a bridge crossing (the hex before a deck hex, the deck hex and the two after) at 500;
@@ -27,7 +28,7 @@ public static class HlpBuilder
     // research traces: HLP_DEBUG_PAIR=<area id>,<area id> (centre path, refine steps, border sets), HLP_DEBUG_COST=x,y,x,y
     private static readonly string? DebugPair = Environment.GetEnvironmentVariable("HLP_DEBUG_PAIR");
     private static readonly string? DebugCost = Environment.GetEnvironmentVariable("HLP_DEBUG_COST");
-    private static readonly string? DumpCentre = Environment.GetEnvironmentVariable("HLP_DUMP_CENTRE"); // research: first centre-path searches
+    private static readonly string? DumpCentre = Environment.GetEnvironmentVariable("HLP_DUMP_CENTRE"); // research: the refined centre paths, per area pair
 
     public sealed record Options
     {
@@ -41,6 +42,9 @@ public static class HlpBuilder
         public int MaxThreads { get; init; }
         /// <summary>Region tables with the game's wrapping u32 sums (parity with CA's files); default: the corrected ones.</summary>
         public bool WrapLikeGame { get; init; }
+        /// <summary>Centre paths of older game builds (vanilla chaos 1-4, combi 1-4, prologue, darklands): from centre to
+        /// centre, settlement hexes kept. Default: the current exe's (combi 5/7, IEE, Old World).</summary>
+        public bool LegacyCentrePath { get; init; }
     }
 
     private sealed class Seg
@@ -60,6 +64,8 @@ public static class HlpBuilder
     private sealed class Entry
     {
         public int Region, Aid, Centre, Type;
+        /// <summary>The centre is the region's settlement (the game's area has a settlement object).</summary>
+        public bool Settled;
         public uint A, B;
         public List<Seg> Segs = [];
         public List<Tr> Created = [];
@@ -85,8 +91,9 @@ public static class HlpBuilder
                 if (a.Type is not (0 or 3 or 4)) continue;
                 var aid = MapDataRegions.AreaKey(r, i);
                 var centre = a.Centre;
-                if (R.Settlement is { } s && regions.AreaMap[s.Y * W + s.X] == aid) centre = s;
-                var e = new Entry { Region = r, Aid = aid, Centre = centre.Y * W + centre.X, Type = a.Type, A = (uint)a.Id };
+                var settled = R.Settlement is { } s && regions.AreaMap[s.Y * W + s.X] == aid;
+                if (settled) centre = R.Settlement!.Value;
+                var e = new Entry { Region = r, Aid = aid, Centre = centre.Y * W + centre.X, Type = a.Type, A = (uint)a.Id, Settled = settled };
                 list.Add(e);
                 entries.Add(e);
             }
@@ -169,11 +176,32 @@ public static class HlpBuilder
             return cost;
         }
 
+        // The centre path of an area pair (0x142a17200 -> 0x1429f20f0 / 0x1429f2140 / 0x1429f2204 / 0x1429f22bc, by which
+        // of the two areas has a settlement). Towards a settlement the first search stops at the first settled hex
+        // exactly 3 hexes from it (goal 0x14292ab0c); the path from the start to that hex, or to the other centre, is
+        // refined (0x14291dc3c), then the settlement ends lose their hexes of game type >= 4 (slot, port/bridge, river;
+        // 0x1429f24bc). Fewer than 2 hexes left make no waypoints (0x141e481e4), so no centre transition.
         var DebugRefine = false;
-        List<int>? CentrePath(int a, int b)
+        var dumpKey = "";
+        bool Trimmed(int h) => g.Slot[h] || g.Types[h] >= 4;
+        List<int>? CentrePath(Entry from, Entry to)
         {
+            int a = from.Centre, b = to.Centre;
             var edges = g.Gated(options.CentrePathZero, g.Hlci[a], g.Hlci[b]);
             var block = options.CentrePathZero ? null : blocked;
+            if (to.Settled && !options.LegacyCentrePath)
+            {
+                var end = -1;
+                search0.Run(a, edges, blocked: block, lineFrom: (g.WorldX[a], g.WorldY[a]), lineTo: (g.WorldX[b], g.WorldY[b]),
+                            visit: (h, _) =>
+                            {
+                                if (Dist(h, to.Centre) != 3) return AiSearch.Visit.Continue;
+                                end = h;
+                                return AiSearch.Visit.Stop;
+                            });
+                if (end < 0) return null;
+                b = end;
+            }
             var stack = new List<(int A, int B)> { (a, b) };
             var result = new List<int>();
             while (stack.Count > 0)
@@ -183,8 +211,6 @@ public static class HlpBuilder
                                        lineFrom: (g.WorldX[sa], g.WorldY[sa]), lineTo: (g.WorldX[sb], g.WorldY[sb]));
                 if (cost == uint.MaxValue) return null;
                 var path = search0.PathTo(sb);
-                if (DumpCentre is not null && sa == a && sb == b && result.Count == 0)
-                    lock (DumpCentre) File.AppendAllText(DumpCentre, $"{a % W},{a / W} {b % W},{b / W}: {string.Join(" ", path.Select(h => $"{h % W},{h / W}"))}\n");
                 float ax = g.WorldX[sa], ay = g.WorldY[sa], fx = g.WorldX[sb] - ax, fy = g.WorldY[sb] - ay;
                 var worst = 0f;
                 var far = -1;
@@ -206,7 +232,15 @@ public static class HlpBuilder
                 }
             }
             result.Add(b);
-            return result;
+            if (options.LegacyCentrePath) return result;
+            var i0 = 0;
+            var i1 = result.Count;
+            if (from.Settled) while (i0 < i1 && Trimmed(result[i0])) i0++;
+            if (to.Settled) while (i1 > i0 && Trimmed(result[i1 - 1])) i1--;
+            result = result.GetRange(i0, i1 - i0);
+            if (DumpCentre is not null)
+                File.AppendAllText(DumpCentre, $"{dumpKey} {a % W},{a / W} {b % W},{b / W}: {string.Join(" ", result.Select(h => $"{h % W},{h / W}"))}\n");
+            return result.Count < 2 ? null : result;
         }
 
         int Dist(int a, int b) => SpdBuilder.HexDistance(a % W, a / W, b % W, b / W);
@@ -246,7 +280,8 @@ public static class HlpBuilder
         {
             var f1 = (e.Type == 0) != (f.Type == 0);
             DebugRefine = DebugPair is not null && DebugPair == $"{e.Aid},{f.Aid}";
-            var path = CentrePath(e.Centre, f.Centre);
+            if (DumpCentre is not null) dumpKey = $"{e.Aid & MapDataRegions.RegionMask},{e.Aid >> MapDataRegions.AreaShift} {f.Aid & MapDataRegions.RegionMask},{f.Aid >> MapDataRegions.AreaShift}";
+            var path = CentrePath(e, f);
             DebugRefine = false;
             int q = -1, p = -1;
             if (path is not null)
