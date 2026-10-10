@@ -98,7 +98,7 @@ public class HlpSpdTests
     }
 
     /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10, an older game build's file: legacy centre
-    /// paths): 671 of 695 areas identical, and from CA's own transitions the region tables at 99.95 % of costs and 98 %
+    /// paths): 694 of 695 areas identical, and from CA's own transitions the region tables at 99.95 % of costs and 98 %
     /// of hop counts.</summary>
     [Fact]
     public void Combi_NativeHlp_Parity()
@@ -108,7 +108,7 @@ public class HlpSpdTests
         var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp,
                                    options: new HlpBuilder.Options { LegacyCentrePath = true });
         var same = IdenticalAreas(hlp, reference);
-        Assert.True(same >= 668, $"{same} identical areas");
+        Assert.True(same >= 694, $"{same} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
         HlpRegionTables.Fill(fromRef, wrapLikeGame: true);
@@ -123,8 +123,8 @@ public class HlpSpdTests
         Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
     }
 
-    /// <summary>Guards the current exe's centre paths on combi map 7 (2026-10-10; ring-3 settlement goal, settlement
-    /// ends trimmed): 709 of 720 areas identical (640 with the legacy centre paths).</summary>
+    /// <summary>Guards the current exe's transitions on combi map 7 (2026-10-10): every area identical (transitions,
+    /// matrix, centre, a, b).</summary>
     [Fact]
     public void Combi7_NativeHlp_Parity()
     {
@@ -132,7 +132,7 @@ public class HlpSpdTests
         var reference = HlpData.Read(Read("wh3_main_combi_map_7", "hlp_data.esf"));
         var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp);
         var same = IdenticalAreas(hlp, reference);
-        Assert.True(same >= 707, $"{same} identical areas");
+        Assert.Equal(reference.Nodes.Sum(n => n.Areas.Count), same);
     }
 
     /// <summary>The region tables sum in wrapping u32: Old World's 38 unreachable matrix pairs (0xFFFFFFFF) are steps of

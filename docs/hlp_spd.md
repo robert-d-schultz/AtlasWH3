@@ -93,7 +93,16 @@ Open on spd:
     land → deck → deck → land). A type-5 hex inside a settlement's slot area is a slot hex, not a crossing. A step
     onto the deck from a river hex still counts (3K). The ppd's bridge links are not what the game flags.
   - Flag 2 says whether a land-sea transition's path goes through a settlement (a waypoint flagged `0xf800`). 3K's
-    rule was "flag 1 and cost 0".
+    rule was "flag 1 and cost 0". `0x142a17200` ORs the waypoints of both directions into one flag and gives it to
+    both transitions.
+  - The transition search has the line tie-break from one hex to the other (`0x1429ef520` sets `pf+0x170`), like the
+    centre path. Ties decide whether a path is re-costed as a crossing.
+  - In the hlp grid a slot hex's edges to type-5 hexes (ports, bridge decks) cost 0 both ways, like its edges to
+    land, sea and slot hexes. Checked against the game's whole IEE grid (`hlp-spd --dump-edges` against the entry
+    snapshot): every navigable edge now has the game's cost.
+  - A segment pair counts as done only once it holds a transition (`0x142a16d44` tests the data pointer of the
+    segment's transition vector). A pair that made none is tried again from the other area, whose border clusters
+    can find one.
   - Identical areas from these: IEE 944 → 965, Old World 1,419 → 1,491, Classic 801 → 853, combi 1–7 +15 to +17.
   - **Centre paths** (`probe.py --centre`, 2026-10-10). The game picks one of four searches by which of the two
     areas has a settlement (its centre is the settlement):
@@ -137,23 +146,26 @@ equal CA's. "From CA's" is the region tables computed from CA's own transitions 
 |---|---|---|---|
 | prologue | 22 / 22, byte-identical | 100 % / 100 % | 100 % / 100 % |
 | chaos 1–4 | 263/263, 274/274, 281/281, 281/281 | 100 % / 100 % | 99 % / 99 % |
-| combi 1–3 | 671/695, 680, 685 | 99.95 % / 94 % | 98 % / 95 % |
-| combi 4 | 702/713 | 99.95 % / 99.9 % | 98 % / 98 % |
-| combi 5, 7 | 706/717, 709/720 | 99.93 % / 99.9 % | 94 % / 94 % |
-| IEE | 1,050 / 1,068 (98.3 %) | 99.9 % / 99.5 % | 97 % / 96.8 % |
-| Old World | 1,671 / 1,703 (98.1 %) | 99.7 % / 86.6 % (99.0 % wrapped) | 95 % / 81 % (95.2 % wrapped) |
-| Old World Classic | 978 / 992 (98.6 %) | 99.1 % / 80 % (98.7 % wrapped) | 96 % / 76 % (95.8 % wrapped) |
-| Darklands | 295 / 303 (97 %) | 99.95 % / 94 % | 98 % / 97 % |
+| combi 1–3 | 694/695, 703/704, 708/709 | 99.95 % / 99.94–99.95 % | 98 % / 97.8–98.1 % |
+| combi 4 | 713/713 | 99.95 % / 99.94 % | 98 % / 97.9 % |
+| combi 5, 7 | 717/717, 720/720 | 99.93 % / 99.93 % | 94 % / 94.3 % |
+| IEE | 1,067 / 1,068 | 99.9 % / 99.9 % | 97 % / 97.1 % |
+| Old World | 1,690 / 1,703 | 99.7 % / 86.6 % | 95 % / 81.3 % |
+| Old World Classic | 987 / 992 | 99.1 % / 80.2 % | 96 % / 76.2 % |
+| Darklands | 299 / 303 | 99.95 % / 95.0 % | 98 % / 97.0 % |
 
 Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the others with the current rule.
 
 Open on hlp:
-- IEE has 4 transition costs left: A* ties where the game's path takes a different hex at the same cost (and then
-  is or is not a bridge crossing), and two that leave a slot area straight onto a crossing.
-- IEE has 10 flag-2 differences, all land-sea transitions of cost 500 where CA sets the flag and we don't.
-- Transitions on other hexes than CA's (IEE: 6 of 7,476). `probe.py --centre` records the game's centre paths
-  (refined and trimmed) and `HLP_DUMP_CENTRE=<file>` ours. The 26 IEE paths that still differ are equal-cost ties
-  (3K had the same: decided by the push history), and the one search the game fails.
+- Combi 4, 5 and 7: every area identical; only the region tables differ (combi 7: 134 costs, 23k hop counts), so
+  the region-table algorithm itself still differs from the game's.
+- IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
+  at cost 1,180 in one big tie, and the game's pop order differs from ours.
+- Old World: 5 land-sea costs that are ours +80 (sea → type-5 hex → land), 2 more costs, 5 areas on other hexes,
+  3 others; Classic has a subset of them. The waypoint converter (`0x141e481e4`) costs type 3/7 and type 6 hexes
+  with its own move-cost function (`0x14292ca78`) and string-pulls plain runs (`0x141e33c4c`). The game's own
+  waypoints on Old World (`probe.py --waypoints`) would settle these.
+- `probe.py --centre` records the game's centre paths (refined and trimmed) and `HLP_DUMP_CENTRE=<file>` ours.
 - Region tables: one misplaced transition changes every region pair whose cheapest path crosses it. Without the
   game's wrapping Old World is 86.6 % and Classic 80 %, nearly all of it the wrapped steps.
 - Old World's largest region cost: 188,931 against CA's 189,229, also with `--wrap-like-game` (Classic's is equal with it).

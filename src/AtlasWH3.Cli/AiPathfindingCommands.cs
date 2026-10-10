@@ -183,6 +183,12 @@ static class AiPathfindingCommands
                 WrapLikeGame = a.Contains("--wrap-like-game"),
                 LegacyCentrePath = a.Contains("--legacy-centre"),
             };
+            if (Option(a, "--dump-edges") is { } de) // research: the hlp grid's edge bytes (6 per hex, EdgesZero) and cost table
+            {
+                var ag = new AiPathGrid(ppd, regions, settings);
+                File.WriteAllBytes(de, ag.EdgesZero);
+                File.WriteAllBytes(de + ".costs", ag.CostTable.SelectMany(BitConverter.GetBytes).ToArray());
+            }
             if (Option(a, "--edges") is { } eh) // research: the A* grid's edges around hexes
             {
                 var ag = new AiPathGrid(ppd, regions, settings);

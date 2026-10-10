@@ -28,6 +28,7 @@ public static class HlpBuilder
     // research traces: HLP_DEBUG_PAIR=<area id>,<area id> (centre path, refine steps, border sets), HLP_DEBUG_COST=x,y,x,y
     private static readonly string? DebugPair = Environment.GetEnvironmentVariable("HLP_DEBUG_PAIR");
     private static readonly string? DebugCost = Environment.GetEnvironmentVariable("HLP_DEBUG_COST");
+    private static readonly string? DebugArea = Environment.GetEnvironmentVariable("HLP_DEBUG_AREA"); // research: area ids, their border segments
     private static readonly string? DumpCentre = Environment.GetEnvironmentVariable("HLP_DUMP_CENTRE"); // research: the refined centre paths, per area pair
 
     public sealed record Options
@@ -109,6 +110,7 @@ public static class HlpBuilder
             var segIndex = new Dictionary<int, Seg>();
             uint b = 0;
             var edges = g.Gated(true, g.Hlci[e.Centre], 0);
+            var debugCost = DebugArea is not null && DebugArea.Split(',').Contains(e.Aid.ToString()) ? new List<(int H, uint C)>() : null;
             search.Run(e.Centre, edges, visit: (h, c) =>
             {
                 var t = g.Types[h];
@@ -123,9 +125,15 @@ public static class HlpBuilder
                     e.Segs.Add(seg);
                 }
                 seg.Border.Add(h);
+                debugCost?.Add((h, c));
                 return AiSearch.Visit.NoExpand;
             });
             e.B = b;
+            if (debugCost is not null)
+                Console.Error.WriteLine("  discovered: " + string.Join(" ", debugCost.Select(p => $"({p.H % W},{p.H / W})a{regions.AreaMap[p.H] & MapDataRegions.RegionMask},{regions.AreaMap[p.H] >> MapDataRegions.AreaShift}c{p.C}")));
+            if (debugCost is not null)
+                Console.Error.WriteLine($"area {e.Aid} centre ({e.Centre % W},{e.Centre / W}) hlci {g.Hlci[e.Centre]} b {b}: " + string.Join("; ", e.Segs.Select(sg =>
+                    $"{sg.Nb & MapDataRegions.RegionMask},{sg.Nb >> MapDataRegions.AreaShift}: " + string.Join(" ", sg.Border.Select(h => $"({h % W},{h / W})")))));
         });
         log?.Invoke($"hlp: {entries.Count} areas, {entries.Sum(e => e.Segs.Count)} border segments");
 
@@ -149,7 +157,7 @@ public static class HlpBuilder
         {
             viaSlot = false;
             if (a == b) return 0;
-            var cost = search0.Run(a, g.Gated(true, g.Hlci[a], g.Hlci[b]), target: b);
+            var cost = search0.Run(a, g.Gated(true, g.Hlci[a], g.Hlci[b]), target: b, lineFrom: (g.WorldX[a], g.WorldY[a]), lineTo: (g.WorldX[b], g.WorldY[b]));
             if (cost == uint.MaxValue) return cost;
             var path = search0.PathTo(b);
             viaSlot = path.Any(h => slotOwner[h] >= 0);
@@ -271,9 +279,11 @@ public static class HlpBuilder
             var sab = viaSlot;
             var cba = PathCost(qb, pa);
             var sba = viaSlot;
-            // flag 2: a land-sea transition whose path goes through a settlement (a waypoint flagged 0xf800)
-            e.Created.Add(new Tr { P = pa, Q = qb, Cost = cab, Target = f.Aid, Idx = e.Created.Count, F1 = f1, F2 = f1 && sab });
-            f.Created.Add(new Tr { P = qb, Q = pa, Cost = cba, Target = e.Aid, Idx = f.Created.Count, F1 = f1, F2 = f1 && sba });
+            // flag 2: a land-sea transition whose path, either way, goes through a settlement (a waypoint flagged
+            // 0xf800); 0x142a17200 ORs both directions' waypoints into one flag and gives it to both transitions
+            var f2 = f1 && (sab || sba);
+            e.Created.Add(new Tr { P = pa, Q = qb, Cost = cab, Target = f.Aid, Idx = e.Created.Count, F1 = f1, F2 = f2 });
+            f.Created.Add(new Tr { P = qb, Q = pa, Cost = cba, Target = e.Aid, Idx = f.Created.Count, F1 = f1, F2 = f2 });
         }
 
         void Determine(Entry e, Seg s, Seg t, Entry f)
@@ -354,8 +364,11 @@ public static class HlpBuilder
                 if (!byAid.TryGetValue(s.Nb, out var f)) continue;
                 var t = f.Segs.FirstOrDefault(x => x.Nb == e.Aid);
                 if (t is null) continue;
+                // a segment is done once it holds a transition (0x142a16d44 tests the data pointer of its transition
+                // vector), so a pair that made none is tried again from the other area
+                var before = e.Created.Count;
                 Determine(e, s, t, f);
-                s.Matched = t.Matched = true;
+                if (e.Created.Count > before) s.Matched = t.Matched = true;
             }
         log?.Invoke($"hlp: {entries.Sum(e => e.Created.Count)} transitions");
 

@@ -112,7 +112,8 @@ public sealed class AiPathGrid
             for (var d = 0; d < 6; d++)
             {
                 var nb = Neighbour[h * 6 + d];
-                if (nb < 0 || !(Types[nb] <= 1 || Slot[nb])) continue;
+                // land, sea, port/bridge (type 5, from Warhammer3.exe's grid) and other slot hexes
+                if (nb < 0 || !(Types[nb] <= 1 || Types[nb] == 5 || Slot[nb])) continue;
                 EdgesZero[h * 6 + d] &= 0xC0;
                 EdgesZero[nb * 6 + (d + 3) % 6] &= 0xC0;
             }
