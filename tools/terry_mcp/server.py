@@ -40,8 +40,8 @@ map by default, or any .terry via `project` (battle prefabs live under raw_data/
 - For the campaign map, entity edits share one undo history with the prop tools (prop_undo == entity_undo there).
 
 Prefabs (the *prefab* tools): a Prefab entity's ECPrefab.key names a prefab project (<key>.terry) in the database's
-library -- raw_data/art/prefabs/battle (1300 kit prefabs) or raw_data/art/campaign/prefabs (empty in the kit; make_prefab
-creates it). NEVER GUESS a key; take it from list_prefabs. Instances expand with overrides and nested prefabs; the
+library -- raw_data/art/prefabs/battle (1300 kit prefabs) or raw_data/art/prefabs/campaign (WH3's campaign
+prefabs). NEVER GUESS a key; take it from list_prefabs. Instances expand with overrides and nested prefabs; the
 native campaign build (rebuild_props / global_props) flattens campaign prefab instances into global_props.bin, since the
 game has no campaign prefab files for them to reference.
 

@@ -26,7 +26,7 @@ public sealed class PrefabDefinition
 
 /// <summary>
 /// The prefabs Terry can place in a project of one database: every *.terry under the database's prefab folder in the
-/// kit's raw_data (configuration.xml: battle → art/prefabs/battle, campaign → art/campaign/prefabs). A key is the
+/// kit's raw_data (configuration.xml; WH3's kit: battle → art/prefabs/battle, campaign → art/prefabs/campaign). A key is the
 /// project's file name; the kit has a few duplicate names, where the first path (ordinal order) wins, as reported by
 /// <see cref="Duplicates"/>.
 /// </summary>
@@ -56,17 +56,21 @@ public sealed class PrefabLibrary
         });
     }
 
-    /// <summary>The library Terry uses for a database, from the kit's configuration.xml (defaults if it is missing).</summary>
+    /// <summary>The library Terry uses for a database, from the kit's configuration.xml; WH3's art/prefabs/&lt;database&gt;
+    /// when the file is missing or names a folder that does not exist (3K's art/campaign/prefabs, say).</summary>
     public static PrefabLibrary ForKit(string akRoot, string database)
     {
-        var relative = database == "campaign" ? "art/campaign/prefabs" : "art/prefabs/battle";
+        var fallback = "art/prefabs/" + database;
+        var relative = fallback;
         var config = System.IO.Path.Combine(akRoot, "working_data", "Terry", "configuration.xml");
         if (File.Exists(config))
         {
             var path = XDocument.Load(config).Root?.Elements("item").FirstOrDefault(i => (string?)i.Attribute("key") == "path")
                 ?.Elements("item").FirstOrDefault(i => (string?)i.Attribute("key") == database)
                 ?.Elements("item").FirstOrDefault(i => (string?)i.Attribute("key") == "prefab")?.Value.Trim();
-            if (!string.IsNullOrEmpty(path)) relative = path;
+            if (!string.IsNullOrEmpty(path)
+                && Directory.Exists(System.IO.Path.Combine(akRoot, "raw_data", path.Replace('/', System.IO.Path.DirectorySeparatorChar))))
+                relative = path;
         }
         return new PrefabLibrary(System.IO.Path.Combine(akRoot, "raw_data", relative.Replace('/', System.IO.Path.DirectorySeparatorChar)), database);
     }

@@ -348,10 +348,10 @@ full_height_map only where the pieces cut it), and its pieces match IEE's shippe
 XML database, dropping the mods' tree types; Old World's extra devastate pieces are stale IEE copies (§2); and
 `!cr_oldworld_campaign.pack` (Oct 6) ships an `event_area_mask.dds` with every pixel 255, BOB's from before the event
 area TIF was painted (the devastate folder's is right). Left:
-- the objects and sounds (`objects`, `bmd_objects_sound`, `_devastation_<type>`, `.culture`): BMD v27 bodies, with 3.9;
-- the `rivers` files (lava river splines; IEE's main map has 2), which 3.10's bake now makes possible;
-- the devastated folder's `environment_collection.xml` (BOB's Terry file action) and `lf_normal.dds` (NVTT; cut from
-  working_data's for now);
+- the objects and sounds (`objects`, `bmd_objects_sound`, `_devastation_<type>`, `.culture`): done in Phase 4.1;
+- the `rivers` files (lava river splines; IEE's main map has 2): done in Phase 4.2;
+- `lf_normal.dds` (NVTT; cut from working_data's for now): Phase 4.3. The devastated folder's
+  `environment_collection.xml` is the map author's own file;
 - the in-game check.
 Numbers in `docs/native_campaign_build.md`.
 
@@ -392,7 +392,7 @@ the ear clipping, hidden groups in layers and prefabs. Left:
 - the in-game check;
 - the remaining ulps (effects inside prefabs, rotated sound emitters), see `docs/native_campaign_build.md`;
 - the devastated project's `global_props[_sound]_devastation_<type>.bin` (they ship nowhere, §2) and the pieces'
-  objects (3.6), which now have a writer.
+  objects (3.6, done in Phase 4.1).
 Numbers in `docs/native_campaign_build.md`.
 
 **3.10 status (2026-10-09):** `RiversStep` (`Wh3River`) is in the pipeline: `models\river_<entity id>.wsmodel` and
@@ -409,7 +409,7 @@ so the working_data lookup is gone. Content parity unchanged (Old World 98.83%, 
 with no river record differing. IEE 8 s, Old World 0.8 s. Atlas3K's 3K river bake (`BobRiver`, river numbering,
 `--river-geometry`) is removed. Left:
 - the in-game check;
-- the pieces' `rivers` files (3.6), which can now be cut from this bake.
+- the pieces' `rivers` files (3.6, done in Phase 4.2).
 Numbers in `docs/native_campaign_build.md`.
 
 Each step is done when:
@@ -426,11 +426,30 @@ parity. Files the user writes by hand are inputs, not outputs: `environment_coll
 `event_vfx`.
 
 **Completeness:** what ships but is still BOB's
-- [ ] 4.1 The pieces' objects: `objects(.culture)`, `bmd_objects_sound(.culture)`, and on the devastate side
+- [x] 4.1 The pieces' objects: `objects(.culture)`, `bmd_objects_sound(.culture)`, and on the devastate side
   `objects_devastation_<type>` / `bmd_objects_sound_devastation_<type>`. This is 3.9's builder applied per event area,
   to the main and devastated projects (3.6 left).
-- [ ] 4.2 The pieces' `rivers` files, cut from 3.10's bake (IEE's main map has 2, from its lava rivers).
+- [x] 4.2 The pieces' `rivers` files, cut from 3.10's bake (IEE's main map has 2, from its lava rivers).
 - [ ] 4.3 `lf_normal.dds` (DXT5nm; BOB's Campaign Heightmap action, NVTT). The main map ships it and the pieces cut it.
+
+**4.1–4.2 status (2026-10-10):** `DevastationPiecesStep` writes every piece's objects and sound files, per
+bmd_export_type, with their `.culture`, for the main and the devastated project (`Wh3GlobalPropsBuilder.BuildPieces`).
+The same files as BOB in all four folders. BOB's record order changes from run to run, so parity is content (records
+with their culture masks, `gp27-pieces-diff`): IEE main 99.96% of 485,625 records, IEE devastate 99.78% of 552,712, Old
+World main 95.98% of 80,002, Old World devastate 78.36% of 5,518. Leaving out the three fields BOB reads only from
+models loose in its kit (the model-box decision of 3.9) gives 99.98%, 100.00%, 99.87% and 99.95%. The `rivers` files
+list the `river_lava` rivers: IEE's two match the pack's (one byte-identical, one in the other order). Found on the way:
+- the `.culture` layout: sections `p m v lp ls ht sc` / `ss`; bit 63 for a culture with no prefab_types row; `ht` is
+  (triangle count, mask) per run of one hole's triangles;
+- BOB writes no files for a type with nothing in the piece, and no light probes or rivers in pieces;
+- **an ECTransform pivot moves the entity** (position + pivot − RS·pivot). This also fixes two IEE mountains in
+  global_props (content parity: IEE 85.10%, Old World unchanged at 98.83%);
+- **the user's kit's Terry `configuration.xml` names 3K's `art/campaign/prefabs`** (changed 2026-10-09 10:20; the
+  scratch kit's copy has `art/prefabs/campaign`), so IEE's `white_tree_of_morash_chaos_bits` prefab was dropped. The
+  prefab library now falls back to WH3's folder when the configured one does not exist.
+
+Left: the in-game check (an area devastates and restores, with its objects and lava rivers). Numbers in
+`docs/native_campaign_build.md`.
 
 **Leftovers from Phases 1–3**
 - [ ] 4.4 Lookup: build Old World's palette reorder (more settlement regions than the game's 1024 palette entries,

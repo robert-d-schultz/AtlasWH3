@@ -32,7 +32,7 @@ public sealed class EntityEditor
     public ComponentSchema Schema { get; }
 
     private PrefabLibrary? _prefabs;
-    /// <summary>The prefabs Terry offers for this project's database (raw_data/art/prefabs/battle, art/campaign/prefabs).</summary>
+    /// <summary>The prefabs Terry offers for this project's database (raw_data/art/prefabs/battle, art/prefabs/campaign).</summary>
     public PrefabLibrary Prefabs => _prefabs ??= PrefabLibrary.ForKit(_paths.AssemblyKitRoot, File.Exists(TerryPath) ? Project.Database : "campaign");
 
     /// <summary>Files an op batch creates outside the project folder (new prefabs), written at commit.</summary>

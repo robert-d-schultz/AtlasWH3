@@ -188,7 +188,7 @@ public class PrefabTests
         var kit = Directory.CreateTempSubdirectory();
         try
         {
-            var lib = Path.Combine(kit.FullName, "raw_data", "art", "campaign", "prefabs");
+            var lib = Path.Combine(kit.FullName, "raw_data", "art", "prefabs", "campaign");
             MakeLibrary(lib);
             var map = Path.Combine(kit.FullName, "raw_data", "terrain", "campaigns", "m");
             Directory.CreateDirectory(map);

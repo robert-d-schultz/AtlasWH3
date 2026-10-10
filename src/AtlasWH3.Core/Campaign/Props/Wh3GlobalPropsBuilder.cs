@@ -41,6 +41,15 @@ public sealed class Wh3GlobalPropsBuilder
         public string What = "";
         public float[]? DefaultBox;
         public required Action<Bmd27Body> Add;
+        /// <summary>The bmd_export_type of the group that holds it ("" for none): devastation pieces put a typed object in
+        /// objects_&lt;type&gt; / bmd_objects_sound_&lt;type&gt;.</summary>
+        public string Type = "";
+        /// <summary>A baked river (models/river_&lt;id&gt;): never in a piece's objects.</summary>
+        public bool River;
+        /// <summary>The culture mask a piece's .culture file holds for it.</summary>
+        public ulong PieceMask;
+        /// <summary>The terrain hole a triangle belongs to (-1 for anything else).</summary>
+        public int Hole = -1;
     }
 
     /// <summary>A world transform: row-major 3x3 rotation-scale and a position, in float as BOB keeps it.</summary>
@@ -52,7 +61,15 @@ public sealed class Wh3GlobalPropsBuilder
             var r = Floats((string?)t?.Attribute("rotation") ?? "0 0 0");
             var s = Floats((string?)t?.Attribute("scale") ?? "1 1 1");
             var m = QtuTransform.MatrixWh3(r[0], r[1], r[2], s[0], s[1], s[2]);
-            return new Xf(m.Select(v => (float)v).ToArray(), p[0] + 0f, p[1] + 0f, p[2] + 0f, QtuTransform.QuaternionWh3(r[0], r[1], r[2]));
+            var xf = new Xf(m.Select(v => (float)v).ToArray(), p[0] + 0f, p[1] + 0f, p[2] + 0f, QtuTransform.QuaternionWh3(r[0], r[1], r[2]));
+            // rotation and scale turn about the pivot: the origin moves to position + pivot - RS·pivot (BOB's IEE
+            // dragonspine mountains, pivot (0, 2.88, 0) under a 17° tilt: x + 0.851)
+            if ((string?)t?.Attribute("pivot") is { } pv && Floats(pv) is [var px, var py, var pz] && (px != 0 || py != 0 || pz != 0))
+            {
+                var (rx, ry, rz) = (xf with { X = 0, Y = 0, Z = 0 }).Apply(px, py, pz);
+                xf = xf with { X = xf.X + px - rx, Y = xf.Y + py - ry, Z = xf.Z + pz - rz };
+            }
+            return xf;
         }
 
         /// <summary>This transform applied after <paramref name="child"/> (a prefab instance around an inner entity), the
@@ -80,7 +97,12 @@ public sealed class Wh3GlobalPropsBuilder
     private readonly Func<float, float, string> _regionAt;
     private readonly List<Obj> _objects = [];
     private readonly List<Obj> _sounds = [];
+    /// <summary>Rivers whose material is a river_lava one: (x, y, z) of the entity, for the pieces' rivers files.</summary>
+    private readonly List<(float X, float Y, float Z)> _lavaRivers = [];
     private int _sub;
+    private int _holes;
+    /// <summary>The bmd_export_type of the layer entity being added.</summary>
+    private string _type = "";
 
     public List<string> Notes { get; } = [];
 
@@ -117,13 +139,39 @@ public sealed class Wh3GlobalPropsBuilder
         var root = XDocument.Load(layerPath).Root!;
         var entities = root.Element("entities")?.Elements("entity").ToList() ?? [];
         var hidden = HiddenMembers(root, entities);
+        var types = TypedMembers(root, entities);
         foreach (var e in entities)
         {
             if (e.Element("ECLayer") is not null) continue;
             var id = ulong.TryParse((string?)e.Attribute("id"), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v) ? v : 0;
             if (hidden.Contains((string?)e.Attribute("id") ?? "")) continue;
+            _type = types.GetValueOrDefault((string?)e.Attribute("id") ?? "", "");
             Entity(e, id, Xf.Of(e.Element("ECTransform")), 0);
         }
+        _type = "";
+    }
+
+    /// <summary>The bmd_export_type of every id an ECLayer group with one owns (through Logical associations,
+    /// transitively; the nearest typed group wins): the devastated project's devastation_chaos / _nagash / _skaven groups
+    /// and their "sound" subgroups.</summary>
+    internal static Dictionary<string, string> TypedMembers(XElement root, List<XElement> entities)
+    {
+        var groups = entities.Where(e => e.Element("ECLayer") is not null).ToDictionary(e => (string)e.Attribute("id")!, e => e);
+        var members = new Dictionary<string, List<string>>();
+        foreach (var from in root.Element("associations")?.Element("Logical")?.Elements("from") ?? [])
+            members[(string)from.Attribute("id")!] = from.Elements("to").Select(t => (string)t.Attribute("id")!).ToList();
+        var owned = new HashSet<string>(members.Values.SelectMany(m => m));
+        var result = new Dictionary<string, string>();
+        void Visit(string id, string type, HashSet<string> path)
+        {
+            if (!path.Add(id)) return;
+            if (groups.TryGetValue(id, out var g) && (string?)g.Element("ECLayer")!.Attribute("bmd_export_type") is { Length: > 0 } own) type = own;
+            if (type.Length > 0) result[id] = type;
+            foreach (var m in members.GetValueOrDefault(id) ?? []) Visit(m, type, path);
+            path.Remove(id);
+        }
+        foreach (var id in groups.Keys.Where(id => !owned.Contains(id))) Visit(id, "", []);
+        return result;
     }
 
     private readonly Dictionary<string, HashSet<string>> _prefabHidden = new(StringComparer.OrdinalIgnoreCase);
@@ -194,7 +242,8 @@ public sealed class Wh3GlobalPropsBuilder
         var cp = e.Element("ECCampaignProperties");
         bool Cp(string name, bool fallback) => cp?.Attribute(name) is { } a ? (string)a == "true" : fallback;
         byte B(bool v) => v ? (byte)1 : (byte)0;
-        var cultures = Cultures((string?)cp?.Attribute("culture_mask") ?? "");
+        _cultureMask = (string?)cp?.Attribute("culture_mask") ?? "";
+        var cultures = Cultures(_cultureMask);
         var vis = e.Element("ECVisibilitySettingsCampaign");
         var flags = new Bmd27Flags(B((string?)vis?.Attribute("visible_in_tactical_view") == "true"),
                                    B((string?)vis?.Attribute("visible_in_tactical_view_only") == "true"));
@@ -211,6 +260,7 @@ public sealed class Wh3GlobalPropsBuilder
             // World's river 19261f91ac8e913: y 0.757 -> 0)
             var model = $"terrain/campaigns/{_mapName}/models/river_{(string?)e.Attribute("id")}.wsmodel";
             var spline = Rivers.Wh3River.Read(e);
+            if (spline?.Material.Contains("river_lava", StringComparison.OrdinalIgnoreCase) == true) _lavaRivers.Add((world.X, world.Y, world.Z));
             var placed = world;
             if (spline is not null)
             {
@@ -225,6 +275,7 @@ public sealed class Wh3GlobalPropsBuilder
                 Add = b => { var r = PropRecord(b, model, placed, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.B2 = 0; b.Props.Add(r); },
             });
             o.RootCell = box is null;
+            o.River = true;
             return;
         }
         if (e.Element("ECDecal") is { } decal)
@@ -350,10 +401,12 @@ public sealed class Wh3GlobalPropsBuilder
             var indices = Triangulate(local);
             // every triangle is boxed by the whole hole (BOB puts all of a hole's triangles in one cell)
             float[] box = [outline.Min(p => p.X), outline.Min(p => p.Z), outline.Max(p => p.X), outline.Max(p => p.Z)];
+            var hole = _holes++;
             for (var k = 0; k + 2 < indices.Count; k += 3)
             {
                 var (a, bb, cc) = (outline[indices[k]], outline[indices[k + 1]], outline[indices[k + 2]]);
-                Add("hole", b => b.Holes.Add(new Bmd27Hole { Vertices = [a.X, a.Y, a.Z, bb.X, bb.Y, bb.Z, cc.X, cc.Y, cc.Z], Flags = flags }), box);
+                Add("hole", b => b.Holes.Add(new Bmd27Hole { Vertices = [a.X, a.Y, a.Z, bb.X, bb.Y, bb.Z, cc.X, cc.Y, cc.Z], Flags = flags }), box)
+                    .Hole = hole;
             }
             return;
         }
@@ -388,7 +441,7 @@ public sealed class Wh3GlobalPropsBuilder
             var radius = sphere is null ? 0f : float.Parse((string?)sphere.Attribute("radius") ?? "0", CultureInfo.InvariantCulture);
             _sounds.Add(new Obj
             {
-                Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1],
+                Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1], Type = _type, PieceMask = PieceMask(cultures, _cultureMask),
                 Add = b => b.Sounds.Add(new Bmd27Sound
                 {
                     Name = key, Shape = shape, Points = points, Radius = radius, CultureMask = mask, Axes = QtuTransform.AxesWh3(world.Q),
@@ -399,9 +452,19 @@ public sealed class Wh3GlobalPropsBuilder
 
     private Obj AddObj(Obj o)
     {
+        o.Type = _type;
+        o.PieceMask = PieceMask(o.Cultures, _cultureMask);
         _objects.Add(o);
         return o;
     }
+
+    /// <summary>The culture_mask attribute of the entity being added.</summary>
+    private string _cultureMask = "";
+
+    /// <summary>A piece's .culture mask: the bit of each culture (bit 63 for one without a prefab_types row), 0 for an
+    /// entity that names none.</summary>
+    private static ulong PieceMask(IReadOnlyList<int> values, string mask) =>
+        mask.Trim().Length == 0 ? 0 : values.Aggregate(0UL, (m, v) => m | Bit(v));
 
     private Bmd27Prop PropRecord(Bmd27Body b, string model, Xf world, bool isDecal, Func<string, bool, bool> cp, Bmd27Flags flags,
         bool shroud, bool shroudOnly, bool noCulling, XElement? decal, XElement e, ModelData? info = null)
@@ -590,7 +653,7 @@ public sealed class Wh3GlobalPropsBuilder
         var prefix = $"terrain/campaigns/{_mapName}/bmd_objects";
         var placed = new List<(int Cell, string Region, int Bucket, Obj O)>();
         var dropped = 0;
-        foreach (var o in _objects)
+        foreach (var o in _objects.Where(o => o.Type.Length == 0))
         {
             var cell = CellOf(o);
             var region = _regionAt(o.X, o.Z);
@@ -602,7 +665,7 @@ public sealed class Wh3GlobalPropsBuilder
         }
         if (dropped > 0) Notes.Add($"{dropped} objects reach outside the quadtree root: dropped (as BOB)");
         // a sound emitter's (region, cell) gets an empty bucket-16 body here too (its records go to global_props_sound.bin)
-        foreach (var o in _sounds)
+        foreach (var o in _sounds.Where(o => o.Type.Length == 0))
             if (CellOf(o) is var cell and >= 0)
                 placed.Add((cell, _regionAt(o.X, o.Z), 16, new Obj { Kind = "sound", Id = o.Id, Sub = o.Sub, Cultures = [1], Add = _ => { } }));
 
@@ -643,7 +706,8 @@ public sealed class Wh3GlobalPropsBuilder
     {
         var prefix = $"terrain/campaigns/{_mapName}/bmd_objects";
         var entries = new List<(string, byte[])>();
-        var placed = _sounds.Select(o => (Cell: CellOf(o), Region: _regionAt(o.X, o.Z), O: o)).Where(p => p.Cell >= 0).ToList();
+        var placed = _sounds.Where(o => o.Type.Length == 0).Select(o => (Cell: CellOf(o), Region: _regionAt(o.X, o.Z), O: o))
+            .Where(p => p.Cell >= 0).ToList();
         foreach (var cellGroup in placed.GroupBy(p => p.Cell).OrderBy(g => g.Key))
         {
             var byRegion = cellGroup.GroupBy(p => p.Region).ToDictionary(g => g.Key, g => g.Select(p => p.O).ToList(), StringComparer.Ordinal);
@@ -656,6 +720,90 @@ public sealed class Wh3GlobalPropsBuilder
         }
         return entries;
     }
+
+    /// <summary>One file of a devastation piece: objects / bmd_objects_sound, or their _&lt;type&gt; variants, as the .bin
+    /// (one flat body) and its .culture.</summary>
+    public sealed record PieceFile(string Stem, byte[] Bin, byte[] Culture);
+
+    /// <summary>
+    /// The objects and sound emitters of each devastation piece: every object whose position <paramref name="pieceAt"/>
+    /// puts in a piece, but the rivers, flattened into one body per bmd_export_type, with the culture masks in the
+    /// .culture beside it (the body's own are a placeholder: 1, the sound emitters' 0). A type's two files are written
+    /// when the piece has an object or a sound emitter of it, so the sound file can be an empty body, and a piece with
+    /// neither has no files (IEE's devastated event_903b5c). Light probes stay map-wide (no BOB piece has one).
+    /// </summary>
+    public List<PieceFile>[] BuildPieces(Func<float, float, int> pieceAt, int pieceCount)
+    {
+        var groups = new Dictionary<(int Piece, string Type), (List<Obj> Objects, List<Obj> Sounds)>();
+        (List<Obj>, List<Obj>) Group(int piece, string type) =>
+            groups.TryGetValue((piece, type), out var g) ? g : groups[(piece, type)] = ([], []);
+        foreach (var o in _objects.Where(o => !o.River && o.Kind != "probe"))
+            if (pieceAt(o.X, o.Z) is var p and >= 0) Group(p, o.Type).Item1.Add(o);
+        foreach (var o in _sounds)
+            if (pieceAt(o.X, o.Z) is var p and >= 0) Group(p, o.Type).Item2.Add(o);
+
+        var result = Enumerable.Range(0, pieceCount).Select(_ => new List<PieceFile>()).ToArray();
+        for (var p = 0; p < pieceCount; p++)
+            foreach (var type in groups.Keys.Where(k => k.Piece == p).Select(k => k.Type).Order(StringComparer.Ordinal))
+            {
+                var (objects, sounds) = groups[(p, type)];
+                var suffix = type.Length == 0 ? "" : "_" + type;
+                result[p].Add(PieceBody("objects" + suffix, objects));
+                result[p].Add(PieceBody("bmd_objects_sound" + suffix, sounds));
+            }
+        return result;
+    }
+
+    /// <summary>
+    /// Each piece's rivers file: 16-byte records (x, y, z, 0) of the rivers whose material name contains "river_lava" and
+    /// whose entity position is in the piece: IEE's shipped pieces list its 7 cr_campaign_water_plane_river_lava rivers at
+    /// their layer positions, but not its wh_campaign_lava one (vanilla's devastated rivers: cwb_campaign_river_lava).
+    /// The game claims a kept river by this position and gives it the lava material while the area is devastated. Null
+    /// for a piece with none.
+    /// </summary>
+    public byte[]?[] BuildPieceRivers(Func<float, float, int> pieceAt, int pieceCount)
+    {
+        var lists = new List<(float X, float Y, float Z)>?[pieceCount];
+        foreach (var r in _lavaRivers)
+            if (pieceAt(r.X, r.Z) is var p and >= 0) (lists[p] ??= []).Add(r);
+        return lists.Select(l => l is null ? null : l.SelectMany(r =>
+        {
+            var record = new byte[16];
+            BitConverter.TryWriteBytes(record.AsSpan(0), r.X);
+            BitConverter.TryWriteBytes(record.AsSpan(4), r.Y);
+            BitConverter.TryWriteBytes(record.AsSpan(8), r.Z);
+            return record;
+        }).ToArray()).ToArray();
+    }
+
+    /// <summary>One piece file; its framing is global_props.bin's (the props' after-lights bytes, sound files included).</summary>
+    private static PieceFile PieceBody(string stem, List<Obj> objects)
+    {
+        var body = new Bmd27Body();
+        var masks = PieceCulture.Tags.ToDictionary(t => t, _ => new List<ulong>());
+        var lastHole = -1;
+        foreach (var o in objects.OrderBy(o => o.Sub))
+        {
+            o.Add(body);
+            if (PieceTag(o.Kind) is not { } tag) continue;
+            if (tag != "ht") { masks[tag].Add(o.PieceMask); continue; }
+            // terrain holes: (triangle count, mask) per run of consecutive triangles of one hole (Old World's BOB pieces:
+            // (21, 0), (34, 0), ...; IEE's shuffled ones mostly runs of 1)
+            var ht = masks[tag];
+            if (o.Hole == lastHole) ht[^2]++;
+            else { ht.Add(1); ht.Add(o.PieceMask); }
+            lastHole = o.Hole;
+        }
+        foreach (var s in body.Sounds) s.CultureMask = 0;
+        return new PieceFile(stem, body.ToBytes(), PieceCulture.Write(PieceCulture.Tags.Select(t => (t, (IReadOnlyList<ulong>)masks[t]))));
+    }
+
+    /// <summary>The .culture section of an object kind (light probes have none).</summary>
+    private static string? PieceTag(string kind) => kind switch
+    {
+        "prop" or "decal" => "p", "poly" => "m", "vfx" => "v", "light" => "lp", "spot" => "ls", "hole" => "ht", "scene" => "sc",
+        "sound" => "ss", _ => null,
+    };
 
     public int ObjectCount => _objects.Count;
     public int SoundCount => _sounds.Count;

@@ -106,6 +106,133 @@ public class GlobalPropsTests
         finally { dir.Delete(true); }
     }
 
+    /// <summary>Devastation pieces' objects files on a small layer: one flat body per bmd_export_type (a typed group's
+    /// nested "sound" group included), .culture masks (0 for no culture, bit 63 for one without a prefab_types row),
+    /// light probes and rivers left out, an entity turned about its pivot, a hole's (triangle count, mask) run, and the
+    /// lava river in the rivers file.</summary>
+    [Fact]
+    public void Builder_Pieces_SplitByExportTypeWithCultureFiles()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var layer = Path.Combine(dir.FullName, "a.layer");
+            File.WriteAllText(layer, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <layer version="41">
+                  <entities>
+                    <entity id="1000000000000a1">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/x.rigid_model_v2" opacity="1"/>
+                      <ECCampaignProperties culture_mask="wh_main_emp_empire,mixer_x"/>
+                      <ECTransform position="10 0 10" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a2">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/p.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="10 0 10" rotation="90 0 0" scale="1 1 1" pivot="0 2 0"/>
+                    </entity>
+                    <entity id="1000000000000a3">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/chaos.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="12 0 12" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a4">
+                      <ECSoundMarker key="snd"/>
+                      <ECTransform position="14 0 14" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a5">
+                      <ECLightProbe primary="true"/>
+                      <ECTransform position="16 0 16" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a6">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/far.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="80 0 80" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000d1">
+                      <ECTerrainHole/>
+                      <ECPolyline closed="true"><point x="0" y="0"/><point x="1" y="0"/><point x="1" y="1"/><point x="0" y="1"/></ECPolyline>
+                      <ECCampaignProperties culture_mask="wh_main_emp_empire"/>
+                      <ECTransform position="30 0 30" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000c1">
+                      <ECRiver/>
+                      <ECTransform position="20 1.5 20" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign/cr_campaign_water_plane_river_lava.xml.material">
+                        <spline closed="false">
+                          <point position="0,0,0" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
+                          <point position="0,0,-4" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
+                        </spline>
+                      </ECRiverSpline>
+                    </entity>
+                    <entity id="1000000000000c2">
+                      <ECRiver/>
+                      <ECTransform position="22 0 22" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign_sea/water.xml.material">
+                        <spline closed="false">
+                          <point position="0,0,0" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
+                          <point position="0,0,-4" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
+                        </spline>
+                      </ECRiverSpline>
+                    </entity>
+                    <entity id="1000000000000b1" name="devastation_chaos"><ECLayer export="true" bmd_export_type="devastation_chaos"/></entity>
+                    <entity id="1000000000000b2" name="sound"><ECLayer export="true" bmd_export_type=""/></entity>
+                  </entities>
+                  <associations><Logical>
+                    <from id="1000000000000b1"><to id="1000000000000a3"/><to id="1000000000000b2"/></from>
+                    <from id="1000000000000b2"><to id="1000000000000a4"/></from>
+                  </Logical></associations>
+                </layer>
+                """);
+            var cultures = new Dictionary<string, int> { ["wh_main_emp_empire"] = 11 };
+            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), cultures, "m", (0, 0, 100, 100), (_, _) => "r");
+            builder.AddLayer(layer);
+            var files = Assert.Single(builder.BuildPieces((x, _) => x < 50 ? 0 : -1, 1)).ToDictionary(f => f.Stem);
+            Assert.Equal(["bmd_objects_sound", "bmd_objects_sound_devastation_chaos", "objects", "objects_devastation_chaos"], files.Keys.Order());
+
+            var objects = Bmd27Body.Parse(files["objects"].Bin);
+            Assert.Equal(["rigidmodels/x.rigid_model_v2", "rigidmodels/p.rigid_model_v2"], objects.PropPaths);
+            Assert.Empty(objects.Probes);
+            Assert.All(objects.Props, p => Assert.Equal(1UL, p.CultureMask));
+            // turned 90° about x around (0, 2, 0): the origin moves to (10, 2, 8) or (10, 2, 12)
+            var pivoted = objects.Props[1].Transform;
+            Assert.Equal(10f, pivoted[9], 4);
+            Assert.Equal(2f, pivoted[10], 4);
+            Assert.Equal(2f, MathF.Abs(pivoted[11] - 10), 4);
+            var culture = PieceCulture.Read(files["objects"].Culture);
+            Assert.Equal(["p", "ht"], culture.Select(c => c.Tag));
+            Assert.Equal([1UL << 10 | 1UL << 63, 0UL], culture[0].Masks);
+            // the hole's two triangles: one (count, mask) run
+            Assert.Equal(2, objects.Holes.Count);
+            Assert.Equal([2UL, 1UL << 10], culture[1].Masks);
+
+            Assert.Equal(["rigidmodels/chaos.rigid_model_v2"], Bmd27Body.Parse(files["objects_devastation_chaos"].Bin).PropPaths);
+            var sound = Assert.Single(Bmd27Body.Parse(files["bmd_objects_sound_devastation_chaos"].Bin).Sounds);
+            Assert.Equal(0UL, sound.CultureMask);
+            Assert.Equal("ss", Assert.Single(PieceCulture.Read(files["bmd_objects_sound_devastation_chaos"].Culture)).Tag);
+            Assert.Empty(Bmd27Body.Parse(files["bmd_objects_sound"].Bin).Sounds);
+            Assert.Empty(files["bmd_objects_sound"].Culture);
+
+            // rivers stay map-wide; the lava one is listed in the rivers file by its entity position
+            Assert.DoesNotContain(objects.PropPaths, p => p.Contains("river_"));
+            var rivers = Assert.Single(builder.BuildPieceRivers((x, _) => x < 50 ? 0 : -1, 1));
+            Assert.Equal(new byte[] { 0, 0, 0xa0, 0x41, 0, 0, 0xc0, 0x3f, 0, 0, 0xa0, 0x41, 0, 0, 0, 0 }, rivers);
+
+            // the typed objects stay out of global_props(_sound).bin
+            Assert.DoesNotContain(builder.BuildProps(), e => Bmd27Body.Parse(e.Body).PropPaths.Contains("rigidmodels/chaos.rigid_model_v2"));
+            Assert.Empty(builder.BuildSound());
+        }
+        finally { dir.Delete(true); }
+    }
+
+    /// <summary>The .culture sections round-trip, empty ones left out.</summary>
+    [Fact]
+    public void PieceCulture_RoundTrips()
+    {
+        var bytes = PieceCulture.Write([("p", [1UL, 1UL << 63]), ("m", []), ("ht", [0UL])]);
+        Assert.Equal(8 + 16 + 8 + 8, bytes.Length);
+        var sections = PieceCulture.Read(bytes);
+        Assert.Equal(["p", "ht"], sections.Select(s => s.Tag));
+        Assert.Equal(bytes, PieceCulture.Write(sections.Select(s => (s.Tag, (IReadOnlyList<ulong>)s.Masks))));
+    }
+
     /// <summary>
     /// The step against a BOB run of the same sources (the scratch kit's Old World, 2026-10-09): content parity (record
     /// order and one-prop numbering aside, which differ between two BOB runs) 98.8%. Most of the rest is 436 objects in a

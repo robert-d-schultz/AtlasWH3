@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using AtlasWH3.Core.Campaign.Props;
 using AtlasWH3.Core.Campaign.TileMapCheck;
 using AtlasWH3.Core.Exporters;
 using AtlasWH3.Formats.Maps;
+using AtlasWH3.Formats.Packs;
 using AtlasWH3.Formats.Terry;
 using AtlasWH3.Formats.Trees;
 
@@ -21,15 +23,18 @@ namespace AtlasWH3.Core.Campaign;
 ///  - tree_list: the trees whose position, rounded to the nearest event-mask pixel (x · W / world_width, z / 1.15476
 ///    the same way, float), is in the area, by type then instance; event_trees is every type of the list. BOB
 ///    regenerates the tree list from the kit's database for this (types it does not know are dropped, its heights are
-///    the logic map's); the step takes the trees step's list, which is the same list with the mods' types.
+///    the logic map's); the step takes the trees step's list, which is the same list with the mods' types;
+///  - objects / bmd_objects_sound (+ _&lt;bmd_export_type&gt;, .bin + .culture): the project's layer objects whose
+///    position, mapped as the trees', is in the area, flattened by the global_props builder
+///    (<see cref="Wh3GlobalPropsBuilder.BuildPieces"/>; rivers and light probes stay map-wide). BOB's record order
+///    changes from run to run (two runs of the same IEE sources: 268 files differ in order alone), so parity is content;
+///  - rivers: the river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>).
 /// The devastated project (&lt;map&gt;_devastate_1 in raw_data, <see cref="CampaignBuildContext.DevastatedMap"/>) is an input,
 /// not a second campaign: its heightmaps, tile list, trees, global map and masks are built into the cache (no fake
 /// campaign_maps folder; map_data.esf is the main map's; full_height_map only where the pieces cut it), and its pieces,
 /// event_tiles, event_trees and event_area_mask.dds go into terrain\campaigns\&lt;map&gt;_devastate_1, which is all that
-/// folder ships besides environment_collection.xml.
-/// Not written yet: the pieces' objects / bmd_objects_sound (.bin + .culture, and the devastation types; BMD v27,
-/// Phase 3.9), the rivers files, and the devastated folder's environment_collection.xml (BOB's Terry file action).
-/// lf_normal.dds (NVTT) is not native either: it is cut from working_data's.
+/// folder ships besides environment_collection.xml (the map author's own file, not built).
+/// lf_normal.dds (NVTT) is not native yet: it is cut from working_data's.
 /// </summary>
 public sealed class DevastationPiecesStep : ICampaignBuildStep
 {
@@ -57,13 +62,17 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         var written = new List<string>();
         CampaignTileDatabase? db = null;
         CampaignTileDatabase TileDb() => db ??= TileMapValidator.LoadDatabase(ctx.Paths);
+        PackSet? packs = null;
+        PackSet Packs() => packs ??= GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
 
         string? Compiled(string root, string relative) =>
             new[] { Path.Combine(root, relative), Path.Combine(ctx.Paths.AkWorkingDir, relative) }.FirstOrDefault(File.Exists);
         string? Terrain(string root, string map, string relative) => Compiled(root, Path.Combine("terrain", "campaigns", map, relative));
 
-        Write(TerryProject.Load(ctx.TerryFile), rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
-              Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes);
+        var main = TerryProject.Load(ctx.TerryFile);
+        Write(main, rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
+              Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes,
+              Objects(ctx, main, ctx.MapName, Packs, notes));
 
         if (DevastatedMapName(ctx) is not { } devastated)
             notes.Add($"no devastated project ({TerryFileOf(ctx, DevastatedName(ctx.MapName))}): only the main map's pieces");
@@ -88,18 +97,39 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             string? Source(string rel) => Terrain(build, devastated, rel)
                 ?? (rel == "lf_normal.dds" ? Terrain(ctx.TargetRoot, ctx.MapName, rel) : null);
             var outDir = Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
-            Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes);
+            Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
+                  Objects(ctx, project, devastated, Packs, notes));
             if (Terrain(build, devastated, "event_area_mask.dds") is { } mask)
             {
                 var path = Path.Combine(outDir, "event_area_mask.dds");
                 File.Copy(mask, path, true);
                 written.Add(path);
             }
-            notes.Add($"{devastated}: environment_collection.xml not written (BOB's Terry file action, not native)");
         }
-        notes.Add("objects / bmd_objects_sound (.bin + .culture, and the devastation types) not written yet (BMD v27, " +
-                  "Phase 3.9), nor the devastated pieces' rivers files");
         return new StepResult(Name, written, notes, sw.Elapsed);
+    }
+
+    /// <summary>A project's layer objects, for the pieces' objects / bmd_objects_sound files (the global_props builder;
+    /// null, with a note, when the game data is missing).</summary>
+    private static Wh3GlobalPropsBuilder? Objects(CampaignBuildContext ctx, TerryProject project, string mapName, Func<PackSet> packs,
+                                                  List<string> notes)
+    {
+        if (!Directory.Exists(ctx.Paths.GameDataDir))
+        {
+            notes.Add($"{mapName}: no game data folder {ctx.Paths.GameDataDir}: no objects in the pieces");
+            return null;
+        }
+        var builder = new Wh3GlobalPropsBuilder(packs(), PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
+            Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), mapName, (0, 0, 0, 0), (_, _) => "");
+        var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
+        ctx.Log($"{mapName}: objects of {layers.Count} exported layers...");
+        foreach (var layer in layers)
+        {
+            ctx.Cancel.ThrowIfCancellationRequested();
+            builder.AddLayer(layer.FilePath!);
+        }
+        notes.AddRange(builder.Notes.Distinct().Select(n => $"{mapName} objects: {n}"));
+        return builder;
     }
 
     /// <summary>The devastated project: <see cref="CampaignBuildContext.DevastatedMap"/>, else
@@ -147,8 +177,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
     /// <summary>Writes one map folder's pieces, event_tiles and event_trees.</summary>
     /// <param name="compiled">A compiled file of the map by its path under the map folder, or null when there is none.</param>
     /// <param name="treeList">trees.campaign_tree_list, or null.</param>
+    /// <param name="objects">The project's layer objects for the objects / bmd_objects_sound files, or null.</param>
     public static void Write(TerryProject project, Func<string, string?> compiled, string? treeList, string mapOutDir,
-                             Func<CampaignTileDatabase> tileDb, CampaignBuildContext ctx, List<string> written, List<string> notes)
+                             Func<CampaignTileDatabase> tileDb, CampaignBuildContext ctx, List<string> written, List<string> notes,
+                             Wh3GlobalPropsBuilder? objects = null)
     {
         ctx.Log("event areas...");
         var (mask, palette) = TerrainComposite.Indexed(project, "EventAreaMask");
@@ -218,6 +250,34 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             notes.Add($"{trees.Sum(t => t.Count)} trees in {trees.Count(t => t.Count > 0)} pieces");
         }
         else notes.Add("no trees.campaign_tree_list (this build or working_data): no tree_list in the pieces, no event_trees");
+
+        // objects and sounds
+        if (objects is not null)
+        {
+            ctx.Log("objects...");
+            var worldWidth = project.WorldWidth ?? throw new InvalidDataException("the .terry has no world_width");
+            var sx = maskW / worldWidth;
+            var sz = maskW / (worldWidth * TreeZScale);
+            int PieceAt(float x, float z)
+            {
+                var px = RoundAway(x * sx);
+                var row = maskH - RoundAway(z * sz) - 1;
+                if (px < 0 || px >= maskW || row < 0 || row >= maskH) return -1;
+                return slot.TryGetValue(mask.Data[row * maskW + px], out var s) ? s : -1;
+            }
+            var files = objects.BuildPieces(PieceAt, pieces.Count);
+            for (var i = 0; i < pieces.Count; i++)
+                foreach (var f in files[i])
+                {
+                    File.WriteAllBytes(Path.Combine(pieces[i].Folder, f.Stem + ".bin"), f.Bin);
+                    File.WriteAllBytes(Path.Combine(pieces[i].Folder, f.Stem + ".culture"), f.Culture);
+                }
+            notes.Add($"{files.Sum(f => f.Count)} objects / sound files in {pieces.Count} pieces");
+            var rivers = objects.BuildPieceRivers(PieceAt, pieces.Count);
+            for (var i = 0; i < pieces.Count; i++)
+                if (rivers[i] is { } bytes) File.WriteAllBytes(Path.Combine(pieces[i].Folder, "rivers"), bytes);
+            notes.Add($"{rivers.Sum(r => (r?.Length ?? 0) / 16)} river_lava rivers in {rivers.Count(r => r is not null)} pieces' rivers files");
+        }
         written.AddRange(pieces.Select(p => p.Folder));
     }
 
