@@ -17,9 +17,10 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///    (combi map 1, from CA's own transitions: 99.3 % of the lower triangle). Regions from
 ///    <see cref="HlpData.RegionTableSize"/> on have no row.
 ///  - OTHER_CONSTANTS: the largest cost in the table.
-/// Costs are u32 sums that wrap, as the game's: a matrix value of 0xFFFFFFFF (no path inside the area) is a step of
-/// −1, which gives Old World (38 such values; combi map 1 and Darklands have none) its cheap paths (0 → 409: 40,462 +
-/// 0xFFFFFFFF + 80 = 40,541).
+/// The game sums costs in u32 that wraps: a matrix value of 0xFFFFFFFF (no path inside the area) is a step of −1, which
+/// gives Old World (38 such values; combi map 1 and Darklands have none) impossible cheap paths (0 → 409: 40,462 +
+/// 0xFFFFFFFF + 80 = 40,541). By default AtlasWH3 leaves such steps out (the paths CA's tables should have);
+/// <c>wrapLikeGame</c> reproduces the game's values for parity.
 /// Prologue map: all 231 pairs; combi map 1: 99.95 % of costs, 97 % of hop counts (the rest: equal-cost paths the game
 /// settles in another order, and paths into region 545).
 /// </summary>
@@ -28,7 +29,9 @@ public static class HlpRegionTables
     public const uint Unreachable = 0xFFFFFFFF;
     public const byte UnreachableHops = 255;
 
-    public static void Fill(HlpData hlp, int maxThreads = 0)
+    /// <param name="wrapLikeGame">true: the game's u32 sums that wrap (an unreachable pair is a step of −1), for
+    /// parity with CA's files; false (default): an unreachable pair is no step at all.</param>
+    public static void Fill(HlpData hlp, int maxThreads = 0, bool wrapLikeGame = false)
     {
         const int size = HlpData.RegionTableSize;
         var areas = new Dictionary<RegionArea, HlpData.HlpArea>();
@@ -60,8 +63,8 @@ public static class HlpRegionTables
         var po = new ParallelOptions { MaxDegreeOfParallelism = maxThreads > 0 ? maxThreads : Environment.ProcessorCount };
         Parallel.ForEach(regions, po, r =>
         {
-            var best = Search(r, stateArea, stateIndex, landing, states, false);
-            var sameMedium = Search(r, stateArea, stateIndex, landing, states, true);
+            var best = Search(r, stateArea, stateIndex, landing, states, false, wrapLikeGame);
+            var sameMedium = Search(r, stateArea, stateIndex, landing, states, true, wrapLikeGame);
             foreach (var s in regions)
             {
                 if (s <= r) continue;
@@ -79,7 +82,7 @@ public static class HlpRegionTables
     /// <summary>Cheapest (cost, region changes) from <paramref name="region"/> to every region; with
     /// <paramref name="sameMedium"/> the land-sea transitions (flag 1) are left out.</summary>
     private static Dictionary<int, (uint Cost, int Hops)> Search(int region, List<HlpData.HlpArea> stateArea, List<int> stateIndex,
-                                                                  int[][] landing, Dictionary<(RegionArea, int), int> states, bool sameMedium)
+                                                                  int[][] landing, Dictionary<(RegionArea, int), int> states, bool sameMedium, bool wrap)
     {
         var best = new Dictionary<int, (uint, int)>();
         var done = new bool[stateArea.Count];
@@ -94,7 +97,6 @@ public static class HlpRegionTables
             var area = stateArea[s];
             var t = area.Transitions[stateIndex[s]];
             if (sameMedium && t.Flag1) continue;
-            // u32 sums that wrap, as the game's: an area's unreachable pair (0xFFFFFFFF) is a step of -1
             var nc = unchecked(c + t.Cost);
             var nh = h + (t.Target.Region != area.Area.Region ? 1 : 0);
             if (t.Target.Region != region && (!best.TryGetValue(t.Target.Region, out var b) || (nc, nh).CompareTo(b) < 0))
@@ -107,7 +109,9 @@ public static class HlpRegionTables
                 {
                     var next = states[(target.Area, j)];
                     if (done[next]) continue;
-                    queue.Enqueue(next, (j == i0 ? nc : unchecked(nc + Matrix(target, i0, j)), nh));
+                    var step = j == i0 ? 0u : Matrix(target, i0, j);
+                    if (step == Unreachable && !wrap) continue;
+                    queue.Enqueue(next, (unchecked(nc + step), nh));
                 }
             }
         }

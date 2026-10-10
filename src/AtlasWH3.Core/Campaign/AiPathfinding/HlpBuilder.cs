@@ -40,6 +40,8 @@ public static class HlpBuilder
         /// <summary>Pre-2020 STL (VS2017) unordered_map: insert first, then rehash (dlc04 / 8p files); else VS2019 (rehash first).</summary>
         public bool LegacyStlOrder { get; init; }
         public int MaxThreads { get; init; }
+        /// <summary>Region tables with the game's wrapping u32 sums (parity with CA's files); default: the corrected ones.</summary>
+        public bool WrapLikeGame { get; init; }
         /// <summary>Transition ends next to the same settlement: path without a faction (settlements passable at cost 0).</summary>
         public bool CostSameSettlementZero { get; init; } = Environment.GetEnvironmentVariable("HLP_SAME_ZERO") != "0";
     }
@@ -421,7 +423,7 @@ public static class HlpBuilder
             }
             hlp.Nodes.Add(node);
         }
-        HlpRegionTables.Fill(hlp, options.MaxThreads);
+        HlpRegionTables.Fill(hlp, options.MaxThreads, options.WrapLikeGame);
         return hlp;
     }
 

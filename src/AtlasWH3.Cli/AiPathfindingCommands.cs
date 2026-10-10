@@ -10,6 +10,7 @@ using AtlasWH3.Formats.Maps;
 /// replacement for the game's reprocess_hlp_data / reprocess_spd_data) and optionally compares them with reference files.
 ///   hlp-spd --in &lt;dir with pathfinding.ppd, map_data.esf&gt; [--out &lt;dir&gt;] [--compare &lt;dir with reference esf&gt;]
 ///           [--only hlp|spd] [--legacy-stl] [--threshold f] [--centre-blocked] [--threads n]
+///           [--wrap-like-game] (hlp region tables with the game's wrapping u32 sums, for parity; default: corrected)
 /// Research (with --compare, spd): --diag-slot k [--diag-count n] (cheapest diverging cells), --edge-costs (edge costs
 /// the reference implies), --slot-edges [--all-edges], --show x,y;.., --hexmap-flags, --area-diffs.
 ///   esf-roundtrip &lt;file.esf&gt;...: CAAB/CBAB files through EsfTree and CaabWriter, byte for byte.
@@ -178,13 +179,14 @@ static class AiPathfindingCommands
                 CentrePathZero = !a.Contains("--centre-blocked"),
                 RefineThreshold = float.Parse(Option(a, "--threshold") ?? "0", CultureInfo.InvariantCulture),
                 MaxThreads = threads,
+                WrapLikeGame = a.Contains("--wrap-like-game"),
             };
             var hlp = HlpBuilder.Build(ppd, regions, settings, refHlp?.Timestamp ?? ts, Console.WriteLine, opt);
             if (refHlp is not null) hlp.Magic = refHlp.Magic;
             if (refHlp is not null && a.Contains("--tables-from-ref")) // research: the region tables from CA's own transitions
             {
                 var copy = HlpData.Read(refPath!);
-                HlpRegionTables.Fill(copy);
+                HlpRegionTables.Fill(copy, wrapLikeGame: true);
                 Console.WriteLine("from CA's transitions: " + HlpCompare.RegionTables(copy, refHlp));
                 var shown = 0;
                 for (var i = 0; i < copy.RegionCosts.Length && shown < 12; i++)

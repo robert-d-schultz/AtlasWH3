@@ -103,7 +103,7 @@ public class HlpSpdTests
         Assert.True(same >= 653, $"{same}/{refAreas.Count} identical areas");
 
         var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
-        HlpRegionTables.Fill(fromRef);
+        HlpRegionTables.Fill(fromRef, wrapLikeGame: true);
         int costs = 0, hops = 0;
         for (var i = 0; i < fromRef.RegionCosts.Length; i++)
         {
@@ -124,7 +124,7 @@ public class HlpSpdTests
         var bytes = pack.TryRead($"campaign_maps/{TestKits.OldWorld}/hlp_data.esf") ?? throw new FileNotFoundException("Old World hlp_data.esf");
         var reference = HlpData.Read(bytes);
         var copy = HlpData.Read(bytes);
-        HlpRegionTables.Fill(copy);
+        HlpRegionTables.Fill(copy, wrapLikeGame: true);
         int costs = 0, all = 0;
         for (var i = 0; i < copy.RegionCosts.Length; i++)
         {
@@ -134,5 +134,29 @@ public class HlpSpdTests
         }
         Assert.True(costs >= all * 0.996, $"region costs {costs}/{all}");
         Assert.Equal(reference.MaxRegionCost, copy.MaxRegionCost);
+    }
+
+    /// <summary>By default an area's unreachable pair is no step: no region cost comes out below the wrapped one, and
+    /// Old World's 0 -> 409 is not the game's impossible 40,541.</summary>
+    [Fact]
+    public void OldWorld_RegionTables_NoWrap()
+    {
+        var bytes = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]).TryRead($"campaign_maps/{TestKits.OldWorld}/hlp_data.esf")!;
+        var reference = HlpData.Read(bytes);
+        var wrapped = HlpData.Read(bytes);
+        HlpRegionTables.Fill(wrapped, wrapLikeGame: true);
+        var copy = HlpData.Read(bytes);
+        HlpRegionTables.Fill(copy);
+        Assert.Equal(40541u, reference.RegionCosts[409]);
+        Assert.Equal(40541u, wrapped.RegionCosts[409]);
+        Assert.True(copy.RegionCosts[409] > 40541u);
+        var higher = 0;
+        for (var i = 0; i < copy.RegionCosts.Length; i++)
+        {
+            if (copy.RegionCosts[i] == HlpData.NoRegionCost) continue;
+            Assert.True(copy.RegionCosts[i] >= wrapped.RegionCosts[i], $"pair {i / 1024},{i % 1024}");
+            if (copy.RegionCosts[i] > wrapped.RegionCosts[i]) higher++;
+        }
+        Assert.True(higher > 0);
     }
 }

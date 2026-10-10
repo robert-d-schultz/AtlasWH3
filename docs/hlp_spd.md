@@ -97,10 +97,15 @@ Open on spd:
 - **Region tables** (`HlpRegionTables`):
   - Per region pair (from < to), the cheapest path over the transitions. Crossing costs the transition's cost, and
     moving on inside an area costs that area's matrix value. The cost goes in the u32 table's upper triangle.
-  - **The sums are u32 and wrap, as the game's.** An area's matrix value of `FFFFFFFF` (no path inside the area) is
-    a step of −1. Old World has 38 such values and combi and Darklands none, which is all of Old World's gap from
-    CA's own transitions: 87 % → 99.7 % (Classic 81 % → 99.1 %). Example: 0 → 409 = 40,462 + `FFFFFFFF` + 80 =
-    40,541.
+  - **The game's sums are u32 and wrap: a bug.** An area's matrix value of `FFFFFFFF` (no path inside the area) is
+    a step of −1, so the game writes impossible cheap paths. Old World has 38 such values and combi and Darklands
+    none. Example: 0 → 409 = 40,462 + `FFFFFFFF` + 80 = 40,541.
+    - AtlasWH3 leaves those steps out by default: no region cost comes out below the wrapped one, and 0 → 409 costs
+      more than the game's 40,541.
+    - `--wrap-like-game` (`HlpBuilder.Options.WrapLikeGame`) reproduces the game. With it, Old World's tables from
+      CA's own transitions go from 87 % to 99.7 % (Classic 81 % → 99.1 %).
+    - The 38 matrix values themselves are written as CA writes them: the game's runtime reads them, and how it adds
+      them there is not known.
   - The u8 table's upper triangle holds that path's number of region changes; crossings between areas of one region
     don't count.
   - Its lower triangle `[to, from]` holds the region changes of the cheapest path without land-sea transitions:
