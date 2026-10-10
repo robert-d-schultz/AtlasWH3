@@ -79,6 +79,8 @@ switch (command)
         return ValidateTilemap(paths, args.Skip(1).ToArray());
     case var c when PropCommands.Names.Contains(c):
         return PropCommands.Run(paths, c, args.Skip(1).ToArray());
+    case var c when NormalCommands.Names.Contains(c):
+        return NormalCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when Gp27Commands.Names.Contains(c):
         return Gp27Commands.Run(paths, c, args.Skip(1).ToArray());
     case var c when LakeCommands.Names.Contains(c):

@@ -155,7 +155,7 @@ public class GlobalPropsTests
                     <entity id="1000000000000c1">
                       <ECRiver/>
                       <ECTransform position="20 1.5 20" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
-                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign/cr_campaign_water_plane_river_lava.xml.material">
+                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign/cwb_campaign_river_lava.xml.material">
                         <spline closed="false">
                           <point position="0,0,0" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
                           <point position="0,0,-4" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
@@ -165,7 +165,7 @@ public class GlobalPropsTests
                     <entity id="1000000000000c2">
                       <ECRiver/>
                       <ECTransform position="22 0 22" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
-                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign_sea/water.xml.material">
+                      <ECRiverSpline terrain_relative="false" reverse_direction="false" material="materials/environment/campaign/cr_campaign_water_plane_river_lava.xml.material">
                         <spline closed="false">
                           <point position="0,0,0" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
                           <point position="0,0,-4" tangent_in="0,0,1" tangent_out="0,0,-1" width="2"/>
@@ -210,7 +210,7 @@ public class GlobalPropsTests
             Assert.Empty(Bmd27Body.Parse(files["bmd_objects_sound"].Bin).Sounds);
             Assert.Empty(files["bmd_objects_sound"].Culture);
 
-            // rivers stay map-wide; the lava one is listed in the rivers file by its entity position
+            // rivers stay map-wide; only the cwb_campaign_river_lava one is listed, by its entity position
             Assert.DoesNotContain(objects.PropPaths, p => p.Contains("river_"));
             var rivers = Assert.Single(builder.BuildPieceRivers((x, _) => x < 50 ? 0 : -1, 1));
             Assert.Equal(new byte[] { 0, 0, 0xa0, 0x41, 0, 0, 0xc0, 0x3f, 0, 0, 0xa0, 0x41, 0, 0, 0, 0 }, rivers);

@@ -12,6 +12,8 @@ namespace AtlasWH3.Core.Campaign;
 ///    65535) in float32, header (0, lo, 0, 0, hi, 0), 16 × 16 tiles with WH3's 3 padding bytes after each bit-packed
 ///    tile. Byte-identical to BOB's on IEE and Old World.
 ///  - shroud_heights.dds: the HeightShroud map as R32_FLOAT. Byte-identical to BOB's on IEE and Old World.
+///  - lf_normal.dds: the Height map's normals as Terry exports them to lf_normal.png (<see cref="LfNormalMap"/>), in the
+///    DXT5nm layout BOB's NVTT writes; no Terry export or PNG in between.
 ///  - full_height_map.dds: Height in red, HeightSea in green, as BC6H_SF16 (<see cref="Bc6h"/>; BOB's AMD Compress
 ///    output is not reproduced bit for bit; the RMS error against the source is about half BOB's on both maps, see
 ///    docs/native_campaign_build.md).
@@ -50,6 +52,11 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         notes.Add($"logic map {land.Width}x{land.Height}, heights {lo} .. {hi}");
         ctx.Cancel.ThrowIfCancellationRequested();
 
+        ctx.Log("lf_normal.dds...");
+        var normalPath = ctx.OutFile("lf_normal.dds");
+        File.WriteAllBytes(normalPath, LfNormalMap.ToDds(LfNormalMap.Compute(land, LfNormalMap.Spacing), land.Width, land.Height));
+        ctx.Cancel.ThrowIfCancellationRequested();
+
         ctx.Log("HeightSea...");
         var sea = TerrainComposite.Heights(project, "HeightSea");
         if (sea.Width != land.Width || sea.Height != land.Height)
@@ -64,7 +71,7 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         var shroud = TerrainComposite.Heights(project, "HeightShroud");
         var shroudPath = ctx.OutFile("shroud_heights.dds");
         WriteShroud(shroud, shroudPath);
-        return new StepResult(Name, [logicPath, heightPath, shroudPath], notes, sw.Elapsed);
+        return new StepResult(Name, [logicPath, normalPath, heightPath, shroudPath], notes, sw.Elapsed);
     }
 
     /// <summary>full_logic_map.compressed_map from the composited Height map (row 0 = north); returns (lo, hi).</summary>

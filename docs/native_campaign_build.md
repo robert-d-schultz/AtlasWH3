@@ -224,20 +224,25 @@ fresh BOB run. The formats are in the decompiler's `docs/event-area-pieces.md`; 
   the order of a walk through global_props.bin either. The step writes layer order. The `ht` section is (triangle count,
   mask) per run of consecutive triangles of one hole: Old World's BOB pieces (21, 0), (34, 0), ...; IEE's, whose order
   is shuffled, mostly runs of 1 (the decompiler's "one hexagon of 4 triangles, 2 masks" is one (4, mask) pair).
-- **rivers** (Phase 4.2): 16-byte records (x, y, z, 0), the entity position of each river whose material contains
-  `river_lava`, in the piece whose area holds it. IEE's pack has two (`event_9ca317`, `event_c14516`), listing all 7 of
-  its `cr_campaign_water_plane_river_lava` rivers at their layer positions, and not its one `wh_campaign_lava` river
-  (in `event_ff8856`'s area); vanilla's devastated rivers are `cwb_campaign_river_lava`. Against the pack: `event_c14516`
-  byte-identical, `event_9ca317` the same two records in the other order (the order means nothing). Only river
-  splines are listed, never river props, and the game claims a kept river by this position and gives it the lava
-  material while the area is devastated (WH3_visual_map_decompiler `docs/event-area-pieces.md`, README "Devastated
-  maps").
-- **event_vfx** (main map folder): the effects the game preloads so a swap does not stall on them. Nothing in the kit
-  writes it and CA's list is hand-kept (IEE ships vanilla's copy). The step writes, per bmd_export_type (the untyped
-  files last, like vanilla's chaos / nagash / skaven groups), the effects in the devastated pieces that no
-  global_props.bin object uses and no earlier group listed. Written only with a devastated project.
+- **rivers** (Phase 4.2): 16-byte records (x, y, z, 0), the entity position (ECTransform::position) of each river
+  spline whose material contains `cwb_campaign_river_lava`, in the piece whose area holds it: bob_terrain 0x10d81
+  (TerrainObjects export), `ECSpline::material().find("cwb_campaign_river_lava") != -1` (2026-10-10). That is the
+  material the game switches a listed river to while its area is devastated; a river prop survives a swap only when its
+  material contains `campaign_water_plane` or `campaign_blood_river`, and is claimed when its x, z match a record
+  (WH3_visual_map_decompiler `docs/event-area-pieces.md`). IEE's pack has two files listing the 7 rivers that today use
+  `cr_campaign_water_plane_river_lava`, which BOB's test does not match: a fresh BOB run of today's sources writes none,
+  and so does the step.
+- **event_vfx** (main map folder). Nothing in the kit writes it (no BOB DLL has the name) and CA's list is hand-kept
+  (IEE ships vanilla's copy). Read off Warhammer3.exe (2026-10-10 build, 0x271ec08; the only reference to
+  `terrain/campaigns/%s/event_vfx`): a missing file is skipped; each line is passed to slot +0xa0 of the asset interface
+  that the piece loader also hands to its object loader (0x2722670 → 0x26fd638), and the result is not kept. Just
+  before, the same function makes that call for each entry of another list and keeps the results in a map at
+  this+0x140. Nothing else reads the names, so the file is not an index. Whether slot +0xa0 caches what it loads (which
+  would make the file a warm-up of the swap's own loads) is not settled statically. The step writes, per
+  bmd_export_type (the untyped files last, like vanilla's chaos / nagash / skaven groups), the effects in the devastated
+  pieces that no global_props.bin object uses and no earlier group listed. Written only with a devastated project.
 - **environment_collection.xml**: the `environment` step (below).
-- Not native yet: `lf_normal.dds`, which is cut from working_data's (BOB's Campaign Heightmap, NVTT).
+- `lf_normal.dds` is cut from this build's (the `heightmaps` step).
 
 ### Lookup textures (WH3)
 
@@ -395,6 +400,28 @@ Read off warscape.modder.x64.dll (kit of 2026-09; capstone, `research/bob_re/dis
   segment, and lists it.
 - **`.wsmodel`:** 2-space indent, LF, no final newline, geometry `terrain/campaigns/<map>/models/river_<id>…`, the
   spline's material.
+
+### lf_normal.dds (WH3)
+
+`LfNormalMap`, written by the `heightmaps` step (2026-10-10). Two tools made it before: Terry's *export lf normals*
+(tweak_terrainmetadataeditor 0x257f00) wrote `raw_data/.../lf_normal.png`, a minute or two per export, and BOB's
+Campaign Heightmap converted that PNG with NVTT 2.0.8. The step does both from the composited Height map.
+
+- **Terry's normals** (read off the plugin): `TerrainMapType` 3 (Height), `data_composited`; 3×3 Sobel gradients with
+  clamped edges, gx = Σ rows Σ columns (1 · h) · K[r][c], gy the same with K transposed, K = [1 0 −1; 2 0 −2; 1 0 −1];
+  n = (gx, gy, 1/s) / √(gy² + gx² + (1/s)²); R, G, B = trunc((n + 1) · 127.5), A = 255; rows as the Height map.
+  s = terrain_size.x / map width × `low_frequency_world_vertical_scale` (0x28bc20, warscape 0x63a980), 4 on both
+  fixtures. Height patches are not part of it.
+- **Against Terry's exports:** Old World's `lf_normal.png` (2025-04-20) 99.94% of its sloped pixels identical (0.045%
+  of the map differs, in areas edited since); IEE's devastated project's 91.7% of all pixels, the rest in the vanilla
+  areas of a merged file. IEE's main file is merged (vanilla's normals pasted in), so it is no reference.
+- **BOB's DDS** (NVTT, measured on IEE's PNG / DDS pair): DXT5 with DDPF_NORMAL and NVTT's header tag, DXT5nm (colour
+  (255, y, 0), alpha x), rows unflipped, the full mip chain of 2×2 box averages. The step writes the same header and
+  layout; its blocks are the DirectXTex port's BC1 / BC4 encoders, not NVTT's, so the bytes differ. Encoding IEE's PNG
+  both ways (24 random 256 px windows of mip 0): mean absolute error against the PNG native x 0.40 / y 0.58, BOB's
+  0.50 / 0.70.
+- **Mips:** the full chain (Old World 15 levels). Old World's working_data file had its 15th level deleted by hand
+  because BOB's Devastation pieces crashed on it; the native pieces step cuts any number of levels.
 
 ### full_height_map.dds (BC6H_SF16)
 
@@ -812,7 +839,7 @@ ivers.height_patch_collection`, identity transform), the props of every placed t
 
 ### lf_normal.dds
 
-Not needed for campaign maps. dlc07 ships none, and the game uses the file as the battle resource `RC_BATTLE_TERRAIN_LF_NORMAL`.
+(3K: not needed for campaign maps; dlc07 ships none. WH3 ships it, and the pieces cut it: see *lf_normal.dds (WH3)*.)
 
 ## Code
 

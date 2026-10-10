@@ -28,14 +28,13 @@ namespace AtlasWH3.Core.Campaign;
 ///    position, mapped as the trees', is in the area, flattened by the global_props builder
 ///    (<see cref="Wh3GlobalPropsBuilder.BuildPieces"/>; rivers and light probes stay map-wide). BOB's record order
 ///    changes from run to run (two runs of the same IEE sources: 268 files differ in order alone), so parity is content;
-///  - rivers: the river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>);
+///  - rivers: the cwb_campaign_river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>);
 ///  - event_vfx (the main map's folder): <see cref="EventVfx"/>.
 /// The devastated project (&lt;map&gt;_devastate_1 in raw_data, <see cref="CampaignBuildContext.DevastatedMap"/>) is an input,
 /// not a second campaign: its heightmaps, tile list, trees, global map and masks are built into the cache (no fake
 /// campaign_maps folder; map_data.esf is the main map's; full_height_map only where the pieces cut it), and its pieces,
 /// event_tiles, event_trees and event_area_mask.dds go into terrain\campaigns\&lt;map&gt;_devastate_1, which is all that
 /// folder ships besides environment_collection.xml (<see cref="EnvironmentStep"/>).
-/// lf_normal.dds (NVTT) is not native yet: it is cut from working_data's.
 /// </summary>
 public sealed class DevastationPiecesStep : ICampaignBuildStep
 {
@@ -94,10 +93,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             foreach (var o in new CampaignBuildPipeline().Run(sub, ["heightmaps", "tile_list", "trees", "global_map", "masks"]))
                 if (o.Status != "ok") notes.Add($"{devastated} {o.Step}: {o.Status}: {string.Join("; ", o.Problems)}");
 
-            // lf_normal.dds is BOB's (NVTT, not native): the devastated map's in working_data, else the main map's (the
-            // same in vanilla's pieces)
-            string? Source(string rel) => Terrain(build, devastated, rel)
-                ?? (rel == "lf_normal.dds" ? Terrain(ctx.TargetRoot, ctx.MapName, rel) : null);
+            string? Source(string rel) => Terrain(build, devastated, rel);
             var outDir = Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
             var devastatedObjects = Objects(ctx, project, devastated, Packs, notes);
             var pieceAt = Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
@@ -308,7 +304,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             var rivers = objects.BuildPieceRivers(PieceAt, pieces.Count);
             for (var i = 0; i < pieces.Count; i++)
                 if (rivers[i] is { } bytes) File.WriteAllBytes(Path.Combine(pieces[i].Folder, "rivers"), bytes);
-            notes.Add($"{rivers.Sum(r => (r?.Length ?? 0) / 16)} river_lava rivers in {rivers.Count(r => r is not null)} pieces' rivers files");
+            notes.Add($"{rivers.Sum(r => (r?.Length ?? 0) / 16)} {Wh3GlobalPropsBuilder.LavaRiverMaterial} rivers in {rivers.Count(r => r is not null)} pieces' rivers files");
         }
         written.AddRange(pieces.Select(p => p.Folder));
         return pieceAt;

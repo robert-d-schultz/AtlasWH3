@@ -40,7 +40,7 @@ public static partial class InfoCards
 
         // ---- compile steps (key = "build.step." + step name)
         new("build.step.heightmaps", "heightmaps  (BOB: Campaign Heightmap, Campaign Shroud Heights)",
-            "Writes full_logic_map.compressed_map, full_height_map.dds and shroud_heights.dds from the kit's height layers. tile_list, trees and the camera height map read them, so run it after any height edit."),
+            "Writes full_logic_map.compressed_map, full_height_map.dds, lf_normal.dds and shroud_heights.dds from the kit's height layers (lf_normal without Terry's export). tile_list, trees and the camera height map read them, so run it after any height edit."),
         new("build.step.tile_list", "tile_list  (BOB: Tilemap)",
             "Turns the kit's tile_map.png into tile_list.bin, choosing and placing the 3D terrain tiles. Run it after editing the tile map; its source is set under Tile map source."),
         new("build.step.trees", "trees  (BOB: Campaign Trees)",
@@ -48,7 +48,7 @@ public static partial class InfoCards
         new("build.step.global_map", "global_map  (BOB: Global Tilemap, Campaign Global Blendmap)",
             "Writes global_map\\: global_blend.dds, texture_arrays.xml and the far-zoom tile_list.bin. Needs tile_list."),
         new("build.step.masks", "masks  (BOB: Color Overlay, Corruption, Snow, Event Area, Patch Visibility Mask)",
-            "Writes the colour overlays, corruption, snow, event area, patch and tile masks and lf_normal from the kit's layers."),
+            "Writes the colour overlays, corruption, snow and event area masks from the kit's layers."),
         new("build.step.rivers", "rivers  (BOB: Terry file, rivers)",
             "Builds the river_<id> water models from the river splines in the kit layers."),
         new("build.step.global_props", "global_props  (BOB: Terry file, global_props.bin)",

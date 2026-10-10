@@ -97,7 +97,7 @@ public sealed class Wh3GlobalPropsBuilder
     private readonly Func<float, float, string> _regionAt;
     private readonly List<Obj> _objects = [];
     private readonly List<Obj> _sounds = [];
-    /// <summary>Rivers whose material is a river_lava one: (x, y, z) of the entity, for the pieces' rivers files.</summary>
+    /// <summary>Rivers whose material is the lava one: (x, y, z) of the entity, for the pieces' rivers files.</summary>
     private readonly List<(float X, float Y, float Z)> _lavaRivers = [];
     private int _sub;
     private int _holes;
@@ -260,7 +260,7 @@ public sealed class Wh3GlobalPropsBuilder
             // World's river 19261f91ac8e913: y 0.757 -> 0)
             var model = $"terrain/campaigns/{_mapName}/models/river_{(string?)e.Attribute("id")}.wsmodel";
             var spline = Rivers.Wh3River.Read(e);
-            if (spline?.Material.Contains("river_lava", StringComparison.OrdinalIgnoreCase) == true) _lavaRivers.Add((world.X, world.Y, world.Z));
+            if (spline?.Material.Contains(LavaRiverMaterial, StringComparison.Ordinal) == true) _lavaRivers.Add((world.X, world.Y, world.Z));
             var placed = world;
             if (spline is not null)
             {
@@ -769,12 +769,15 @@ public sealed class Wh3GlobalPropsBuilder
     }
 
     /// <summary>
-    /// Each piece's rivers file: 16-byte records (x, y, z, 0) of the rivers whose material name contains "river_lava" and
-    /// whose entity position is in the piece: IEE's shipped pieces list its 7 cr_campaign_water_plane_river_lava rivers at
-    /// their layer positions, but not its wh_campaign_lava one (vanilla's devastated rivers: cwb_campaign_river_lava).
-    /// The game claims a kept river by this position and gives it the lava material while the area is devastated. Null
-    /// for a piece with none.
+    /// Each piece's rivers file: 16-byte records (x, y, z, 0) of the river splines whose material contains
+    /// <see cref="LavaRiverMaterial"/> and whose entity position is in the piece. bob_terrain 0x10d81 (TerrainObjects
+    /// export): ECSpline::material().find("cwb_campaign_river_lava") != -1, then ECTransform::position(). The game keeps a
+    /// river prop whose material contains campaign_water_plane or campaign_blood_river through a swap, claims it when its
+    /// x, z match a record, and gives it that lava material while the area is devastated. Null for a piece with none.
     /// </summary>
+    /// <summary>The material substring BOB lists a river in the pieces' rivers files by (the lava the game switches to).</summary>
+    public const string LavaRiverMaterial = "cwb_campaign_river_lava";
+
     public byte[]?[] BuildPieceRivers(Func<float, float, int> pieceAt, int pieceCount)
     {
         var lists = new List<(float X, float Y, float Z)>?[pieceCount];

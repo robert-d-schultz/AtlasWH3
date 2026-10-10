@@ -431,7 +431,7 @@ parity.
 - [x] 4.2 The pieces' `rivers` files, cut from 3.10's bake (IEE's main map has 2, from its lava rivers).
 - [x] 4.2b `environment_collection.xml` for both folders (BOB's Terry file action; new `environment` step) and the main
   folder's `event_vfx` (nothing in the kit writes it; the pieces step does now).
-- [ ] 4.3 `lf_normal.dds` (DXT5nm; BOB's Campaign Heightmap action, NVTT). The main map ships it and the pieces cut it.
+- [x] 4.3 `lf_normal.dds` (DXT5nm; BOB's Campaign Heightmap action, NVTT). The main map ships it and the pieces cut it.
 
 **4.1–4.2 status (2026-10-10):** `DevastationPiecesStep` writes every piece's objects and sound files, per
 bmd_export_type, with their `.culture`, for the main and the devastated project (`Wh3GlobalPropsBuilder.BuildPieces`).
@@ -439,7 +439,9 @@ The same files as BOB in all four folders. BOB's record order changes from run t
 with their culture masks, `gp27-pieces-diff`): IEE main 99.96% of 485,625 records, IEE devastate 99.78% of 552,712, Old
 World main 95.98% of 80,002, Old World devastate 78.36% of 5,518. Leaving out the three fields BOB reads only from
 models loose in its kit (the model-box decision of 3.9) gives 99.98%, 100.00%, 99.87% and 99.95%. The `rivers` files
-list the `river_lava` rivers: IEE's two match the pack's (one byte-identical, one in the other order). Found on the way:
+list the river splines whose material contains `cwb_campaign_river_lava` (BOB's test, read off bob_terrain; IEE's
+current `cr_campaign_water_plane_river_lava` rivers do not match it, so neither BOB nor the step lists them). Found on the
+way:
 - the `.culture` layout: sections `p m v lp ls ht sc` / `ss`; bit 63 for a culture with no prefab_types row; `ht` is
   (triangle count, mask) per run of one hole's triangles;
 - BOB writes no files for a type with nothing in the piece, and no light probes or rivers in pieces;
@@ -452,7 +454,14 @@ list the `river_lava` rivers: IEE's two match the pack's (one byte-identical, on
 **4.2b status (2026-10-10):** `EnvironmentStep` compiles `environment_collection.xml` from the project (the .terry's
 global_lighting and devastation_light_environments, a SPHERE / CYLINDER per ECEnvironmentVolume). Against BOB: IEE's
 devastate folder byte-identical; IEE and Old World the same lines in another order, which two BOB runs of the same IEE
-sources also differ in (address order). `event_vfx`: see `docs/native_campaign_build.md` (pieces).
+sources also differ in (address order). `event_vfx`: the game reads it line by line and hands each name to the asset
+interface the piece loader uses, keeping nothing (Warhammer3.exe 0x271ec08); not an index. Whether that call caches is
+open (a breakpoint in the running game would settle it). See `docs/native_campaign_build.md` (pieces).
+
+**4.3 status (2026-10-10):** the `heightmaps` step writes `lf_normal.dds` straight from the composited Height map, with
+no Terry export and no PNG: Terry's own normals (read off its plugin: a Sobel filter, spacing 4, no height patches;
+identical to Old World's Terry export on 99.94% of sloped pixels) in BOB's NVTT DXT5nm layout and header, the full mip
+chain. The blocks are the DirectXTex port's, with lower error than NVTT's on the same input. Left: the in-game check.
 
 Left: the in-game check (an area devastates and restores, with its objects and lava rivers). Numbers in
 `docs/native_campaign_build.md`.

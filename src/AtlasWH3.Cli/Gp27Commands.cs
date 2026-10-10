@@ -299,11 +299,18 @@ static class Gp27Commands
         return 0;
     }
 
-    /// <summary>gp27-cat &lt;pack path&gt; [--pack p]: a file from the game and linked packs, as UTF-8 text.</summary>
+    /// <summary>gp27-cat &lt;pack path&gt; [--pack p] [--out file]: a file from the game and linked packs, as UTF-8 text (or
+    /// saved as is).</summary>
     private static int Cat(ProjectPaths paths, string[] a)
     {
         var packs = AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks);
         var bytes = packs.TryRead(a[0].ToLowerInvariant());
+        if (bytes is not null && a.SkipWhile(x => x != "--out").Skip(1).FirstOrDefault() is { } outFile)
+        {
+            File.WriteAllBytes(outFile, bytes);
+            Console.WriteLine($"{a[0]}: {bytes.Length} bytes -> {outFile}");
+            return 0;
+        }
         Console.WriteLine(bytes is null ? $"{a[0]}: not in the packs" : System.Text.Encoding.UTF8.GetString(bytes));
         return bytes is null ? 1 : 0;
     }

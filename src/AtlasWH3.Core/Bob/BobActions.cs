@@ -13,7 +13,7 @@ public static class BobActions
 
     public static readonly IReadOnlyList<Action> All =
     [
-        new("Campaign Heightmap", "heightmaps", "Terrain", ActionInput.Terry, "full_height_map.dds, full_logic_map.compressed_map"),
+        new("Campaign Heightmap", "heightmaps", "Terrain", ActionInput.Terry, "full_height_map.dds, full_logic_map.compressed_map, lf_normal.dds (from Terry's lf_normal.png)"),
         new("Campaign Shroud Heights", "heightmaps", "Terrain", ActionInput.Terry, "shroud_heights.dds"),
         new("Tilemap", "tile_list", "Terrain", ActionInput.Terry, "tile_list.bin, tile_mask.dds"),
         new("Campaign Trees", "trees", "Terrain", ActionInput.Terry, "campaign_maps\\<map>\\display\\trees\\trees.campaign_tree_list"),
