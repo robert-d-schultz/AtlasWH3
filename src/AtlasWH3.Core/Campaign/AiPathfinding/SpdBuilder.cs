@@ -5,12 +5,13 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 /// <summary>
 /// Builds WH3's spd_data.esf (CAI_SIMPLE_PATH_DIRECTORY v1), the campaign AI's landmark tables. 3K's single landmark
 /// search (empirecampaign FUN_180593f60, reprocess_spd_data) is applied at two levels:
-///  - landmark sets: one per connected piece of the movement grid; per set 8 landmarks and 8 searches, giving every
-///    hex of the set its costs 0..7;
+///  - landmark sets: one per connected piece of the movement grid that has a hex inside the box of the type 0/4 areas;
+///    per set 8 landmarks (among its passable hexes) and 8 searches, giving every hex of the set its costs 0..7;
 ///  - areas: per map_data region area 8 landmarks (targets from the box of all its hexes, landmarks among its passable
 ///    ones; combi map 1: 3,440 of 3,440 against 3,432 with the passable hexes' box) and 8 searches, giving the area's hexes
 ///    costs 8..15. The searches are not kept inside the area: a path may leave it and come back (prologue map: 1,036
-///    of 611,240 area costs are lower than inside-only paths, and CA's file has those).
+///    of 611,240 area costs are lower than inside-only paths, and CA's file has those). Areas of type 6/7 run no searches;
+///    a cell carries its area only where its area's searches reached it.
 /// Landmarks (3K's rule): the box of the hexes; eight targets, its corners (min x,min y), (min x,max y), (max x,min y),
 /// (max x,max y), then the edge midpoints (mid x,min y), (mid x,max y), (min x,mid y), (max x,mid y) with
 /// mid = ((max − min + 1) &gt;&gt; 1) + min; landmark i = the hex nearest (hex distance) target i, scanning x outer,
@@ -58,16 +59,18 @@ public static class SpdBuilder
 
     /// <summary>Connected pieces of the movement grid (forward edges and bridge links, either way): piece per hex,
     /// −1 for impassable hexes. Pieces are numbered in the order their first hex comes scanning x outer, y inner
-    /// (combi map 1: its 13 sets in CA's order).</summary>
-    public static int[] Pieces(CampaignPathGrid g, out int count)
+    /// (combi map 1: its 13 sets in CA's order). With <paramref name="seedBox"/> a piece only starts at a hex inside that
+    /// box (inclusive), though it grows beyond it; hexes of no piece stay −1.</summary>
+    public static int[] Pieces(CampaignPathGrid g, out int count, (int X0, int Y0, int X1, int Y1)? seedBox = null)
     {
         var n = g.Width * g.Height;
         var piece = new int[n];
         Array.Fill(piece, -1);
         count = 0;
         var stack = new Stack<int>();
-        for (var x = 0; x < g.Width; x++)
-        for (var y = 0; y < g.Height; y++)
+        var (sx0, sy0, sx1, sy1) = seedBox ?? (0, 0, g.Width - 1, g.Height - 1);
+        for (var x = Math.Max(sx0, 0); x <= Math.Min(sx1, g.Width - 1); x++)
+        for (var y = Math.Max(sy0, 0); y <= Math.Min(sy1, g.Height - 1); y++)
         {
             var s = y * g.Width + x;
             if (piece[s] >= 0 || g.Types[s] == 2) continue;
@@ -171,7 +174,15 @@ public static class SpdBuilder
         options ??= new Options();
         var w = grid.Width;
         var n = w * grid.Height;
-        var piece = Pieces(grid, out var pieceCount);
+        // Warhammer3.exe 0x142a168a8: sets start only inside the box of all map_data areas of type 0 and 4 (Old World
+        // Classic: the 2-hex sea strip at x 2039-2040 lies in type-3 areas east of it and has no set)
+        int ax0 = int.MaxValue, ay0 = int.MaxValue, ax1 = int.MinValue, ay1 = int.MinValue;
+        foreach (var area in regions.Regions.SelectMany(r => r.Areas).Where(a => a.Type is 0 or 4))
+        {
+            ax0 = Math.Min(ax0, area.Box.X0); ay0 = Math.Min(ay0, area.Box.Y0);
+            ax1 = Math.Max(ax1, area.Box.X1); ay1 = Math.Max(ay1, area.Box.Y1);
+        }
+        var piece = Pieces(grid, out var pieceCount, ax0 <= ax1 ? (ax0, ay0, ax1, ay1) : null);
         var pieceHexes = new List<int>[pieceCount];
         for (var i = 0; i < pieceCount; i++) pieceHexes[i] = [];
         for (var h = 0; h < n; h++) if (piece[h] >= 0) pieceHexes[piece[h]].Add(h);
@@ -199,7 +210,10 @@ public static class SpdBuilder
         var values = new uint[(long)n * SpdData.Stride];
         Array.Fill(values, SpdData.NoPath);
         var written = new bool[n];
-        var setLandmarks = pieceHexes.Select(p => Landmarks(grid, p)).ToArray();
+        var inArea = new bool[n];
+        // like the areas': the box of all the set's hexes, the landmarks among its passable ones (Old World Classic: type-2
+        // hexes that join set 0 through bridge links are never its landmarks)
+        var setLandmarks = pieceHexes.Select(p => Landmarks(grid, p.Where(h => grid.Types[h] != 2).ToList(), p)).ToArray();
         var areaLandmarks = areaHexes.Select((p, i) => p.Count > 0 ? Landmarks(grid, p, areaAll[i]) : null).ToArray();
 
         var po = new ParallelOptions { MaxDegreeOfParallelism = options.MaxThreads > 0 ? options.MaxThreads : Environment.ProcessorCount };
@@ -219,14 +233,16 @@ public static class SpdBuilder
         {
             var a = k / 8;
             if (areaLandmarks[a] is not { } lm) return;
-            var slot = k % 8;
             var key = areaKeys[a];
+            if (regions.AreaOf(key).Type is 6 or 7) return; // landmarks only: no searches, its hexes get no area
+            var slot = k % 8;
             // the search crosses other areas freely; it is done once it has settled every hex of the area it can reach
             var left = areaHexes[a].Count(h => piece[h] == piece[lm[slot]]);
             scratch.Value!.Run(lm[slot], options.Inwards, (h, d) =>
             {
                 if (regions.AreaMap[h] != key) return true;
                 values[(long)h * SpdData.Stride + 8 + slot] = Stored(d);
+                inArea[h] = written[h] = true; // benign race: every writer stores true
                 return --left > 0;
             });
         });
@@ -252,7 +268,7 @@ public static class SpdBuilder
                 var h = y * w + x;
                 var c = (y - by0) * bw + (x - bx0);
                 spd.Sets[c] = piece[h] >= 0 ? (uint)piece[h] : SpdData.NoSet;
-                spd.Areas[c] = grid.Types[h] != 2 ? MapDataRegions.ToRegionArea(regions.AreaMap[h]) : new RegionArea(SpdData.None, SpdData.None);
+                spd.Areas[c] = inArea[h] ? MapDataRegions.ToRegionArea(regions.AreaMap[h]) : new RegionArea(SpdData.None, SpdData.None);
             }
         }
         foreach (var lm in setLandmarks)

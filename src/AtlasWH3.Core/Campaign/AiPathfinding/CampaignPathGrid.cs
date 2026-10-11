@@ -14,9 +14,10 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///    (campaign_map_roads, lowest threshold of the campaign) at 62.
 ///  - Roads: every road hex's masked edges get index 62; a road hex on a river (type 6) gets it on all six edges and
 ///    so do its neighbours' edges back to it.
-///  - Settlements: edges between a slot hex (primary or port slot area) and a neighbour that is land (0), sea (1) or
-///    another slot hex cost 0 both ways (observed: identical costs across a settlement and its ring in CA's files).
-///  - Moves are allowed by hex type pairs (FUN_1805fa120 + FUN_1805d3a70); type 2 is impassable.
+///  - Settlements (Warhammer3.exe 0x142935c58): slot hexes (primary or port slot area) are retyped to 4/7/8/9 and their
+///    edges cost 0 both ways, except to a non-slot hex of type 3 or 6.
+///  - Moves are allowed by hex type pairs (FUN_1805fa120 + FUN_1805d3a70; the same table in Warhammer3.exe's spd
+///    search 0x142a13498); type 2 is impassable.
 ///  - Bridges (ppd): every hex of one side links to every hex of the other side at cost 500.
 /// </summary>
 public sealed class CampaignPathGrid
@@ -129,9 +130,11 @@ public sealed class CampaignPathGrid
                 }
             }
 
-        // edges a settlement slot opens (slot hex to land, sea or slot, both ways): WH3's ppd types slot hexes as plain
-        // land, so these bypass the type-pair gate (combi map 1: Arnheim's port slot reaches the sea at cost 0)
-        var slotEdge = new bool[n * 6];
+        // settlement slots as Warhammer3.exe sets them up (0x142935c58 -> 0x142937f7c, read with a write watchpoint on IEE's
+        // grid): every slot hex is retyped, river (6) -> 9, sea (1) -> 8, else 7 beside a type-1 hex and 4 elsewhere; its
+        // edges cost 0 both ways, except to a hex outside the slots of type 3 or 6, which keeps its ppd cost. The type
+        // table then gates every move (combi map 1: Matorca's river slot, type 9, reaches the type-3 hex beside it at that
+        // edge's 80; circle of destruction's impassable slot hex has no sea beside it, becomes 4 and reaches type 3).
         if (regions is not null)
         {
             var slot = new bool[n];
@@ -139,25 +142,21 @@ public sealed class CampaignPathGrid
             foreach (var r in regions.Regions.Where(r => r.Key != Environment.GetEnvironmentVariable("SPD_SKIP_SLOT")))
                 foreach (var (x, y) in r.PrimarySlot.Concat(r.PortSlot))
                     if ((uint)x < (uint)Width && (uint)y < (uint)Height) slot[Index(x, y)] = true;
+            var types = (byte[])Types.Clone();
             for (var h = 0; h < n; h++)
             {
                 if (!slot[h]) continue;
-                // the settlement slot area is walkable even where the ppd marks a hex impassable (190E: 823,261 / 912,773
-                // get the slot's 0 cost in CA's spd)
-                if (Types[h] == 2) Types[h] = 0;
+                var sea = false;
                 for (var d = 0; d < 6; d++)
                 {
                     var nb = Neighbour[h * 6 + d];
                     if (nb < 0) continue;
-                    // land, sea and other slot hexes: free, whatever the hex types; bridge decks (type 5): free where the
-                    // types allow the move (combi map 1: Isle of Wight's and Fu Chow's land slots step onto their bridges
-                    // at their own cost, Lothern's type-3 slot does not)
-                    var deck = Types[nb] == 5 && !slot[nb];
-                    if (!(Types[nb] <= 1 || deck || slot[nb])) continue;
+                    sea |= types[nb] == 1;
+                    if (!slot[nb] && types[nb] is 3 or 6) continue;
                     edges[h * 6 + d] &= 0xC0;
                     edges[nb * 6 + (d + 3) % 6] &= 0xC0;
-                    if (!deck) slotEdge[h * 6 + d] = slotEdge[nb * 6 + (d + 3) % 6] = true;
                 }
+                Types[h] = types[h] switch { 6 => 9, 1 => 8, _ => sea ? (byte)7 : (byte)4 };
             }
         }
 
@@ -170,7 +169,7 @@ public sealed class CampaignPathGrid
             for (var d = 0; d < 6; d++)
             {
                 var nb = Neighbour[h * 6 + d];
-                if (nb < 0 || (mask >> Types[nb] & 1) == 0 && !slotEdge[h * 6 + d])
+                if (nb < 0 || (mask >> Types[nb] & 1) == 0)
                 {
                     Forward[h * 6 + d] = Reverse[h * 6 + d] = NoEdge;
                     continue;

@@ -47,40 +47,41 @@ out through rpfm_server.
 
 ### spd
 
-- **Landmark sets** are the connected pieces of the movement grid, numbered in the order their first hex comes,
-  scanning x outer and y inner. Each set gets 3K's 8 landmarks (corners and edge midpoints of its box, nearest hex)
-  and 8 searches. Every map has its sets and landmarks exactly, except Old World Classic (below).
+- **Landmark sets** are the connected pieces of the movement grid (`0x142a168a8` in Warhammer3.exe).
+  - The game scans only the box of all map_data areas of type 0 and 4, x outer and y inner. A non-impassable hex
+    without a set starts a new one, flooded over the whole grid (bridge links included).
+  - Old World Classic's 2-hex sea strip on the east edge (x 2039–2040, type-3 portal sea areas) lies outside that box
+    and has no set. Old World's strip is inside it and has one.
+  - Each set gets 3K's 8 landmarks (corners and edge midpoints of its box, nearest hex) and 8 searches. The box is
+    that of all the set's hexes, but the landmarks are its passable ones only. On Classic, type-2 hexes join set 0
+    through bridge links and are never its landmarks.
 - **Areas** are every map_data area, in region order and then area order.
   - The landmark targets come from the box of all the area's hexes; the landmarks are its nearest passable hexes.
     The passable hexes' box gives 3,432 of 3,440 on combi map 1, against 3,440.
   - The 8 searches run over the whole grid, not inside the area. A path may leave and come back; prologue has
     1,036 such costs.
   - Only the area's own hexes are recorded. A search stops once it has settled every hex of the area it can reach.
+  - A cell's area is written only where one of its own area's searches settled it. Areas of type 6 and 7 keep
+    their landmarks but run no searches, so their hexes have no area and no area costs. Neither do hexes no area
+    search reaches, such as isolated one-hex sets (combi 7: two river hexes in type-1 areas).
 - **Stored costs** are rounded down to a multiple of 4 (steps of 75 store 72, 148, 224, 300). The search runs on the
   exact sums.
 - **DB values** come from the mod packs and vanilla's db packs, the rows the game reads. The kit's raw_data\db names
   `wh3_main_combi_old` for combi map 1, a campaign with no road rows.
   - Defaults are road 80 and beaches 2100: every vanilla campaign's lowest road is 80. The old combi and chaos maps'
     rows now name `*_old` campaigns.
-- **Settlement slots**:
-  - Edges to land, sea and other slot hexes cost 0 and bypass the hex-type gate. WH3's ppd types slot hexes as plain
-    terrain; Arnheim's port slot reaches the sea at 0.
-  - Edges to bridge decks (type 5) cost 0 where the type pair allows the move: Isle of Wight's and Fu Chow's land
-    slots step onto their bridges at their own cost; Lothern's type-3 slot does not.
+- **Settlement slots**, as Warhammer3.exe sets them up (`0x142935c58` → `0x142937f7c`). Found with a write watchpoint
+  on IEE's slot hexes (`probe.py --slots`); our grid then matches the game's whole IEE grid in every hex type.
+  - Every slot hex (map_data's primary and port slot areas) is retyped: river (6) → 9, sea (1) → 8, otherwise 7 when a
+    neighbour is of type 1 and 4 when none is. Impassable (2), type-3 and type-5 slot hexes become passable this way.
+    Primary or port does not matter: in one settlement, a type-3 hex beside open sea becomes 7 and one without becomes 4.
+  - A slot hex's edges cost 0 both ways, except to a hex outside the slots of type 3 or 6, which keeps its ppd cost.
+  - Moves are then gated by the type table alone; slot types need no special rule. Examples: Matorca's river slot
+    (type 9) reaches the type-3 hex beside it at that edge's 80 (combi 1–3). Isle of Wight's and Fu Chow's land slots
+    (4) step onto their bridge decks at their own cost. Lothern's sea-side slot (7) cannot.
 
-Parity (2026-10-10, `hlp-spd --compare`; Old World in 9 s):
-
-| map | spd |
-|---|---|
-| prologue | byte-identical |
-| chaos 1–4, combi 4, 5, 7, IEE, Old World, Darklands | every landmark; set costs 100 %; area costs 99.99 % |
-| combi 1–3 | every landmark; set costs 99.96 %; area costs 99.99 % |
-| Old World Classic | one extra set: a 2-hex sea strip on the east edge (x 2039–2040, portal sea regions) that CA leaves out; set costs 95.4 % |
-
-Open on spd:
-- Matorca's river slot (combi 1–3) reaches a type-3 hex at the edge's 80, which no type rule above gives.
-- A few hundred cells per map (mostly of map_data area type 6) have no area in CA's file.
-- Classic's sea strip.
+Parity (2026-10-11, `hlp-spd --compare`; Old World in 8 s): **byte-identical on all 15 reference maps**. That is
+prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and Darklands.
 
 ### hlp
 

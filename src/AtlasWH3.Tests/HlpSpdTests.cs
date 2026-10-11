@@ -64,30 +64,37 @@ public class HlpSpdTests
         Assert.True(refHlp.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
 
-    /// <summary>Guards the spd parity reached on combi map 1 (2026-10-10): every landmark, 99.96 % of the set costs and
-    /// 99.99 % of the area costs.</summary>
-    [Fact]
-    public void Combi_NativeSpd_Parity()
+    /// <summary>Vanilla spd built natively equals CA's byte for byte. Combi 1 guards the settlement slots as the exe
+    /// sets them up (Matorca's river slot, type 9, reaches a type-3 hex at the edge's cost); combi 7 the areas (hexes of
+    /// map_data area type 6/7, and hexes no area search reaches, carry no area).</summary>
+    [Theory]
+    [InlineData("wh3_main_combi_map_1")]
+    [InlineData("wh3_main_combi_map_7")]
+    public void Combi_NativeSpd_ByteIdentical(string map)
     {
-        var (grid, _, regions) = Inputs("wh3_main_combi_map_1");
-        var reference = SpdData.Read(Read("wh3_main_combi_map_1", "spd_data.esf"));
-        var spd = SpdBuilder.Build(grid, regions, reference.Timestamp);
-        Assert.Equal((reference.X0, reference.Y0, reference.X1, reference.Y1), (spd.X0, spd.Y0, spd.X1, spd.Y1));
-        Assert.Equal(reference.SetLandmarks, spd.SetLandmarks);
-        Assert.Equal(reference.AreaLandmarks.Count, spd.AreaLandmarks.Count);
-        for (var i = 0; i < spd.AreaLandmarks.Count; i++)
-        {
-            Assert.Equal(reference.AreaLandmarks[i].Area, spd.AreaLandmarks[i].Area);
-            Assert.Equal(reference.AreaLandmarks[i].Landmarks, spd.AreaLandmarks[i].Landmarks);
-        }
-        Assert.Equal(reference.Sets, spd.Sets);
-        long set = 0, area = 0, n = reference.Sets.LongLength;
-        for (long c = 0; c < n; c++)
-            for (var j = 0; j < SpdData.Stride; j++)
-                if (spd.Values[c * SpdData.Stride + j] == reference.Values[c * SpdData.Stride + j])
-                    if (j < 8) set++; else area++;
-        Assert.True(set >= n * 8 * 0.9995, $"set costs {set}/{n * 8}");
-        Assert.True(area >= n * 8 * 0.9998, $"area costs {area}/{n * 8}");
+        var (grid, _, regions) = Inputs(map);
+        var reference = Read(map, "spd_data.esf");
+        var refSpd = SpdData.Read(reference);
+        var spd = SpdBuilder.Build(grid, regions, refSpd.Timestamp);
+        spd.Magic = refSpd.Magic; // CA AB (older build) or CB AB
+        Assert.True(reference.AsSpan().SequenceEqual(spd.ToBytes()), "spd_data.esf differs");
+    }
+
+    /// <summary>Old World Classic's spd equals CA's byte for byte: sets start only inside the box of the type 0/4 areas
+    /// (its east-edge sea strip has no set), and type-2 hexes bridged into a set are never its landmarks.</summary>
+    [Fact]
+    public void OldWorldClassic_NativeSpd_ByteIdentical()
+    {
+        const string map = "cr_oldworldclassic_map_1";
+        var pack = new PackSet([PackFile.Open(TestKits.Pack("!cr_oldworld_classic_campaign.pack"))]);
+        byte[] Get(string f) => pack.TryRead($"campaign_maps/{map}/{f}") ?? throw new FileNotFoundException($"Old World Classic {f}");
+        var regions = MapDataRegions.Read(EsfTree.Read(Get("map_data.esf")));
+        var grid = new CampaignPathGrid(PathfindingPpd.Read(Get("pathfinding.ppd")), regions);
+        var reference = Get("spd_data.esf");
+        var refSpd = SpdData.Read(reference);
+        var spd = SpdBuilder.Build(grid, regions, refSpd.Timestamp);
+        spd.Magic = refSpd.Magic; // CA AB (older build) or CB AB
+        Assert.True(reference.AsSpan().SequenceEqual(spd.ToBytes()), "spd_data.esf differs");
     }
 
     private static int IdenticalAreas(HlpData hlp, HlpData reference)
