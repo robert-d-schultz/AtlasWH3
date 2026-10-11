@@ -446,7 +446,8 @@ way:
 - the `.culture` layout: sections `p m v lp ls ht sc` / `ss`; bit 63 for a culture with no prefab_types row; `ht` is
   (triangle count, mask) per run of one hole's triangles;
 - BOB writes no files for a type with nothing in the piece, and no light probes or rivers in pieces;
-- **an ECTransform pivot moves the entity** (position + pivot − RS·pivot). This also fixes two IEE mountains in
+- **an ECTransform pivot moves the entity** (corrected 2026-10-11: position − RS·pivot, the position is where the pivot
+  lands; the first fit, position + pivot − RS·pivot, only matched x and z). This also fixes two IEE mountains in
   global_props (content parity: IEE 85.10%, Old World unchanged at 98.83%);
 - **the vanilla kit's Terry `configuration.xml` names `art/campaign/prefabs` for campaign prefabs**, a mistake (they
   are in `art/prefabs/campaign`) that the user corrects by hand in each kit; this kit had the vanilla value again
@@ -624,7 +625,12 @@ Started 2026-10-11, after Phase 6.
     places every model element at its time-0 transform through its attach parents. Every game .csc reads but the 328
     ROOT v6 quest-battle scenes.
 - [x] 5.5 The user's second look (2026-10-11):
-  - entities are placed with their ECTransform pivot (`TerryEntityData.Placement`, the build's rule);
+  - entities are placed with their ECTransform pivot (`TerryEntityData.Placement`). The user's third look found the
+    rule was wrong in y: BOB's global_props.bin puts the origin at position − RS·pivot (campaign_vortex_tear.csc,
+    def_mountain_volcano_01, the ogr_large_mountains), as 4.7 found for the height patches; the build had
+    position + pivot − RS·pivot. Both fixed; IEE content parity unchanged at 85.34%;
+  - forest trees are drawn at 0.42 of model size (the user's figure; WH3's tree tables carry no scale);
+  - tile meshes (material 49) name a texture stem: `<stem>_base_colour.dds` (the coast cliffs' cliff_gen);
   - no map-wide sea: the water is the map's `ECPolygonMesh`es with a campaign water-plane material, triangulated as the
     build does;
   - voids (no tile in tile_map.png) are left empty, and WH3's tile meshes draw (`custom_mesh.rigid_model_v2`, not 3K's

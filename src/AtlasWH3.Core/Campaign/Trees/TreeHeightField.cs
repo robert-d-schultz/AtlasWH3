@@ -215,7 +215,7 @@ public sealed class TreeHeightField
                 var matrix = QtuTransform.Matrix((float)r[0], (float)r[1], (float)r[2], (float)s[0], (float)s[1], (float)s[2],
                     (float)p[0], (float)p[1], (float)p[2]);
                 float x = (float)p[0], y = (float)p[1], z = (float)p[2];
-                // the patch is placed at position − RS·pivot (not global_props' position + pivot − RS·pivot): IEE's
+                // the patch is placed at position − RS·pivot, as global_props places the model: IEE's
                 // pivoted mountains sit pivot.y · scale.y lower in BOB's trees (2026-10-10, 4.7)
                 if ((string?)t.Attribute("pivot") is { } pivot && LayerDocument.ReadVector(pivot) is [var vx, var vy, var vz] &&
                     (vx != 0 || vy != 0 || vz != 0))

@@ -9,7 +9,7 @@ using AtlasWH3.Formats.Terry;
 namespace AtlasWH3.Tests;
 
 /// <summary>WH3 global_props.bin (BMD v27) and the global_props step.</summary>
-public class GlobalPropsTests
+public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const string OldWorld = "cr_oldworld_map_1";
 
@@ -191,10 +191,11 @@ public class GlobalPropsTests
             Assert.Equal(["rigidmodels/x.rigid_model_v2", "rigidmodels/p.rigid_model_v2"], objects.PropPaths);
             Assert.Empty(objects.Probes);
             Assert.All(objects.Props, p => Assert.Equal(1UL, p.CultureMask));
-            // turned 90° about x around (0, 2, 0): the origin moves to (10, 2, 8) or (10, 2, 12)
+            // turned 90° about x with pivot (0, 2, 0): the pivot lands on the position, the origin at position − R·pivot,
+            // (10, 0, 8) or (10, 0, 12)
             var pivoted = objects.Props[1].Transform;
             Assert.Equal(10f, pivoted[9], 4);
-            Assert.Equal(2f, pivoted[10], 4);
+            Assert.Equal(0f, pivoted[10], 4);
             Assert.Equal(2f, MathF.Abs(pivoted[11] - 10), 4);
             var culture = PieceCulture.Read(files["objects"].Culture);
             Assert.Equal(["p", "ht"], culture.Select(c => c.Tag));
@@ -255,6 +256,7 @@ public class GlobalPropsTests
             foreach (var (file, share) in new[] { ("global_props.bin", 0.85), ("global_props_sound.bin", 0.995) })
             {
                 var parity = GlobalPropsParity.Compare(GlobalPropsParity.Load(ctx.OutFile(file)), GlobalPropsParity.Load(Path.Combine(bobDir, file)));
+                output.WriteLine($"{file}: {parity.Share:P2} ({parity.Same} same, {parity.Differ} differ)");
                 Assert.True(parity.Share > share, $"{file}: {parity.Same} same, {parity.Differ} differ: {string.Join("; ", parity.Examples)}");
             }
         }

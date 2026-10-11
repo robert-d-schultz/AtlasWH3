@@ -33,9 +33,8 @@ public sealed record TerryEntityData(string Id, string? Name, string Type, IRead
             : null;
 
     /// <summary>
-    /// Where the entity's model space sits in the world: its transform with rotation and scale turned about the
-    /// ECTransform pivot, so the origin moves to position + pivot − R·S·pivot (as the build places it; BOB's IEE
-    /// dragonspine mountains). Null without a transform.
+    /// Where the entity's model space sits in the world: the position is where the ECTransform pivot lands, so the
+    /// origin is position − R·S·pivot (BOB's global_props.bin, and the build). Null without a transform.
     /// </summary>
     public TerryTransform? Placement
     {
@@ -46,7 +45,7 @@ public sealed record TerryEntityData(string Id, string? Name, string Type, IRead
             if (Component("ECTransform")?["pivot"] is not { } pv || LayerDocument.ReadVector(pv) is not [var px, var py, var pz]
                 || (px == 0 && py == 0 && pz == 0)) return t;
             var (rx, ry, rz) = new TerryTransform([0, 0, 0], r, s).Apply(px, py, pz);
-            return t with { Position = [p[0] + px - rx, p[1] + py - ry, p[2] + pz - rz] };
+            return t with { Position = [p[0] - rx, p[1] - ry, p[2] - rz] };
         }
     }
 

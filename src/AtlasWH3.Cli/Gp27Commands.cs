@@ -219,18 +219,18 @@ static class Gp27Commands
         return 0;
     }
 
-    /// <summary>gp27-find &lt;global_props.bin | piece .bin&gt; &lt;x&gt; &lt;z&gt; [radius]: the records within radius (default 1) of
-    /// (x, z), with the body they are in.</summary>
+    /// <summary>gp27-find &lt;global_props.bin | piece .bin&gt; &lt;x&gt; &lt;z&gt; [radius] [--full]: the records within radius
+    /// (default 1) of (x, z), with the body they are in (--full: every field).</summary>
     private static int Find(string[] a)
     {
         float x = float.Parse(a[1], System.Globalization.CultureInfo.InvariantCulture), z = float.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture);
-        var radius = a.Length > 3 ? float.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture) : 1f;
+        var radius = a.Length > 3 && a[3] != "--full" ? float.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture) : 1f;
         var bodies = a[0].EndsWith("global_props.bin", StringComparison.OrdinalIgnoreCase) || a[0].EndsWith("global_props_sound.bin", StringComparison.OrdinalIgnoreCase)
             ? GlobalProps.Load(a[0]).Bodies().ToList() : [(Path.GetFileName(a[0]), File.ReadAllBytes(a[0]))];
         foreach (var (name, data) in bodies)
             foreach (var r in Records(Bmd27Body.Parse(data)))
                 if (MathF.Abs(r.X - x) <= radius && MathF.Abs(r.Z - z) <= radius)
-                    Console.WriteLine($"{name}: {r.Kind} {r.Identity} {r.X} {r.Z}");
+                    Console.WriteLine($"{name}: {r.Kind} {r.Identity} {r.X} {r.Z}" + (a.Contains("--full") ? Environment.NewLine + "    " + Full(r.Record) : ""));
         return 0;
     }
 

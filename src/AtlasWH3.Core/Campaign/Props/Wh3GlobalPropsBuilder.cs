@@ -62,12 +62,13 @@ public sealed class Wh3GlobalPropsBuilder
             var s = Floats((string?)t?.Attribute("scale") ?? "1 1 1");
             var m = QtuTransform.MatrixWh3(r[0], r[1], r[2], s[0], s[1], s[2]);
             var xf = new Xf(m.Select(v => (float)v).ToArray(), p[0] + 0f, p[1] + 0f, p[2] + 0f, QtuTransform.QuaternionWh3(r[0], r[1], r[2]));
-            // rotation and scale turn about the pivot: the origin moves to position + pivot - RS·pivot (BOB's IEE
-            // dragonspine mountains, pivot (0, 2.88, 0) under a 17° tilt: x + 0.851)
+            // the position is where the pivot lands: the origin is position - RS·pivot (BOB's IEE files: the dragonspine
+            // mountains, pivot (0, 2.88, 0) under a 17° tilt, x + 0.851; y on def_mountain_volcano_01, the
+            // ogr_large_mountains and campaign_vortex_tear.csc, whose y the earlier position + pivot - RS·pivot missed)
             if ((string?)t?.Attribute("pivot") is { } pv && Floats(pv) is [var px, var py, var pz] && (px != 0 || py != 0 || pz != 0))
             {
                 var (rx, ry, rz) = (xf with { X = 0, Y = 0, Z = 0 }).Apply(px, py, pz);
-                xf = xf with { X = xf.X + px - rx, Y = xf.Y + py - ry, Z = xf.Z + pz - rz };
+                xf = xf with { X = xf.X - rx, Y = xf.Y - ry, Z = xf.Z - rz };
             }
             return xf;
         }

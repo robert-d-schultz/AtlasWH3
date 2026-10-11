@@ -128,6 +128,9 @@ public sealed class ModelLibrary(AssetSource source)
                     colour = m.Texture(RigidModel.TexBaseColour) ?? m.Texture(RigidModel.TexDiffuse);
                     alpha = m.AlphaMode == 1;
                 }
+                // tile meshes (material id 49: the coast cliffs) name only a texture stem: <stem>_base_colour.dds
+                if (colour is null && m.MaterialPath is { Length: > 0 } stem
+                    && AssetSource.Normalize(stem) + "_base_colour.dds" is var stemColour && Source.Exists(stemColour)) colour = stemColour;
                 colour = ResolveColour(colour);
                 if (l == 0 && colour is not null && !Source.Exists(colour)) problems.Add($"texture {colour} not found");
                 if (l == 0 && colour is null) problems.Add($"no base colour texture (shader {shader})");

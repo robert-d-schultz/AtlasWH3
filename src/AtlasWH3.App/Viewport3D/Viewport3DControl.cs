@@ -673,7 +673,7 @@ public sealed class Viewport3DControl : Grid
     /// (like the fauna, whose .csc scenes carry 0.1), and the same castanopsis models placed by the mountain tiles'
     /// bmds come out at 10.7 × 4 × cell/128 ≈ 0.11. At 1 a canopy spans several tile-map cells and buries the hills.
     /// </summary>
-    public const float TreeScale = 1f;
+    public const float TreeScale = 0.42f;
 
     private void AddTrees(Frustum frustum, Vector3 eye, List<GpuModel> batches)
     {
