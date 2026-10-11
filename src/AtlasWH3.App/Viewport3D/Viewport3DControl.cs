@@ -197,7 +197,7 @@ public sealed class Viewport3DControl : Grid
             var outline = new List<(Vector3, Vector3)>();
             foreach (var o in e.Outlines)
             {
-                var pts = o.Points.Select(pt => V(t.Apply(pt.X, 0, pt.Z))).ToList();
+                var pts = o.Points.Select((pt, i) => V(t.Apply(pt.X, o.Heights?[i] ?? 0, pt.Z))).ToList();
                 if (o.Closed && pts.Count > 2) pts.Add(pts[0]);
                 for (var i = 1; i < pts.Count; i++) outline.Add((pts[i - 1], pts[i]));
             }
@@ -404,43 +404,85 @@ public sealed class Viewport3DControl : Grid
         });
     }
 
+    /// <summary>
+    /// The terrain as the game draws it: tiles on Height and the alt-lf (sea) tiles on HeightSea are separate surfaces,
+    /// so each grid quad takes its tile's map (two vertex grids, no wall stretched between land and sea), and voids
+    /// get nothing. Quads are whole tile-map cells (a step of 4 Height pixels or a multiple) when a tile list is known.
+    /// </summary>
+    /// <summary>The terrain mesh's grid step in Height pixels (at most 2048 vertices across; whole tile-map cells).</summary>
+    private static int MeshStep(AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain)
+    {
+        var step = Math.Max(1, (int)Math.Ceiling(Math.Max(terrain.Land.Width, terrain.Land.Height) / 2048.0));
+        return terrain.Tiles is null ? step : (step + 3) / 4 * 4;
+    }
+
+    /// <summary>The drawn terrain mesh's height at a world point: the same grid, map (Height or HeightSea by the quad's
+    /// tile) and triangle split as <see cref="CreateTerrainMesh"/>, so overlays lie exactly on what is drawn.</summary>
+    private static float MeshY(AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain, double x, double z)
+    {
+        var (raster, worldW, worldH) = terrain;
+        var step = MeshStep(terrain);
+        int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
+        // vertex (i, j) sits at pixel centre (i·step, j·step)
+        var fi = Math.Clamp((x / worldW * raster.Width - 0.5) / step, 0, cols - 1.0001);
+        var fj = Math.Clamp(((1 - z / worldH) * raster.Height - 0.5) / step, 0, rows - 1.0001);
+        int i = (int)fi, j = (int)fj;
+        double u = fi - i, w = fj - j;
+        var sea = terrain.SeaFloor is { } s && terrain.CoverAt(Math.Min(i * step + step / 2, raster.Width - 1),
+            Math.Min(j * step + step / 2, raster.Height - 1)) == AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.AltLf ? s : raster;
+        float H(int a, int b) => sea[Math.Min(a * step, raster.Width - 1), Math.Min(b * step, raster.Height - 1)];
+        float h00 = H(i, j), h10 = H(i + 1, j), h01 = H(i, j + 1), h11 = H(i + 1, j + 1);
+        // triangles (a, b, c) and (b, d, c): a = (i, j), b = (i+1, j), c = (i, j+1), d = (i+1, j+1)
+        return (float)(u + w <= 1 ? h00 + (h10 - h00) * u + (h01 - h00) * w : h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - w));
+    }
+
     private static (Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int) CreateTerrainMesh(Renderer3D r,
         AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain)
     {
         var (raster, worldW, worldH) = terrain;
-        var step = Math.Max(1, (int)Math.Ceiling(Math.Max(raster.Width, raster.Height) / 2048.0));
+        var step = MeshStep(terrain);
         int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
         double px = worldW / raster.Width, pz = worldH / raster.Height;
-        float H(int c, int rr) => terrain.Shown(Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1));
-        var v = new float[cols * rows * 6];
-        Parallel.For(0, rows, j =>
+        var grids = terrain.SeaFloor is { } sea ? new[] { raster, sea } : [raster];
+        var v = new float[grids.Length * cols * rows * 6];
+        for (var g = 0; g < grids.Length; g++)
         {
-            for (var i = 0; i < cols; i++)
+            var map = grids[g];
+            var gb = g * cols * rows;
+            float H(int c, int rr) => map[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)];
+            Parallel.For(0, rows, j =>
             {
-                int c = i * step, rr = j * step, o = (j * cols + i) * 6;
-                v[o] = (float)((c + 0.5) * px);
-                v[o + 1] = H(c, rr);
-                v[o + 2] = (float)(worldH - (rr + 0.5) * pz);
-                var dx = (H(c + step, rr) - H(c - step, rr)) / (float)(2 * step * px);
-                var dz = (H(c, rr - step) - H(c, rr + step)) / (float)(2 * step * pz);
-                var n = Vector3.Normalize(new Vector3(-dx, 1, -dz));
-                (v[o + 3], v[o + 4], v[o + 5]) = (n.X, n.Y, n.Z);
-            }
-        });
-        // no quad over a void (a tile-map cell without a tile): the game draws nothing there
-        var keep = new bool[(cols - 1) * (rows - 1)];
+                for (var i = 0; i < cols; i++)
+                {
+                    int c = i * step, rr = j * step, o = (gb + j * cols + i) * 6;
+                    v[o] = (float)((c + 0.5) * px);
+                    v[o + 1] = H(c, rr);
+                    v[o + 2] = (float)(worldH - (rr + 0.5) * pz);
+                    var dx = (H(c + step, rr) - H(c - step, rr)) / (float)(2 * step * px);
+                    var dz = (H(c, rr - step) - H(c, rr + step)) / (float)(2 * step * pz);
+                    var n = Vector3.Normalize(new Vector3(-dx, 1, -dz));
+                    (v[o + 3], v[o + 4], v[o + 5]) = (n.X, n.Y, n.Z);
+                }
+            });
+        }
+        // per quad: which grid (0 Height, 1 HeightSea), or none over a void
+        var use = new sbyte[(cols - 1) * (rows - 1)];
         Parallel.For(0, rows - 1, j =>
         {
             for (var i = 0; i < cols - 1; i++)
-                keep[j * (cols - 1) + i] = terrain.CoverAt(Math.Min(i * step + step / 2, raster.Width - 1),
-                    Math.Min(j * step + step / 2, raster.Height - 1)) != AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.None;
+                use[j * (cols - 1) + i] = terrain.CoverAt(Math.Min(i * step + step / 2, raster.Width - 1), Math.Min(j * step + step / 2, raster.Height - 1)) switch
+                {
+                    AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.None => -1,
+                    AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.AltLf when grids.Length > 1 => 1,
+                    _ => 0,
+                };
         });
         var idx = new List<uint>((cols - 1) * (rows - 1) * 6);
         for (var j = 0; j < rows - 1; j++)
             for (var i = 0; i < cols - 1; i++)
             {
-                if (!keep[j * (cols - 1) + i]) continue;
-                uint a = (uint)(j * cols + i), b = a + 1, c = a + (uint)cols, d = c + 1;
+                if (use[j * (cols - 1) + i] is var g && g < 0) continue;
+                uint a = (uint)(g * cols * rows + j * cols + i), b = a + 1, c = a + (uint)cols, d = c + 1;
                 idx.AddRange([a, b, c, b, d, c]);
             }
         return r.CreateTerrain(v, [.. idx]);
@@ -631,7 +673,7 @@ public sealed class Viewport3DControl : Grid
     /// (like the fauna, whose .csc scenes carry 0.1), and the same castanopsis models placed by the mountain tiles'
     /// bmds come out at 10.7 × 4 × cell/128 ≈ 0.11. At 1 a canopy spans several tile-map cells and buries the hills.
     /// </summary>
-    public const float TreeScale = 0.1f;
+    public const float TreeScale = 1f;
 
     private void AddTrees(Frustum frustum, Vector3 eye, List<GpuModel> batches)
     {
@@ -1063,14 +1105,14 @@ public sealed class Viewport3DControl : Grid
                 var c = SceneModel.TileColour(t.TileSet);
                 var shade = (n++ & 1) == 0 ? 1f : 0.82f;
                 var col = new Vector4((c >> 16 & 0xFF) / 255f * shade, (c >> 8 & 0xFF) / 255f * shade, (c & 0xFF) / 255f * shade, t.Base ? 0.35f : 0.55f);
-                // One vertex per cell corner of the tile, heights from the lf terrain, lifted a little.
+                // One vertex per cell corner of the tile, on the drawn terrain mesh, lifted a little.
                 int w = t.W, h = t.H;
                 var start = (uint)verts.Count;
                 for (var j = 0; j <= h; j++)
                     for (var i = 0; i <= w; i++)
                     {
                         double x = (t.X + i) * cx, z = (t.Y + j) * cz;
-                        verts.Add(new LineVertex(new Vector3((float)x, (float)Math.Max(model.GroundY(x, z), 0) + 0.03f, (float)z), col));
+                        verts.Add(new LineVertex(new Vector3((float)x, MeshY(model.Terrain!, x, z) + 0.02f, (float)z), col));
                     }
                 for (var j = 0; j < h; j++)
                     for (var i = 0; i < w; i++)

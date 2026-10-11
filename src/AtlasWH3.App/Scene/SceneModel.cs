@@ -70,29 +70,22 @@ public sealed class SceneModel
 
     public bool ShowsTile(TilePlacement t) => TilesShown == TileOverlay.All || (TilesShown == TileOverlay.Features && !t.Base);
 
-    /// <summary>Overlay colour of a tile set (0xRRGGBB): roads brown, rivers blue, coast sand, mountains grey...</summary>
+    /// <summary>Overlay colour of a WH3 campaign tile set (0xRRGGBB): roads browns and greys, beaches sand, cliffs red,
+    /// sea dark blue, generic green.</summary>
     public static uint TileColour(string set)
     {
         var s = set.ToLowerInvariant();
         return s switch
         {
-            _ when s.StartsWith("roads_imperial") => 0xE0A030,
-            _ when s.StartsWith("roads_paved") => 0xD08840,
-            _ when s.StartsWith("roads_tracks") => 0xB08050,
-            _ when s.StartsWith("roads") => 0xC07028,
-            _ when s.StartsWith("river_crossing") => 0xB040E0,
-            _ when s.StartsWith("river_mouth") => 0x40B0FF,
-            _ when s.StartsWith("river_start") => 0x60D0FF,
-            _ when s.StartsWith("river") => 0x2070FF,
-            _ when s.StartsWith("canal") => 0x20D0D0,
-            _ when s.StartsWith("lakes") => 0x5090E0,
-            _ when s.StartsWith("sea_coast") || s.StartsWith("beach") => 0xE8D080,
-            _ when s.StartsWith("generic_sea") || s == "sea" => 0x203860,
-            _ when s.StartsWith("mountains") => 0xA0A0A8,
-            _ when s.StartsWith("blockout_cliff") => 0xE03030,
-            _ when s.StartsWith("terra") || s.Contains("farm") => 0x90D040,
-            _ when s.StartsWith("mines") || s.StartsWith("salt") => 0xF0E040,
-            _ when s.StartsWith("generic") => 0x50A050,
+            "roads" => 0xC07028,
+            "roads_light" => 0xE0B060,
+            "roads_grey" => 0xA0A0A8,
+            "roads_grey_dark" => 0x606068,
+            "sea_coast" => 0xE8D080,
+            "cliff_gen" => 0xE03030,
+            "cliff_gen_ends" => 0xF08060,
+            "sea" => 0x203860,
+            "generic" => 0x50A050,
             _ => 0x808080 | (uint)(set.GetHashCode() & 0x7F7F7F),
         };
     }

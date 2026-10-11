@@ -9,7 +9,11 @@ public sealed record TerryComponentData(string Name, IReadOnlyList<KeyValuePair<
 }
 
 /// <summary>A shape drawn by an entity (polyline, spline, rectangle, circle), in the entity's local x/z plane.</summary>
-public sealed record TerryOutline(bool Closed, IReadOnlyList<(double X, double Z)> Points);
+public sealed record TerryOutline(bool Closed, IReadOnlyList<(double X, double Z)> Points)
+{
+    /// <summary>Each point's local y where the shape has one (river splines), else null (y = 0).</summary>
+    public IReadOnlyList<double>? Heights { get; init; }
+}
 
 /// <summary>Any entity of a layer, as Terry shows it: type, name, logical parents (the layers it sits in), components.
 /// <paramref name="Group"/> is the id of the ECGroup entity it is nested in, if any.</summary>
@@ -110,9 +114,14 @@ public sealed partial class LayerDocument
             (list ??= []).Add(new TerryOutline((string?)poly.Attribute("closed") == "true",
                 poly.Elements("point").Select(pt => (D((string?)pt.Attribute("x")), D((string?)pt.Attribute("y")))).ToList()));
         foreach (var spline in e.Element("ECRiverSpline")?.Elements("spline") ?? [])
+        {
+            var points = spline.Elements("point").Select(pt => ((string?)pt.Attribute("position") ?? "0,0,0").Split(',')).ToList();
             (list ??= []).Add(new TerryOutline((string?)spline.Attribute("closed") == "true",
-                spline.Elements("point").Select(pt => ((string?)pt.Attribute("position") ?? "0,0,0").Split(','))
-                    .Select(v => (D(v.ElementAtOrDefault(0)), D(v.ElementAtOrDefault(2)))).ToList()));
+                points.Select(v => (D(v.ElementAtOrDefault(0)), D(v.ElementAtOrDefault(2)))).ToList())
+            {
+                Heights = points.Select(v => D(v.ElementAtOrDefault(1))).ToList(),
+            });
+        }
         if (e.Element("ECRectangle") is { } rect)
         {
             double w = D((string?)rect.Attribute("width")) / 2, h = D((string?)rect.Attribute("height")) / 2;

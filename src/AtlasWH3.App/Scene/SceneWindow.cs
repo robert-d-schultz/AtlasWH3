@@ -207,8 +207,8 @@ public sealed partial class SceneWindow : Window
         };
         bar.Children.Add(tiles);
         var legend = new WrapPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
-        foreach (var (label, set) in new[] { ("road", "roads"), ("imperial road", "roads_imperial"), ("river", "river"), ("crossing", "river_crossing"),
-                     ("canal", "canals"), ("coast", "sea_coast"), ("mountains", "mountains_temperate"), ("cliff", "blockout_cliff"), ("lake", "lakes") })
+        foreach (var (label, set) in new[] { ("road", "roads"), ("light road", "roads_light"), ("grey road", "roads_grey"),
+                     ("dark grey road", "roads_grey_dark"), ("beach", "sea_coast"), ("cliff", "cliff_gen"), ("cliff end", "cliff_gen_ends"), ("sea", "sea") })
         {
             var c = SceneModel.TileColour(set);
             legend.Children.Add(new Border { Width = 10, Height = 10, Margin = new Thickness(6, 0, 3, 0), Background = new SolidColorBrush(Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c)) });
