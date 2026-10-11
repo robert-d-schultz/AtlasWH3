@@ -231,16 +231,17 @@ The editors, the build and parity all need this foundation.
   rules (add, replace-unless-255, hard light, `dst + src·(1−dst)`, AND), from the decompiler's colour-overlay
   measurements.
 - [x] **map.hex v20** (extra table plus the trailing bit array; 40 climates), from `campaign_tools/shared/map_hex.py`.
-- [ ] **Tile DB:** `_settings.bin` v12, tile `.bin` v6 / variation v11 (climate texture set), CHMF `hf_height_map.data`,
+- [x] **Tile DB:** `_settings.bin` v12, tile `.bin` v6 / variation v11 (climate texture set), CHMF `hf_height_map.data`,
   RMV2 v7 tile meshes. Copy from the decompiler's `Tiles/`. Tiles, variations and `_settings.bin` done (2026-10-08);
-  CHMF and the RMV2 v7 tile meshes not yet checked on WH3.
-- [ ] **Compiled readers** for parity and the editors:
+  the tile hf maps tested on WH3 in 4.6, the tile meshes (`custom_mesh.rigid_model_v2`) drawn by the scene in 5.5.
+  WH3's tile `bmd_data.bin` (BMD v26) is still unread (Phase 5).
+- [x] **Compiled readers** for parity and the editors:
   - `tile_list.bin` v2 (done: read and write, byte-identical)
   - `trees.campaign_tree_list` v4 (done: read and write, byte-identical)
-  - BMD v27 bodies, `global_props(_sound).bin` and `.culture` (copy from the decompiler's `Bmd/`)
+  - BMD v27 bodies, `global_props(_sound).bin` and `.culture` (done in 3.9 and 4.1: `Bmd27Body`, read and write)
   - BC6H `full_height_map.dds` (done: decoder and encoder, `Bc6h`)
-  - `map_data.esf` with `REGION_AREA_INDEX`
-  - hlp/spd v1 (read only)
+  - `map_data.esf` with `REGION_AREA_INDEX` (done in 6.2, with `REGION_AREA_INDEX_OVERRIDE`)
+  - hlp/spd v1 (done in 6.2: `CaabReader` / `CaabWriter`, read and write)
 - [x] **Fixtures** (done in 4.6 as `fixture-freeze`, beside the kit rather than in %LocalAppData%, so the files can be
   hard links): freeze one source + BOB-output snapshot per fixture map outside the kit, with a manifest and the game
   build.
@@ -584,13 +585,19 @@ of 3.3 were stale), and BOB's run has all 266 rivers, all identical (3.10).
 BC6H/BCn byte parity is out of scope unless AMDCompress's behaviour turns out to be cheap to match. The in-game checks
 of 3.1–3.10 are done in one pass once 4.1–4.3 are in.
 
+**The in-game pass (prepared 2026-10-11):** [`end_to_end.md`](end_to_end.md) has the IEE project (`Desktop\tw
+modding\projects\AtlasWH3 IEE`), the dry run (validate, compile, pack: 497 s, every step native) and the checklist.
+Against the live IEE pack, the merged pack's file list differs only in the river models (renumbered by entity id) and
+the two pieces' `rivers` files of an older BOB run. The run itself waits for the user's backup of the IEE pack.
+
 **Dropped:** the hybrid BOB fallback and the per-step override (no BOB-only step is left; `BobRunner` stays for parity
 runs), the `trim_mips` fix-up (the pieces are native), the timing report (it was there to choose the next native step),
 and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they ship nowhere, §2).
 
 ### Phase 5: Editors on WH3 (3–5 weeks)
 
-Started 2026-10-11, after Phase 6.
+Started 2026-10-11, after Phase 6. **Parked 2026-10-11 (the user):** the editors are a long-term stretch goal; the
+build comes first. The open items below stay as they are.
 
 - [x] 5.1 **Scene terrain on WH3** (`CampaignTerrain`): the 2D and 3D views draw the composited float `Height` map in
   world units, over x 0..world_width and z 0..h · (world_width / w) · 1.15476, as BOB's terrain provider maps the logic
@@ -691,6 +698,8 @@ Started 2026-10-11, after Phase 6.
   - IEE: 17 s through `build-campaign`.
   - Old World: 46 s and 3.8 GB peak (on the pack's inputs: the kit has no Old World `pathfinding.ppd`). The peak was
     8.8 GB before the faction path's blocked array was shared.
+  - 2026-10-11, the IEE dry run ([`end_to_end.md`](end_to_end.md)): through the project build (validate, compile, pack;
+    no install) hlp 224 s, spd 20 s, both byte-identical to the IEE pack's apart from the timestamp.
   - Left: the in-game check.
 
 
