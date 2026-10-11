@@ -31,6 +31,11 @@ BOB). Peak disk: `out\` 2.6 GB, the merged pack 2.97 GB.
 | others | < 45 s each | rivers (266), masks, environment, lookup, global_map, trees, camera_heightmap |
 | pack | 5 s | 2,205 kept, 11,016 replaced, 412 added, 208 dropped |
 
+Fixed after the user's first look: `camera_heightmap.png` had horizontal and vertical stripes in the eastern sea.
+`FillOffMap` took IEE's sea there (about 0 in the logic map) for the map's edge, and copied coastal heights into it.
+It is removed, and the project's `out\` and merged pack were rebuilt with the new camera map (camera_heightmap and
+pack only).
+
 Checked before the run:
 - the kit's `map_data.esf` and `pathfinding.ppd` (hlp/spd's inputs) are byte-identical to today's pack's;
 - `!cr_immortal_empires_expanded_start_pos.pack` holds only `startpos.esf` and DB tables, nothing under
