@@ -384,7 +384,6 @@ public sealed class BuildRunner
         PatchMask = _project.Build.PatchMask,
         LookupLastRegions = _project.Build.LookupLast.Select(e => LookupStep.IsFile(e) ? _project.Resolve(e, _paths) : e).ToList(),
         DevastatedMap = CampaignBuildContext.DevastatedSetting(_project.Build.DevastatedMap),
-        GlobalLighting = _project.Build.GlobalLighting,
         Cancel = _cancel,
     };
 

@@ -148,9 +148,6 @@ public sealed class BuildProfile
     /// <summary>lookup: regions moved to the end of the lookup palette, past the 1024 entries the game reads (region keys,
     /// or text files of them, relative to the project folder).</summary>
     public List<string> LookupLast { get; set; } = [];
-    /// <summary>environment: the global_lighting of environment_collection.xml. The .terry's is what Terry shows, which
-    /// map authors keep on a battle environment; empty = the .terry's.</summary>
-    public string GlobalLighting { get; set; } = Campaign.EnvironmentStep.DefaultGlobalLighting;
     /// <summary>devastation_pieces: the devastated project whose pieces it also cuts. Empty: &lt;map&gt;_devastate_1 when the
     /// kit has it; "none": no devastated pieces.</summary>
     public string DevastatedMap { get; set; } = "";

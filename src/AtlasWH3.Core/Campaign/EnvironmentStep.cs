@@ -9,19 +9,18 @@ namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
 /// environment_collection.xml (BOB "Terry file") for the map and, when there is one, its devastated project's folder,
-/// which gets the same file (BOB compiled the devastated project's own). It is the map's project compiled (WH3_visual_map_decompiler's EnvironmentVolumeWriter reads it back): the .terry's
-/// global_lighting; a SPHERE or CYLINDER per ECEnvironmentVolume entity of the exported layers (ECDoubleSphere /
-/// ECDoubleCylinder radii, the entity position; a cylinder's height is dropped), in layer and entity order; and a
-/// DEVASTATION per name=path pair of the .terry's devastation_light_environments. The global_lighting is the build
-/// profile's (<see cref="DefaultGlobalLighting"/> by default), not the .terry's, which is what Terry shows. Numbers are %f, lines CRLF, an empty
+/// which gets the same file (BOB compiled the devastated project's own). It is the map's project compiled
+/// (WH3_visual_map_decompiler's EnvironmentVolumeWriter reads it back): <see cref="GlobalLighting"/>; a SPHERE or
+/// CYLINDER per ECEnvironmentVolume entity of the exported layers (ECDoubleSphere / ECDoubleCylinder radii, the entity
+/// position; a cylinder's height is dropped), in layer and entity order; and a DEVASTATION per name=path pair of the .terry's devastation_light_environments. Numbers are %f, lines CRLF, an empty
 /// section self-closed.
 /// </summary>
 public sealed class EnvironmentStep : ICampaignBuildStep
 {
-    /// <summary>The campaign lighting written when the profile names none: vanilla combi's, which works on any campaign
-    /// map (the user, 2026-10-11). The .terry's global_lighting is what Terry shows, so authors keep a battle environment
-    /// there (IEE's names a file only the kit's working_data has).</summary>
-    public const string DefaultGlobalLighting = "weather/campaign/combi/default.environment";
+    /// <summary>The global_lighting of every map: vanilla combi's, which suits any campaign map (the user, 2026-10-11).
+    /// The .terry's is not used: it is what Terry shows, so authors keep a battle environment there (IEE's names a file
+    /// only the kit's working_data\Weather has).</summary>
+    public const string GlobalLighting = "weather/campaign/combi/default.environment";
 
     public string Name => "environment";
     public string ReplacesBobAction => "Terry file (environment_collection.xml)";
@@ -36,7 +35,7 @@ public sealed class EnvironmentStep : ICampaignBuildStep
         var written = new List<string>();
         var notes = new List<string>();
         var project = TerryProject.Load(ctx.TerryFile);
-        var (text, spheres, cylinders) = Build(project, ctx.GlobalLighting);
+        var (text, spheres, cylinders) = Build(project);
         void Write(string outDir)
         {
             Directory.CreateDirectory(outDir);
@@ -45,8 +44,7 @@ public sealed class EnvironmentStep : ICampaignBuildStep
             written.Add(path);
         }
         Write(ctx.TerrainOutDir);
-        notes.Add($"{project.MapName}: {spheres} spheres, {cylinders} cylinders, global_lighting " +
-                  (ctx.GlobalLighting.Length > 0 ? ctx.GlobalLighting : $"{project.Setting("global_lighting")} (the .terry's)"));
+        notes.Add($"{project.MapName}: {spheres} spheres, {cylinders} cylinders");
         // the devastated folder's file is the map's own, byte for byte (the user, 2026-10-11): an area keeps the map's
         // lighting volumes when it devastates. BOB compiled it from the devastated project, whose volumes lag the map's.
         if (DevastationPiecesStep.DevastatedMapName(ctx) is { } devastated)
@@ -57,8 +55,8 @@ public sealed class EnvironmentStep : ICampaignBuildStep
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 
-    /// <summary>The file's text and its volume counts; <paramref name="globalLighting"/> null or empty = the .terry's.</summary>
-    public static (string Text, int Spheres, int Cylinders) Build(TerryProject project, string? globalLighting = null)
+    /// <summary>The file's text and its volume counts.</summary>
+    public static (string Text, int Spheres, int Cylinders) Build(TerryProject project)
     {
         var spheres = new List<string>();
         var cylinders = new List<string>();
@@ -86,7 +84,7 @@ public sealed class EnvironmentStep : ICampaignBuildStep
             .ToList();
 
         var sb = new StringBuilder();
-        sb.Append($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{Escape(globalLighting is { Length: > 0 } ? globalLighting : project.Setting("global_lighting") ?? "")}'>\r\n");
+        sb.Append($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{GlobalLighting}'>\r\n");
         Section(sb, "ENVIRONMENT_SPHERES", spheres);
         Section(sb, "ENVIRONMENT_CYLINDERS", cylinders);
         Section(sb, "ENVIRONMENT_DEVASTATIONS", devastations);

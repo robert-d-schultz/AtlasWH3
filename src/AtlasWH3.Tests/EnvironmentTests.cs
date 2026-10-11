@@ -7,7 +7,8 @@ namespace AtlasWH3.Tests;
 public class EnvironmentTests
 {
     /// <summary>IEE's devastated project against BOB's output in the kit (2026-09-30): byte-identical (1 sphere, 65
-    /// cylinders, no devastation lighting).</summary>
+    /// cylinders, no devastation lighting) but the global_lighting, which is vanilla combi's for every map, where BOB
+    /// writes the .terry's (what Terry shows).</summary>
     [Fact]
     public void Build_IeeDevastated_MatchesBob()
     {
@@ -15,23 +16,12 @@ public class EnvironmentTests
         var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
         var bob = Path.Combine(TestKits.Kit(map), "working_data", "terrain", "campaigns", map, "environment_collection.xml");
         if (!File.Exists(terry) || !File.Exists(bob)) return;
-        var (text, spheres, cylinders) = EnvironmentStep.Build(TerryProject.Load(terry));
-        Assert.Equal((1, 65), (spheres, cylinders));
-        Assert.Equal(File.ReadAllText(bob), text);
-    }
-
-    /// <summary>The profile's global_lighting replaces the .terry's (which is what Terry shows); empty keeps the .terry's.</summary>
-    [Fact]
-    public void Build_GlobalLighting_ReplacesTheTerrys()
-    {
-        const string map = "cr_combi_expanded_map_devastate_1";
-        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
-        if (!File.Exists(terry)) return;
         var project = TerryProject.Load(terry);
-        Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{EnvironmentStep.DefaultGlobalLighting}'>\r\n",
-            EnvironmentStep.Build(project, EnvironmentStep.DefaultGlobalLighting).Text);
-        Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{project.Setting("global_lighting")}'>\r\n",
-            EnvironmentStep.Build(project, "").Text);
+        var (text, spheres, cylinders) = EnvironmentStep.Build(project);
+        Assert.Equal((1, 65), (spheres, cylinders));
+        Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{EnvironmentStep.GlobalLighting}'>\r\n", text);
+        Assert.Equal(File.ReadAllText(bob).Replace($"global_lighting='{project.Setting("global_lighting")}'",
+            $"global_lighting='{EnvironmentStep.GlobalLighting}'"), text);
     }
 
     /// <summary>Per type (the untyped files last), the effects no map-wide object uses, each once.</summary>
