@@ -8,8 +8,8 @@ using AtlasWH3.Formats.Terry;
 namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
-/// environment_collection.xml (BOB "Terry file") for the map and, when there is one, its devastated project's folder.
-/// It is the project compiled (WH3_visual_map_decompiler's EnvironmentVolumeWriter reads it back): the .terry's
+/// environment_collection.xml (BOB "Terry file") for the map and, when there is one, its devastated project's folder,
+/// which gets the same file (BOB compiled the devastated project's own). It is the map's project compiled (WH3_visual_map_decompiler's EnvironmentVolumeWriter reads it back): the .terry's
 /// global_lighting; a SPHERE or CYLINDER per ECEnvironmentVolume entity of the exported layers (ECDoubleSphere /
 /// ECDoubleCylinder radii, the entity position; a cylinder's height is dropped), in layer and entity order; and a
 /// DEVASTATION per name=path pair of the .terry's devastation_light_environments. Numbers are %f, lines CRLF, an empty
@@ -29,19 +29,24 @@ public sealed class EnvironmentStep : ICampaignBuildStep
         var sw = Stopwatch.StartNew();
         var written = new List<string>();
         var notes = new List<string>();
-        void Write(TerryProject project, string outDir)
+        var project = TerryProject.Load(ctx.TerryFile);
+        var (text, spheres, cylinders) = Build(project);
+        void Write(string outDir)
         {
-            var (text, spheres, cylinders) = Build(project);
             Directory.CreateDirectory(outDir);
             var path = Path.Combine(outDir, "environment_collection.xml");
             File.WriteAllText(path, text, new UTF8Encoding(false));
             written.Add(path);
-            notes.Add($"{project.MapName}: {spheres} spheres, {cylinders} cylinders");
         }
-        Write(TerryProject.Load(ctx.TerryFile), ctx.TerrainOutDir);
+        Write(ctx.TerrainOutDir);
+        notes.Add($"{project.MapName}: {spheres} spheres, {cylinders} cylinders");
+        // the devastated folder's file is the map's own, byte for byte (the user, 2026-10-11): an area keeps the map's
+        // lighting volumes when it devastates. BOB compiled it from the devastated project, whose volumes lag the map's.
         if (DevastationPiecesStep.DevastatedMapName(ctx) is { } devastated)
-            Write(TerryProject.Load(DevastationPiecesStep.TerryFileOf(ctx, devastated)),
-                  Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated));
+        {
+            Write(Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated));
+            notes.Add($"{devastated}: a copy of {project.MapName}'s");
+        }
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 

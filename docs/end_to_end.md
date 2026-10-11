@@ -36,6 +36,10 @@ Fixed after the user's first look: `camera_heightmap.png` had horizontal and ver
 It is removed, and the project's `out\` and merged pack were rebuilt with the new camera map (camera_heightmap and
 pack only).
 
+Fixed after the user's second look: the main map's `environment_collection.xml` lacked vanilla's volumes. The env
+layer `a_iee_environments` was corrected in the kit (backup in the project's `backups\`), and the devastated folder's
+file is now a copy of the main map's. Rebuilt with environment and pack only.
+
 Checked before the run:
 - the kit's `map_data.esf` and `pathfinding.ppd` (hlp/spd's inputs) are byte-identical to today's pack's;
 - `!cr_immortal_empires_expanded_start_pos.pack` holds only `startpos.esf` and DB tables, nothing under
