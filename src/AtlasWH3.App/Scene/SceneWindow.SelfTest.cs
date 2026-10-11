@@ -477,8 +477,9 @@ public sealed partial class SceneWindow
     }
 
     /// <summary>
-    /// Read-only inspection: waits for the scene, then for every row of a CSV with id,x,z columns (and an optional
-    /// footprint_radius) saves a 3D close-up &lt;id&gt;.png in <paramref name="outDir"/>, and exits. Nothing is edited.
+    /// Read-only inspection: waits for the scene, then for every row of a CSV with id,x,z columns (and optional
+    /// footprint_radius, pitch, yaw and tiles = off/features/all) saves a 3D close-up &lt;id&gt;.png in
+    /// <paramref name="outDir"/>, and exits. Nothing is edited.
     /// </summary>
     public async Task ShotsAsync(string csvPath, string outDir)
     {
@@ -490,7 +491,8 @@ public sealed partial class SceneWindow
             for (var wait = 0; wait < 300 && !_view3d.TileMeshesReady; wait++) { _view3d.Invalidate(); await Task.Delay(100); }
             var lines = File.ReadAllLines(csvPath);
             var head = lines[0].Split(',').ToList();
-            int ci = head.IndexOf("id"), cx = head.IndexOf("x"), cz = head.IndexOf("z"), cr = head.IndexOf("footprint_radius");
+            int ci = head.IndexOf("id"), cx = head.IndexOf("x"), cz = head.IndexOf("z"), cr = head.IndexOf("footprint_radius"),
+                cp = head.IndexOf("pitch"), cy = head.IndexOf("yaw"), ct = head.IndexOf("tiles");
             _model.ShowHidden = true; // findings include hidden layers
             _view3d.Refresh();
             foreach (var line in lines.Skip(1))
@@ -499,13 +501,19 @@ public sealed partial class SceneWindow
                 if (File.Exists(Path.Combine(outDir, f[ci] + ".png"))) continue; // resumable
                 double x = double.Parse(f[cx], System.Globalization.CultureInfo.InvariantCulture), z = double.Parse(f[cz], System.Globalization.CultureInfo.InvariantCulture);
                 var r = cr >= 0 ? float.Parse(f[cr], System.Globalization.CultureInfo.InvariantCulture) : 3f;
+                var tiles = ct >= 0 && Enum.TryParse<SceneModel.TileOverlay>(f[ct], true, out var mode) ? mode : SceneModel.TileOverlay.Off;
+                if (_model.TilesShown != tiles)
+                {
+                    _model.TilesShown = tiles;
+                    for (var wait = 0; wait < 300 && !_view3d.TilesReady; wait++) { _view3d.Invalidate(); await Task.Delay(100); }
+                }
                 // Mark the finding: select its entity (yellow box) when the id is one.
                 if (_model.Find(f[ci]) is not null) { _model.ShowHidden = true; SetSelection([f[ci]], SceneView.SelectMode.Replace); }
                 else SetSelection([], SceneView.SelectMode.Replace);
                 _view3d.Camera.Target = new System.Numerics.Vector3((float)x, (float)_model.GroundY(x, z), (float)z);
                 _view3d.Camera.Distance = Math.Max(1.5f, r * 2.2f);
-                _view3d.Camera.Pitch = 0.3f;
-                _view3d.Camera.Yaw = 0.5f;
+                _view3d.Camera.Pitch = cp >= 0 ? float.Parse(f[cp], System.Globalization.CultureInfo.InvariantCulture) : 0.3f;
+                _view3d.Camera.Yaw = cy >= 0 ? float.Parse(f[cy], System.Globalization.CultureInfo.InvariantCulture) : 0.5f;
                 _view3d.Invalidate();
                 for (var wait = 0; wait < 40 && !_view3d.ModelsSettled; wait++) await Task.Delay(100);
                 await Task.Delay(200);

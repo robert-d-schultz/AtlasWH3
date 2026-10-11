@@ -631,7 +631,7 @@ public sealed class Renderer3D : IDisposable
 
     /// <summary>
     /// Tile ground (after <see cref="DrawTerrain"/>, whose ground constants and texture array it reuses): the index
-    /// range of one tile folder's draped grids (12 floats per vertex: position, lf normal, tile uv, world xz of the
+    /// range of one tile folder's draped pieces (12 floats per vertex: position, lf normal, tile uv, world xz of the
     /// tile's a and b axes), its blend0 weights and normal map, and the ground group of each channel (-1 = climate,
     /// computed here from the global ground). Opaque over the terrain, no depth write.
     /// </summary>

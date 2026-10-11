@@ -436,6 +436,66 @@ public sealed class Viewport3DControl : Grid
         return (float)(u + w <= 1 ? h00 + (h10 - h00) * u + (h01 - h00) * w : h11 + (h01 - h11) * (1 - u) + (h10 - h11) * (1 - w));
     }
 
+    /// <summary>
+    /// The drawn terrain mesh's triangles (same grid, map per quad, split and voids as <see cref="CreateTerrainMesh"/>)
+    /// clipped to the world rectangle [x0, x1] × [z0, z1], as triangle fans of each clipped piece. Every point lies on
+    /// the drawn surface, so a layer built from them sits a constant lift above it: sampling heights at a layer's own
+    /// vertices instead cuts across the mesh's folds (its quads span two tile-map cells on the big maps) and z-fights.
+    /// </summary>
+    private static void ClipMesh(AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain, double x0, double z0, double x1, double z1,
+                                 Action<Vector3, Vector3, Vector3> triangle)
+    {
+        var (raster, worldW, worldH) = terrain;
+        var step = MeshStep(terrain);
+        int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
+        double px = worldW / raster.Width, pz = worldH / raster.Height;
+        // vertex (i, j) at x = (i·step + 0.5)·px, z = worldH − (j·step + 0.5)·pz (j runs south)
+        int i0 = Math.Max(0, (int)Math.Floor((x0 / px - 0.5) / step)), i1 = Math.Min(cols - 2, (int)Math.Ceiling((x1 / px - 0.5) / step));
+        int j0 = Math.Max(0, (int)Math.Floor(((worldH - z1) / pz - 0.5) / step)), j1 = Math.Min(rows - 2, (int)Math.Ceiling(((worldH - z0) / pz - 0.5) / step));
+        Span<Vector3> a = stackalloc Vector3[8], b = stackalloc Vector3[8];
+        for (var j = j0; j <= j1; j++)
+            for (var i = i0; i <= i1; i++)
+            {
+                var cover = terrain.CoverAt(Math.Min(i * step + step / 2, raster.Width - 1), Math.Min(j * step + step / 2, raster.Height - 1));
+                if (cover == AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.None) continue;
+                var map = cover == AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.AltLf && terrain.SeaFloor is { } sea ? sea : raster;
+                Vector3 V(int vi, int vj)
+                {
+                    int c = vi * step, rr = vj * step;
+                    return new((float)((c + 0.5) * px), map[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)], (float)(worldH - (rr + 0.5) * pz));
+                }
+                Vector3 va = V(i, j), vb = V(i + 1, j), vc = V(i, j + 1), vd = V(i + 1, j + 1);
+                foreach (var (p, q, s) in new[] { (va, vb, vc), (vb, vd, vc) })
+                {
+                    a[0] = p; a[1] = q; a[2] = s;
+                    var n = 3;
+                    // Sutherland–Hodgman against the four sides (points interpolate along the triangle's edges, so
+                    // they stay in its plane)
+                    for (var side = 0; side < 4 && n > 0; side++)
+                    {
+                        float D(Vector3 v) => side switch
+                        {
+                            0 => v.X - (float)x0,
+                            1 => (float)x1 - v.X,
+                            2 => v.Z - (float)z0,
+                            _ => (float)z1 - v.Z,
+                        };
+                        var m = 0;
+                        for (var k = 0; k < n; k++)
+                        {
+                            Vector3 cur = a[k], next = a[(k + 1) % n];
+                            float dc = D(cur), dn = D(next);
+                            if (dc >= 0) b[m++] = cur;
+                            if (dc >= 0 != dn >= 0) b[m++] = Vector3.Lerp(cur, next, dc / (dc - dn));
+                        }
+                        b[..m].CopyTo(a);
+                        n = m;
+                    }
+                    for (var k = 1; k + 1 < n; k++) triangle(a[0], a[k], a[k + 1]);
+                }
+            }
+    }
+
     private static (Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int) CreateTerrainMesh(Renderer3D r,
         AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain)
     {
@@ -716,7 +776,7 @@ public sealed class Viewport3DControl : Grid
     private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _tileRivers;
     private TileGround? _tileGround;
 
-    /// <summary>The tiles' ground textures on the GPU: one vertex/index buffer of lf-draped grids, drawn per tile
+    /// <summary>The tiles' ground textures on the GPU: one vertex/index buffer of mesh-draped pieces, drawn per tile
     /// folder (its blend0 and channel groups).</summary>
     private sealed record TileGround(Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I,
         List<(int Start, int Count, GpuTexture Blend, GpuTexture? Normal, (int R, int G, int B, int A) Layers)> Ranges, int Tiles);
@@ -725,9 +785,10 @@ public sealed class Viewport3DControl : Grid
 
     /// <summary>
     /// Every placed tile whose texture set names a ground group of its own (roads, verges, river beds, banks...):
-    /// a grid over the tile (two quads per cell side, through the tile transform, on the lf) whose pixels mix the
-    /// groups by the tile's blend0.dds (R, G, B, A = texture-set slots 0–3; image row 0 = the tile's south edge:
-    /// sampled at the tiles' river-mesh vertices the river-bed weight is 124/255 that way, 77–92 for the other seven).
+    /// the drawn terrain mesh clipped to the tile (<see cref="ClipMesh"/>) whose pixels mix the groups by the tile's
+    /// blend0.dds (R, G, B, A = texture-set slots 0–3, through the tile transform; image row 0 = the tile's south edge,
+    /// as the tile names say: 2x2_straight_bl_tr's road leaves row 0 in the left cell; with the 90°/270° turns swapped
+    /// or the rows flipped, IEE's road ends meet a neighbour's 28% / 11% of the time instead of 72%).
     /// The "climate" slots are the global ground, so they are left to the terrain below via alpha.
     /// </summary>
     private static TileGround? BuildTileGround(SceneModel model, Renderer3D r)
@@ -736,7 +797,7 @@ public sealed class Viewport3DControl : Grid
         var groupIndex = arrays.Groups.ToDictionary(g => g.Name, g => g.Index, StringComparer.OrdinalIgnoreCase);
         var (_, _, cx, cz) = model.TileGrid;
         float sx = (float)(cx / 128), sz = (float)(cz / 128);
-        var perFolder = new Dictionary<string, (byte[]? Rgba, int W, int H, AtlasWH3.Formats.Dds.DdsTexture.Image? Normal, (int, int, int, int) Layers, List<float> V, List<uint> I)>(StringComparer.OrdinalIgnoreCase);
+        var perFolder = new Dictionary<string, (byte[]? Rgba, int W, int H, AtlasWH3.Formats.Dds.DdsTexture.Image? Normal, (int, int, int, int) Layers, bool Base, List<float> V, List<uint> I)>(StringComparer.OrdinalIgnoreCase);
         var tiles = 0;
         foreach (var t in model.Tiles)
         {
@@ -759,40 +820,39 @@ public sealed class Viewport3DControl : Grid
                     }
                 }
                 catch (Exception) { }
-                perFolder[folder] = f = (rgba, w, h, normal, layers, [], []);
+                perFolder[folder] = f = (rgba, w, h, normal, layers, t.Base, [], []);
             }
             if (f.Rgba is null) continue;
             tiles++;
             var m = TileMatrix(t, sx, sz, 0);
-            int na = t.TileW * 2, nb = t.TileH * 2;
-            float tw = t.TileW * 128f, th = t.TileH * 128f;
-            var b0 = (uint)(f.V.Count / 12);
+            Matrix4x4.Invert(m, out var toTile);
             var d = (float)cx * 0.5f;
             // World xz directions of the tile's a and b axes (the turn), for its normal map.
             var axisA = Vector2.Normalize(new Vector2(m.M11, m.M13));
             var axisB = Vector2.Normalize(new Vector2(m.M31, m.M33));
-            for (var j = 0; j <= nb; j++)
-                for (var i = 0; i <= na; i++)
-                {
-                    float a = i * 64f, b = j * 64f;
-                    var p = Vector3.Transform(new Vector3(a, 0, b), m);
-                    var y = (float)model.GroundY(p.X, p.Z) + 0.004f;
-                    var dx = (float)(model.GroundY(p.X + d, p.Z) - model.GroundY(p.X - d, p.Z)) / (2 * d);
-                    var dz = (float)(model.GroundY(p.X, p.Z + d) - model.GroundY(p.X, p.Z - d)) / (2 * d);
-                    var n = Vector3.Normalize(new Vector3(-dx, 1, -dz));
-                    f.V.AddRange([p.X, y, p.Z, n.X, n.Y, n.Z, a / tw, b / th, axisA.X, axisA.Y, axisB.X, axisB.Y]);
-                }
-            for (var j = 0; j < nb; j++)
-                for (var i = 0; i < na; i++)
-                {
-                    uint q = b0 + (uint)(j * (na + 1) + i), q1 = q + 1, q2 = q + (uint)(na + 1), q3 = q2 + 1;
-                    f.I.AddRange([q, q1, q2, q1, q3, q2]);
-                }
+            // blend0 ((W+2)·128 px) and normal.dds ((W+2)·64) carry a one-cell apron round the tile: tile cell (a, b)
+            // is at uv ((a + 1) / (W + 2), (b + 1) / (H + 2)). Stretched over the tile alone, half a 2x2 tile's road
+            // falls off its edges: road ends meeting a neighbour's on IEE go from 10% to 72% with the apron.
+            void Vertex(Vector3 p)
+            {
+                var local = Vector3.Transform(p with { Y = 0 }, toTile);
+                var dx = (float)(model.GroundY(p.X + d, p.Z) - model.GroundY(p.X - d, p.Z)) / (2 * d);
+                var dz = (float)(model.GroundY(p.X, p.Z + d) - model.GroundY(p.X, p.Z - d)) / (2 * d);
+                var n = Vector3.Normalize(new Vector3(-dx, 1, -dz));
+                f.I.Add((uint)(f.V.Count / 12));
+                f.V.AddRange([p.X, p.Y + 0.004f, p.Z, n.X, n.Y, n.Z, (local.X / 128f + 1) / (t.TileW + 2), (local.Z / 128f + 1) / (t.TileH + 2),
+                    axisA.X, axisA.Y, axisB.X, axisB.Y]);
+            }
+            var (c0, c1) = (Vector3.Transform(Vector3.Zero, m), Vector3.Transform(new Vector3(t.TileW * 128f, 0, t.TileH * 128f), m));
+            ClipMesh(model.Terrain!, Math.Min(c0.X, c1.X), Math.Min(c0.Z, c1.Z), Math.Max(c0.X, c1.X), Math.Max(c0.Z, c1.Z),
+                (p, q, s) => { Vertex(p); Vertex(q); Vertex(s); });
         }
         var verts = new List<float>();
         var idx = new List<uint>();
         var ranges = new List<(int, int, GpuTexture, GpuTexture?, (int, int, int, int))>();
-        foreach (var (_, f) in perFolder)
+        // Base tiles first: a base tile's ground (climate and its normal map) is opaque and lies on the same surface
+        // as the feature tiles over it, so drawn later it hides their roads and banks.
+        foreach (var f in perFolder.Values.OrderByDescending(f => f.Base))
         {
             if (f.Rgba is null || f.I.Count == 0) continue;
             var baseVertex = (uint)(verts.Count / 12);
@@ -967,7 +1027,7 @@ public sealed class Viewport3DControl : Grid
                 Add(c.Mesh, world, sx, Untextured(c.Mesh) ? rock : default);
             }
             // River meshes: tile space as the land mesh (z 0..H), baked into one coloured mesh with every vertex
-            // just above the lf ground (the lf has no carved channels to hold a flat per-tile water level).
+            // just above the drawn ground (the lf has no carved channels to hold a flat per-tile water level).
             if (c.River is not null && riverMeshes[c.River] is var (rp, ri))
             {
                 var m = TileMatrix(t, sx, sz, 0);
@@ -975,7 +1035,7 @@ public sealed class Viewport3DControl : Grid
                 foreach (var v in rp)
                 {
                     var w = Vector3.Transform(v with { Y = 0 }, m);
-                    riverVerts.Add(new LineVertex(w with { Y = (float)model.GroundY(w.X, w.Z) + 0.012f }, water));
+                    riverVerts.Add(new LineVertex(w with { Y = MeshY(model.Terrain!, w.X, w.Z) + 0.012f }, water));
                 }
                 foreach (var i in ri) riverIdx.Add(b0 + i);
             }
@@ -1080,8 +1140,8 @@ public sealed class Viewport3DControl : Grid
     }
 
     /// <summary>
-    /// The tile overlay in 3D: every shown tile's cells as translucent quads draped on the lf terrain (corner heights
-    /// sampled per tile-map cell), in the tile set's colour with alternating shades so neighbouring tiles read apart.
+    /// The tile overlay in 3D: every shown tile as the drawn terrain mesh clipped to its cells (<see cref="ClipMesh"/>),
+    /// translucent, in the tile set's colour with alternating shades so neighbouring tiles read apart.
     /// Built in the background when the overlay mode changes.
     /// </summary>
     private void EnsureTileMesh()
@@ -1105,21 +1165,15 @@ public sealed class Viewport3DControl : Grid
                 var c = SceneModel.TileColour(t.TileSet);
                 var shade = (n++ & 1) == 0 ? 1f : 0.82f;
                 var col = new Vector4((c >> 16 & 0xFF) / 255f * shade, (c >> 8 & 0xFF) / 255f * shade, (c & 0xFF) / 255f * shade, t.Base ? 0.35f : 0.55f);
-                // One vertex per cell corner of the tile, on the drawn terrain mesh, lifted a little.
-                int w = t.W, h = t.H;
-                var start = (uint)verts.Count;
-                for (var j = 0; j <= h; j++)
-                    for (var i = 0; i <= w; i++)
+                // The drawn terrain mesh clipped to the tile, lifted a little.
+                ClipMesh(model.Terrain!, t.X * cx, t.Y * cz, (t.X + t.W) * cx, (t.Y + t.H) * cz, (p, q, s) =>
+                {
+                    foreach (var v in (ReadOnlySpan<Vector3>)[p, q, s])
                     {
-                        double x = (t.X + i) * cx, z = (t.Y + j) * cz;
-                        verts.Add(new LineVertex(new Vector3((float)x, MeshY(model.Terrain!, x, z) + 0.02f, (float)z), col));
+                        idx.Add((uint)verts.Count);
+                        verts.Add(new LineVertex(v with { Y = v.Y + 0.02f }, col));
                     }
-                for (var j = 0; j < h; j++)
-                    for (var i = 0; i < w; i++)
-                    {
-                        uint a = start + (uint)(j * (w + 1) + i), b = a + 1, d = a + (uint)(w + 1), e = d + 1;
-                        idx.AddRange([a, b, d, b, e, d]);
-                    }
+                });
             }
             var built = idx.Count == 0 ? ((Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int)?)null : r.CreateColoured([.. verts], [.. idx]);
             Dispatcher.BeginInvoke(() => { _tileMesh = built; _tilesBuilding = false; Invalidate(); });

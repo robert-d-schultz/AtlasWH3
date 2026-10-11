@@ -637,7 +637,17 @@ Started 2026-10-11, after Phase 6.
     `.wsmodel`), so the coast cliffs show; they have no texture of their own, so they get a rock colour;
   - textures: old rigid models name `<name>_diffuse.dds`, which WH3 ships as `<name>_base_colour.dds` (or in
     commontextures). IEE's models with texture problems: 666 → 1 (`asset-check`).
-- [ ] Left: some props still draw black; tile meshes untextured; tile props (WH3's tile `bmd_data.bin` is BMD v26, which
+- [x] 5.6 The user's fourth look (2026-10-11), roads and the tile overlay:
+  - WH3's `blend0.dds` ((W+2)·128 px) and `normal.dds` ((W+2)·64) carry a one-cell apron round the tile, so tile cell
+    (a, b) is at uv ((a + 1) / (W + 2), (b + 1) / (H + 2)); the tile mesh has no UVs. Stretched over the tile alone,
+    roads were half size and broke at every tile edge. IEE road ends meeting a neighbour's (within 0.3 cell): 19% → 93%
+    (90°/270° swapped: 53%; rows flipped: ~11%), so the turn and row 0 = south were already right;
+  - tile ground, the tile overlay and tile river water lie on the drawn terrain mesh (`ClipMesh`: the mesh's triangles
+    clipped to the tile) instead of the full-resolution lf, which the decimated mesh (a quad per 2 cells on IEE) cut
+    through: the z-fighting;
+  - base tiles' ground (opaque climate + normal map) draws before the feature tiles', which it hid where it drew later;
+  - `--shots` CSV takes optional pitch, yaw and tiles (off / features / all) columns.
+- [ ] Left: the user still sees some overlapping on the tiles (not found; parked 2026-10-11); some props still draw black; tile meshes untextured; tile props (WH3's tile `bmd_data.bin` is BMD v26, which
   the 3K reader skips); culture-masked `ECTerrainHole`s; non-water polygon meshes.
 
 
