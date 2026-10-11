@@ -246,8 +246,10 @@ public sealed class AiSearch
         if (len <= 0f) t = 0f;
         else
         {
+            // Warhammer3.exe 0x14141d4d8: both vectors scaled by 1/len first, then the dot product (the rounding
+            // decides mirror-image ties such as Old World's (93,688) / (92,688))
             var inv = 1f / len;
-            var u = (py - _ay) * inv * fy * inv + (px - _ax) * inv * fx * inv;
+            var u = (py - _ay) * inv * (fy * inv) + (px - _ax) * inv * (fx * inv);
             t = u < 0f ? 0f : u >= 1f ? 1f : u;
         }
         var dy = fy * t + _ay - py;

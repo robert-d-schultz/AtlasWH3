@@ -90,15 +90,27 @@ prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and 
   - A transition's cost is one A* path between its two hexes with every settlement open (slot hexes at 0), summed
     per waypoint. There is no faction and no cheaper alternative path. (Before: the start region's faction path
     with foreign settlements closed, and for land-sea transitions the cheaper of that and the landmark grid.)
+  - **The path is refined** like a centre path. The A* (`0x141e41bd0`) calls `refine_path` (`0x14291dc3c`) right
+    after its search: where a hex lies further from the segment than the half hex height, the path is split there
+    and both halves are searched again. The straighter path changes which hexes the crossing covers. Old World's
+    waypoints (`probe.py --waypoints`, 2026-10-11) showed it for every transition we had costed wrong.
+  - The search is a real A* in form: f = g + h, with h from the ppd's tile-group heuristic cache at
+    [tile group of the target × `pf+0x314` + tile group of the hex] (`0x141e5b484`). `pf+0x314` is 0 in the game,
+    so h always comes from row 0, which is `0x7fffffff` on every map (tile group 0 has HLCI 0). h is therefore the
+    same for every hex, and the search orders exactly like our Dijkstra.
   - A bridge crossing is four waypoints: the hex before the first type-5 hex, that hex, the hex after it and the
     next one, 500 together whatever the other three are (land → deck → sea → sea, sea → deck → land → land,
     land → deck → deck → land). A type-5 hex inside a settlement's slot area is a slot hex, not a crossing. A step
     onto the deck from a river hex still counts (3K). The ppd's bridge links are not what the game flags.
+    The next crossing is looked for after the crossing's last hex (flag 8). That hex may start the next crossing as
+    its hex before the deck (flags 9), but it is never a deck of its own (Old World (1049,1240)→(1054,1239): 882).
   - Flag 2 says whether a land-sea transition's path goes through a settlement (a waypoint flagged `0xf800`). 3K's
     rule was "flag 1 and cost 0". `0x142a17200` ORs the waypoints of both directions into one flag and gives it to
     both transitions.
   - The transition search has the line tie-break from one hex to the other (`0x1429ef520` sets `pf+0x170`), like the
-    centre path. Ties decide whether a path is re-costed as a crossing.
+    centre path. Ties decide whether a path is re-costed as a crossing. The tie-break value is the squared distance
+    to the segment, with t = ((py − ay)/len)·(fy/len) + ((px − ax)/len)·(fx/len) in float32, both factors scaled
+    first (`0x14141d4d8`).
   - In the hlp grid a slot hex's edges to type-5 hexes (ports, bridge decks) cost 0 both ways, like its edges to
     land, sea and slot hexes. Checked against the game's whole IEE grid (`hlp-spd --dump-edges` against the entry
     snapshot): every navigable edge now has the game's cost.
@@ -176,19 +188,16 @@ prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and 
     - Combi 7: 22 s for the whole hlp (the region tables about 13 s). IEE: 48 s. Old World: about 4.5 minutes. The
       game itself takes over 10 minutes on IEE.
 
-Parity (2026-10-10, `hlp-spd --compare --wrap-like-game`). "Areas" counts areas whose transitions, matrix, centre, `a`
+Parity (2026-10-11, `hlp-spd --compare --wrap-like-game`). "Areas" counts areas whose transitions, matrix, centre, `a`
 and `b` all equal CA's. The region columns compare our own build's tables with CA's. From CA's own transitions they
 are exact on every map checked, so every difference left comes from a differing transition.
 
 | map | hlp_data.esf | areas | region costs | region hops |
 |---|---|---|---|---|
-| prologue | byte-identical | 22 / 22 | 100 % | 100 % |
-| chaos 1–4 | byte-identical | all | 100 % | 100 % |
-| combi 1–3 | 1 area each | 694/695, 703/704, 708/709 | 100 % | 2 values off |
-| combi 4, 5, 7 | byte-identical | all | 100 % | 100 % |
+| prologue, chaos 1–4, combi 1–5, 7 | byte-identical | all | 100 % | 100 % |
 | IEE | 1 area (transition order) | 1,067 / 1,068 | 100 % | 100 % |
-| Old World | 13 areas | 1,690 / 1,703 | 99.37 % | 99.84 % |
-| Old World Classic | 5 areas | 987 / 992 | 99.53 % | 99.96 % |
+| Old World | 8 areas | 1,695 / 1,703 | 99.37 % | 99.84 % |
+| Old World Classic | 3 areas | 989 / 992 | 99.53 % | 99.96 % |
 | Darklands | 4 areas | 299 / 303 | 95.0 % | 99.0 % |
 
 Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the others with the current rule.
@@ -196,11 +205,9 @@ Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the
 Open on hlp:
 - IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
   at cost 1,180 in one big tie, and the game's pop order differs from ours.
-- Combi 1–3: one land-sea transition each, where the game's path takes the other side of a port link at the same raw
-  cost, and the crossing then absorbs one more step (500 against our 580).
-- Old World (13 areas), Classic (5) and Darklands (4): mostly land-sea costs that are ours +80 (sea → type-5 hex →
-  land), the same port-link ties. The game's own waypoints on Old World (`probe.py --waypoints`) would settle them.
-- `probe.py --centre` records the game's centre paths (refined and trimmed) and `HLP_DUMP_CENTRE=<file>` ours.
+- Old World (8 areas), Classic (3) and Darklands (4): transitions whose hexes differ (different border hexes chosen
+  from the centre paths), mostly land-sea ones in the eastern sea areas. `probe.py --centre` on Old World would show
+  the game's centre paths; `HLP_DUMP_CENTRE=<file>` writes ours.
 
 ### The game's generator (Warhammer3.exe, 2026-10-10)
 

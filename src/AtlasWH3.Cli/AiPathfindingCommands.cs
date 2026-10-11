@@ -188,6 +188,7 @@ static class AiPathfindingCommands
                 MaxThreads = threads,
                 WrapLikeGame = a.Contains("--wrap-like-game"),
                 LegacyCentrePath = a.Contains("--legacy-centre"),
+                SkipRegionTables = a.Contains("--no-tables"),
             };
             if (Option(a, "--dump-edges") is { } de) // research: the hlp grid's edge bytes (6 per hex, EdgesZero) and cost table
             {
@@ -198,6 +199,9 @@ static class AiPathfindingCommands
             if (Option(a, "--edges") is { } eh) // research: the A* grid's edges around hexes
             {
                 var ag = new AiPathGrid(ppd, regions, settings);
+                // --edges-hlci cc,ce: the edges as a search with those HLCIs gates them (zero slot edges)
+                var gh = Option(a, "--edges-hlci")?.Split(',').Select(int.Parse).ToArray();
+                var edgeBytes = gh is null ? ag.EdgesPlain : ag.Gated(true, gh[0], gh[1]);
                 foreach (var cell in eh.Split(';'))
                 {
                     var v = cell.Split(',').Select(int.Parse).ToArray();
@@ -205,7 +209,7 @@ static class AiPathfindingCommands
                     Console.WriteLine($"({v[0]},{v[1]}) type {ag.Types[h]} slot {ag.Slot[h]} area {regions.AreaMap[h] & MapDataRegions.RegionMask},{regions.AreaMap[h] >> MapDataRegions.AreaShift}: " + string.Join("  ", Enumerable.Range(0, 6).Select(d =>
                     {
                         var nb = ag.Neighbour[h * 6 + d];
-                        var e = ag.EdgesPlain[h * 6 + d];
+                        var e = edgeBytes[h * 6 + d];
                         var nav = (e & 0x80) != 0 ? "nav" : "---";
                         return nb < 0 ? $"d{d} -" : $"d{d}->({nb % ag.Width},{nb / ag.Width}) {nav} {ag.CostTable[e & 0x7F]} [{e:x2}]";
                     })) + $"  links {string.Join(" ", Enumerable.Range(ag.PortLinkStart[h], ag.PortLinkStart[h + 1] - ag.PortLinkStart[h]).Select(k => $"({ag.PortLinks[k] % ag.Width},{ag.PortLinks[k] / ag.Width})"))}");

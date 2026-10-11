@@ -15,8 +15,9 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 ///     by CAMPAIGN_PATHFINDER::refine_path; towards a settlement it ends 3 hexes from it, and settlement ends are
 ///     trimmed, see CentrePath); its last hex in B's segment and first hex in A's segment are the first
 ///     transition; then clusters of the remaining border hexes (sets ordered by descending x, y) give more transitions,
-///     each erasing border hexes closer than 10 hexes. A transition's cost is the path cost between its two hexes,
-///     every settlement open, with a bridge crossing (the hex before a deck hex, the deck hex and the two after) at 500;
+///     each erasing border hexes closer than 10 hexes. A transition's cost is the cost of the refined path between its
+///     two hexes, every settlement open, with a bridge crossing (the hex before a deck hex, the deck hex and the two
+///     after) at 500;
 ///     flag 2 says whether a land-sea transition's path goes through a settlement (3K: flag 1 and cost 0).
 ///  5. WH3's region tables from the transitions (<see cref="HlpRegionTables"/>).
 ///  4. Per area the transitions sit in an MSVC unordered_multimap keyed by hex (hash y·1016 + x), whose iteration order
@@ -46,6 +47,8 @@ public static class HlpBuilder
         /// <summary>Centre paths of older game builds (vanilla chaos 1-4, combi 1-4, prologue, darklands): from centre to
         /// centre, settlement hexes kept. Default: the current exe's (combi 5/7, IEE, Old World).</summary>
         public bool LegacyCentrePath { get; init; }
+        /// <summary>Research: leave the region tables empty (transition work only; the tables take minutes).</summary>
+        public bool SkipRegionTables { get; init; }
     }
 
     private sealed class Seg
@@ -150,22 +153,65 @@ public static class HlpBuilder
             foreach (var (x, y) in regions.Regions[r].PrimarySlot.Concat(regions.Regions[r].PortSlot))
                 if ((uint)x < (uint)g.Width && (uint)y < (uint)g.Height) slotOwner[y * W + x] = r;
 
-        // A transition's cost (0x142a17200, from the game's own waypoints, probe.py --waypoints on IEE): one search
-        // between its two hexes with every settlement open, its path then summed per waypoint. 0x142a25aec picks the A*
-        // or, when both ends border the same settlement, a search with settlements passable; with every settlement
-        // open here the two are the same. There is no faction and no cheaper alternative path.
+        // A transition's cost (0x142a17200, from the game's own waypoints, probe.py --waypoints on IEE and Old World): the
+        // A* between its two hexes with every settlement open, refined like the centre paths (0x141e41bd0 calls
+        // 0x14291dc3c after its search), its waypoints then summed. 0x142a25aec picks the A* or, when both ends border the
+        // same settlement, a search with settlements passable; with every settlement open here the two are the same.
+        // There is no faction and no cheaper alternative path.
+        var DebugRefine = false;
         var viaSlot = false; // the last PathCost's path crossed a settlement slot hex
         uint PathCost(int a, int b)
         {
             viaSlot = false;
             if (a == b) return 0;
-            var cost = search0.Run(a, g.Gated(true, g.Hlci[a], g.Hlci[b]), target: b, lineFrom: (g.WorldX[a], g.WorldY[a]), lineTo: (g.WorldX[b], g.WorldY[b]));
-            if (cost == uint.MaxValue) return cost;
-            var path = search0.PathTo(b);
+            var path = Refined(a, b, g.Gated(true, g.Hlci[a], g.Hlci[b]), null, out var at);
+            if (path is null) return uint.MaxValue;
             viaSlot = path.Any(h => slotOwner[h] >= 0);
             if (DebugCost is not null && DebugCost == $"{a % W},{a / W},{b % W},{b / W}")
-                Console.Error.WriteLine($"cost path hlci {g.Hlci[a]}->{g.Hlci[b]}: {string.Join(" ", path.Select(h => $"({h % W},{h / W})t{g.Types[h]}c{search0.Cost(h)}"))}");
-            return CrossingCost(path, search0.Cost, cost);
+                Console.Error.WriteLine($"cost path hlci {g.Hlci[a]}->{g.Hlci[b]}: {string.Join(" ", path.Select((h, i) => $"({h % W},{h / W})t{g.Types[h]}c{at[i]}"))}");
+            return CrossingCost(path, i => at[i], at[^1]);
+        }
+
+        // CAMPAIGN_PATHFINDER::refine_path (0x14291dc3c): search a -> b with the line tie-break; while a hex of the path lies
+        // further from the segment than the tolerance (pf+0x54, the half hex height, against squared distances), split
+        // there and search both halves. Returns the hexes and, per hex, the cost of the path up to it.
+        List<int>? Refined(int a, int b, byte[] edges, bool[]? block, out List<uint> at)
+        {
+            at = [];
+            var stack = new List<(int A, int B)> { (a, b) };
+            var result = new List<int>();
+            uint sum = 0;
+            while (stack.Count > 0)
+            {
+                var (sa, sb) = stack[^1];
+                var cost = search0.Run(sa, edges, target: sb, blocked: block,
+                                       lineFrom: (g.WorldX[sa], g.WorldY[sa]), lineTo: (g.WorldX[sb], g.WorldY[sb]));
+                if (cost == uint.MaxValue) return null;
+                var path = search0.PathTo(sb);
+                float ax = g.WorldX[sa], ay = g.WorldY[sa], fx = g.WorldX[sb] - ax, fy = g.WorldY[sb] - ay;
+                var worst = 0f;
+                var far = -1;
+                foreach (var h in path)
+                {
+                    var d = LineDistance2(ax, ay, fx, fy, g.WorldX[h], g.WorldY[h]);
+                    if (worst < d) { worst = d; far = h; }
+                }
+                if (DebugRefine) Console.Error.WriteLine($"  seg ({sa % W},{sa / W})->({sb % W},{sb / W}) cost {cost} worst {worst} at ({far % W},{far / W}) path {string.Join(" ", path.Select(h => $"({h % W},{h / W})"))}");
+                if (worst <= (options.RefineThreshold > 0 ? options.RefineThreshold : g.HalfRow) || far < 0)
+                {
+                    stack.RemoveAt(stack.Count - 1);
+                    for (var i = 0; i < path.Count - 1; i++) { result.Add(path[i]); at.Add(sum + search0.Cost(path[i])); }
+                    sum += cost;
+                }
+                else
+                {
+                    stack[^1] = (far, sb);
+                    stack.Add((sa, far));
+                }
+            }
+            result.Add(b);
+            at.Add(sum);
+            return result;
         }
 
         // A bridge crossing in the game's waypoints (flags 1, 2, 4, 8): the hex before the first type-5 hex, that hex,
@@ -180,8 +226,9 @@ public static class HlpBuilder
                 if (g.Types[path[i]] != 5 || slotOwner[path[i]] >= 0) continue;
                 var from = i == 0 ? 0 : g.Types[path[i - 1]] == 6 ? i : i - 1;
                 var end = Math.Min(i + 2, path.Count - 1);
-                cost = cost - (at(path[end]) - at(path[from])) + 500;
-                i = end - 1;
+                cost = cost - (at(end) - at(from)) + 500;
+                // the next deck comes after the crossing's last hex (flag 8), which may start the next crossing (flags 9)
+                i = end;
             }
             return cost;
         }
@@ -191,7 +238,6 @@ public static class HlpBuilder
         // exactly 3 hexes from it (goal 0x14292ab0c); the path from the start to that hex, or to the other centre, is
         // refined (0x14291dc3c), then the settlement ends lose their hexes of game type >= 4 (slot, port/bridge, river;
         // 0x1429f24bc). Fewer than 2 hexes left make no waypoints (0x141e481e4), so no centre transition.
-        var DebugRefine = false;
         var dumpKey = "";
         bool Trimmed(int h) => g.Slot[h] || g.Types[h] >= 4;
         List<int>? CentrePath(Entry from, Entry to)
@@ -212,36 +258,8 @@ public static class HlpBuilder
                 if (end < 0) return null;
                 b = end;
             }
-            var stack = new List<(int A, int B)> { (a, b) };
-            var result = new List<int>();
-            while (stack.Count > 0)
-            {
-                var (sa, sb) = stack[^1];
-                var cost = search0.Run(sa, edges, target: sb, blocked: block,
-                                       lineFrom: (g.WorldX[sa], g.WorldY[sa]), lineTo: (g.WorldX[sb], g.WorldY[sb]));
-                if (cost == uint.MaxValue) return null;
-                var path = search0.PathTo(sb);
-                float ax = g.WorldX[sa], ay = g.WorldY[sa], fx = g.WorldX[sb] - ax, fy = g.WorldY[sb] - ay;
-                var worst = 0f;
-                var far = -1;
-                foreach (var h in path)
-                {
-                    var d = LineDistance2(ax, ay, fx, fy, g.WorldX[h], g.WorldY[h]);
-                    if (worst < d) { worst = d; far = h; }
-                }
-                if (DebugRefine) Console.Error.WriteLine($"  seg ({sa % W},{sa / W})->({sb % W},{sb / W}) cost {cost} worst {worst} at ({far % W},{far / W}) path {string.Join(" ", path.Select(h => $"({h % W},{h / W})"))}");
-                if (worst <= (options.RefineThreshold > 0 ? options.RefineThreshold : g.HalfRow) || far < 0)
-                {
-                    stack.RemoveAt(stack.Count - 1);
-                    for (var i = 0; i < path.Count - 1; i++) result.Add(path[i]);
-                }
-                else
-                {
-                    stack[^1] = (far, sb);
-                    stack.Add((sa, far));
-                }
-            }
-            result.Add(b);
+            var result = Refined(a, b, edges, block, out _);
+            if (result is null) return null;
             if (options.LegacyCentrePath) return result;
             var i0 = 0;
             var i1 = result.Count;
@@ -417,6 +435,7 @@ public static class HlpBuilder
             }
             hlp.Nodes.Add(node);
         }
+        if (options.SkipRegionTables) return hlp;
         spd ??= SpdBuilder.Build(new CampaignPathGrid(ppd, regions, settings), regions, timestamp);
         HlpRegionTables.Fill(hlp, spd, regions, options.MaxThreads, options.WrapLikeGame);
         return hlp;

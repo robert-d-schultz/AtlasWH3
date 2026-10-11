@@ -104,24 +104,20 @@ public class HlpSpdTests
             a.Transitions.SequenceEqual(r.Transitions) && a.Costs.SequenceEqual(r.Costs) && (a.CentreX, a.CentreY, a.A, a.B) == (r.CentreX, r.CentreY, r.A, r.B));
     }
 
-    /// <summary>Guards the hlp parity reached on combi map 1 (2026-10-10, an older game build's file: legacy centre
-    /// paths): 694 of 695 areas identical, and from CA's own transitions every region-table value.</summary>
+    /// <summary>Combi map 1 (an older game build's file: legacy centre paths): the native hlp_data.esf is CA's byte for
+    /// byte. It guards the refined transition paths and the crossing scan (a crossing's last hex starts no new one).</summary>
     [Fact]
-    public void Combi_NativeHlp_Parity()
+    public void Combi1_NativeHlp_ByteIdentical()
     {
         var (_, ppd, regions) = Inputs("wh3_main_combi_map_1");
-        var reference = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
+        var bytes = Read("wh3_main_combi_map_1", "hlp_data.esf");
+        var reference = HlpData.Read(bytes);
         var spd = SpdData.Read(Read("wh3_main_combi_map_1", "spd_data.esf"));
         var hlp = HlpBuilder.Build(ppd, regions, new CampaignPathGrid.Settings(), reference.Timestamp,
-                                   options: new HlpBuilder.Options { LegacyCentrePath = true }, spd: spd);
-        var same = IdenticalAreas(hlp, reference);
-        Assert.True(same >= 694, $"{same} identical areas");
-
-        var fromRef = HlpData.Read(Read("wh3_main_combi_map_1", "hlp_data.esf"));
-        HlpRegionTables.Fill(fromRef, spd, regions, wrapLikeGame: true);
-        Assert.Equal(reference.RegionCosts, fromRef.RegionCosts);
-        Assert.Equal(reference.RegionHops, fromRef.RegionHops);
-        Assert.Equal(reference.MaxRegionCost, fromRef.MaxRegionCost);
+                                   options: new HlpBuilder.Options { LegacyCentrePath = true, WrapLikeGame = true }, spd: spd);
+        hlp.Magic = reference.Magic;
+        Assert.Equal(reference.Nodes.Sum(n => n.Areas.Count), IdenticalAreas(hlp, reference));
+        Assert.True(bytes.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
 
     /// <summary>Combi map 7 (the current exe's rules, 2026-10-10): the native hlp_data.esf is CA's byte for byte, the
