@@ -308,11 +308,14 @@ the map's working_data and EmpireDesignData folders.
 - **Against vanilla combi** (2026-10-10; CA's `wh3_main_combi_map_1` file through rpfm_server against the native IEE
   map, vanilla's 720 columns, the IEE-only east ignored): the same scale (median ratio 1.001 on land), the same
   roughness, and no box or max filter of the native map comes closer, so the sampling stays as it is. West of the IEE
-  edits, 89.6% of cells within 0.25 and 96.2% within 1. The one systematic gap was the map's edges outside the tiled
-  area: full_logic_map is 0 there, so the native cells were 0 (below the sea, ~1.0) where vanilla carries flat sea or
-  coast values out to the edge. Now `FillOffMap` gives such cells, when connected to the border, their nearest terrain
-  cell's value (IEE: 27,794 cells); zero cells inside the map (lake bowls) stay. Left: vanilla's own leftovers (a 3.8
-  plateau in the south-west corner, lake discs).
+  edits, 89.6% of cells within 0.25 and 96.2% within 1. The one systematic gap is at the map's edges, where
+  full_logic_map is 0 and vanilla carries flat sea or coast values (~1.0) out to the edge. Left: vanilla's own
+  leftovers (a 3.8 plateau in the south-west corner, lake discs).
+- **Removed 2026-10-11: `FillOffMap`** (2026-10-10). It gave cells at or below 0 that touch the border their nearest
+  terrain cell's value, breadth first, to match vanilla's edges. But IEE's eastern sea is at about 0 in the logic map,
+  so it is not off the map: 27,749 cells, most of them in the east, were filled, and the breadth-first copy carried
+  coastal values (up to 15.0 under cliffs and mountains) along rows and columns into the sea, as stripes (the user's
+  first look at the dry run). A cell is again the scene height, 0 where the ground is at or below 0.
 - **Not BOB's any more** (2026-10-10): with the cam_hmap keys set BOB's action runs, but on IEE it filled 69 of 486 rows
   in 90 minutes (about 10 hours in all, almost all in the height-patch lookup, warscape 0x5b5c30), so there is no BOB
   reference; the step is judged in game and against vanilla.
