@@ -207,9 +207,21 @@ Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the
 Open on hlp:
 - IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
   at cost 1,180 in one big tie, and the game's pop order differs from ours.
-- Old World: area (1044,2)'s matrix value from (1632,22) to (1580,23) is 6,800 in CA's file. Our search gives the
-  optimal 6,576 both ways, and 6,800 is the cost with two road steps replaced by 192-cost steps. The game's grid
-  must differ on that route; an entry snapshot of Old World (`probe.py`) would show it.
+- Old World: area (1044,2)'s matrix value from (1632,22) to (1580,23) is 6,800 in CA's file, and the game computes
+  6,800 again (its own matrix in memory, `probe.py` 2026-10-11). The optimum, ours, is 6,576.
+  - The grid on that route equals the game's (both navigation bits, area records), and `probe.py --matrix 10,2,3`
+    shows the game pops (1580,23) once, at 6,800.
+  - Cause, confirmed (`probe.py --stale`, 2026-10-11): a bug in the exe's A*. It marks visited hexes with a 16-bit
+    generation (+4 per search, `0x1429ecd14` / `0x141e3b3a0`), which repeats after 16,383 searches. Each search
+    first refreshes 128 stamps (`0x141e3ac20`, a rotating window), about 2.1 M hexes per cycle. That covers IEE
+    (1.55 M hexes) but not Old World or Classic (3.6 M), so there a hex can keep a stamp from exactly one cycle
+    earlier. The search then treats it as visited, with whatever cost its node holds, and skips it when that cost
+    is lower (`0x141e5b484`, `0x142447478`).
+  - Here: at the 8,917th matrix search (generation 14404), (1583,22) still had stamp 14404 and a stored cost of
+    1,840, below the route's 6,336. Skipping that hex alone gives 6,800. Three other route hexes were stale with
+    higher costs and did not block.
+  - **AtlasWH3 does not copy exe bugs.** Where the game's result is wrong (this stamp wrap, the region tables' u32
+    wrap), it keeps the correct value; research options such as `--wrap-like-game` exist only to check parity.
 
 ### The game's generator (Warhammer3.exe, 2026-10-10)
 
