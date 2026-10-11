@@ -205,9 +205,7 @@ public sealed class Viewport3DControl : Grid
             if (e.Component("ECCompositeScene")?["path"] is { Length: > 0 } csc)
             {
                 var empty = new TerryEntityData("", null, "CompositeScene", [], [], null);
-                var sc = (double)_model.CompositeScale(csc);
-                var local = new TerryTransform([0, 0, 0], [0, 0, 0], [sc, sc, sc]);
-                parts = _model.CompositeModels(csc).Select(m => new SceneModel.PrefabPart("CompositeScene", m, local, empty)).ToList();
+                parts = _model.CompositeParts(csc).Select(c => new SceneModel.PrefabPart("CompositeScene", c.Model, c.Local, empty)).ToList();
                 partBounds = PartsBounds(parts);
             }
             else if (e.Component("ECPrefab")?["key"] is { Length: > 0 } key)
@@ -382,7 +380,7 @@ public sealed class Viewport3DControl : Grid
             var keptGround = _ground;
             Task.Run(() =>
             {
-                var t = CreateTerrainMesh(r, raster, worldW, worldH);
+                var t = CreateTerrainMesh(r, _model.Terrain!);
                 Dispatcher.BeginInvoke(() =>
                 {
                     _terrain = t;
@@ -398,7 +396,7 @@ public sealed class Viewport3DControl : Grid
         }
         Task.Run(() =>
         {
-            var t = CreateTerrainMesh(r, raster, worldW, worldH);
+            var t = CreateTerrainMesh(r, _model.Terrain!);
             UploadTerrainHeight(r, raster, worldW, worldH);
             var ground = _model.TerrainBlend is var (groups, arrays) ? CreateGround(r, groups, arrays, (float)worldW, (float)worldH) : null;
             Dispatcher.BeginInvoke(() => { _terrain = t; _ground = ground; Invalidate(); });
@@ -406,12 +404,13 @@ public sealed class Viewport3DControl : Grid
     }
 
     private static (Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int) CreateTerrainMesh(Renderer3D r,
-        AtlasWH3.Formats.Maps.Raster<float> raster, double worldW, double worldH)
+        AtlasWH3.Core.Campaign.Terrain.CampaignTerrain terrain)
     {
+        var (raster, worldW, worldH) = terrain;
         var step = Math.Max(1, (int)Math.Ceiling(Math.Max(raster.Width, raster.Height) / 2048.0));
         int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
         double px = worldW / raster.Width, pz = worldH / raster.Height;
-        float H(int c, int rr) => raster[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)];
+        float H(int c, int rr) => terrain.Shown(Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1));
         var v = new float[cols * rows * 6];
         Parallel.For(0, rows, j =>
         {
@@ -1731,7 +1730,7 @@ public sealed class Viewport3DControl : Grid
                 var col = (int)(p.X / worldW * raster.Width);
                 var row = (int)((1 - p.Z / worldH) * raster.Height);
                 if (col < 0 || row < 0 || col >= raster.Width || row >= raster.Height) { prev = p; continue; }
-                if (p.Y <= raster[col, row]) return (prev + p) / 2;
+                if (p.Y <= _model.Terrain!.Shown(col, row)) return (prev + p) / 2;
                 prev = p;
             }
             return null;

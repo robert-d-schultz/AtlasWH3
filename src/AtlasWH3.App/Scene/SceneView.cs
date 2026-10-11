@@ -255,6 +255,7 @@ public sealed class SceneView : FrameworkElement
             return;
         }
         const float sea = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.SeaLevel;
+        var terrain = _model.Terrain!;
         double kx = raster.Width / worldW, kz = raster.Height / worldH;
         // relief shading per world unit of height difference across two texels
         var relief = 2.7 * 0.0834 / (worldW / raster.Width);
@@ -277,10 +278,10 @@ public sealed class SceneView : FrameworkElement
                 if (col < 1 || col >= raster.Width - 2) { _buffer[line + x] = 0xFF202020u; continue; }
                 var tx = fc - col;
                 // Bilinear, so close zoom is smooth rather than blocky.
-                double v = (raster[col, row] * (1 - tx) + raster[col + 1, row] * tx) * (1 - ty)
-                           + (raster[col, row + 1] * (1 - tx) + raster[col + 1, row + 1] * tx) * ty;
+                double v = (terrain.Shown(col, row) * (1 - tx) + terrain.Shown(col + 1, row) * tx) * (1 - ty)
+                           + (terrain.Shown(col, row + 1) * (1 - tx) + terrain.Shown(col + 1, row + 1) * tx) * ty;
                 var ground = v;
-                var shade = Math.Clamp(1 + (raster[col - 1, row] - raster[col + 1, row] + raster[col, row - 1] - raster[col, row + 1]) * relief, 0.55, 1.4);
+                var shade = Math.Clamp(1 + (terrain.Shown(col - 1, row) - terrain.Shown(col + 1, row) + terrain.Shown(col, row - 1) - terrain.Shown(col, row + 1)) * relief, 0.55, 1.4);
                 byte r, g, b;
                 if (ground <= sea) (r, g, b) = (28, 52, 78);
                 else

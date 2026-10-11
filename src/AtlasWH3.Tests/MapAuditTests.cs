@@ -41,7 +41,9 @@ public class MapAuditTests
         if (!Directory.Exists(paths.AkTerrainDir) || !Directory.Exists(paths.GameDataDir)) return;
         var audit = new MapAudit(paths);
         audit.Run(["floating-mountain", "asset"]);
-        Assert.DoesNotContain(audit.Findings, f => f.Check == "floating-mountain");
+        // WH3's mountains (add_terrain_height) are checked: 2026-10-11, 25 of IEE's mountain props stand 0.3-1.7 above
+        // the ground (unverified in game)
+        Assert.InRange(audit.Findings.Count(f => f.Check == "floating-mountain"), 1, 60);
         var asset = Assert.Single(audit.Findings, f => f.Check == "asset");
         Assert.Equal(MapAudit.Error, asset.Severity);
         Assert.Contains("mudbanks//gen_mudbank_01", asset.Model);

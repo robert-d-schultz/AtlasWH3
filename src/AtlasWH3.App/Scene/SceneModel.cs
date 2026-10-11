@@ -146,12 +146,14 @@ public sealed class SceneModel
             int gw = list.Ints[1], gh = list.Ints[2];
             if (gw <= 0 || gh <= 0 || Terrain is not var (_, worldW, worldH)) { TilesNote = "tile_list.bin has no grid size"; return; }
             var tiles = new List<TilePlacement>(list.Records.Count);
+            var useAltLf = new List<bool>(list.Records.Count);
             var unknown = 0;
             foreach (var r in list.Records)
             {
                 var path = list.Paths[(int)r.Path];
                 byFolder.TryGetValue(Key(path), out var tile);
                 if (tile is null) unknown++;
+                useAltLf.Add(tile?.UseAltLf == true);
                 var parts = Key(path).Split('/');
                 var set = tile?.TileSet ?? (parts.Length > 3 ? parts[3] : "?");
                 var name = tile?.Name ?? parts[^1];
@@ -163,6 +165,7 @@ public sealed class SceneModel
             }
             var index = new int[gw * gh];
             Array.Fill(index, -1);
+            var altLf = new bool[gw * gh];
             foreach (var pass in new[] { true, false }) // base tiles first, features over them
                 for (var i = 0; i < tiles.Count; i++)
                 {
@@ -170,10 +173,15 @@ public sealed class SceneModel
                     if (t.Base != pass) continue;
                     for (var y = t.Y; y < t.Y + t.H && y < gh; y++)
                         for (var x = t.X; x < t.X + t.W && x < gw; x++)
-                            if (x >= 0 && y >= 0) index[y * gw + x] = i;
+                            if (x >= 0 && y >= 0)
+                            {
+                                index[y * gw + x] = i;
+                                altLf[y * gw + x] = useAltLf[i];
+                            }
                 }
             Tiles = tiles;
             _tileIndex = index;
+            Terrain.AltLf = (altLf, gw, gh);
             TileGrid = (gw, gh, worldW / gw, worldH / gh);
             TilesNote = $"{tiles.Count} tiles ({tiles.Count(t => !t.Base)} features) from {source}" + (unknown > 0 ? $"; {unknown} not in the tile database" : "");
         }
@@ -323,7 +331,7 @@ public sealed class SceneModel
             .Concat(keys.SelectMany(k => PartsOf(k!).Select(p => p.ModelPath)))
             .Concat(Trees.Select(t => t.TreeId).Distinct().Select(TreeModel))
             .Concat(All.Select(i => i.Entity.Component("ECCompositeScene")?["path"]).Where(p => !string.IsNullOrEmpty(p))
-                .Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(p => CompositeModels(p!)))
+                .Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(p => CompositeParts(p!).Select(c => c.Model)))
             .Where(p => p is not null && !_modelBounds.ContainsKey(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (paths.Count == 0 || !Directory.Exists(_paths.GameDataDir)) return;
         var found = new System.Collections.Concurrent.ConcurrentDictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
@@ -344,67 +352,32 @@ public sealed class SceneModel
 
     private readonly Dictionary<string, IReadOnlyList<PrefabPart>> _prefabParts = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<string, IReadOnlyList<string>> _compositeModels = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, float> _compositeScales = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<(string Model, TerryTransform Local)>> _compositeParts = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The scale a composite scene gives its model. The .csc stream stores tagged floats (tag 0x0A + f32); the root
-    /// element's first pair is (1, scale): 0.1 for the fauna scenes (whose models are real-world size, e.g. a 3.5-unit
-    /// cow), 1 for the living-campaign figures (modelled at campaign scale). Scenes without that pair (the horses)
-    /// use 0.1 when their model is fauna, else 1.
+    /// The models of a composite scene (.csc) with their placement in the scene: each model element's transform at
+    /// time 0 through its attach parents (<see cref="AtlasWH3.Formats.Esf.CompositeScene"/>; animation is not played).
+    /// Empty when the .csc is missing or unreadable.
     /// </summary>
-    public float CompositeScale(string cscPath)
+    public IReadOnlyList<(string Model, TerryTransform Local)> CompositeParts(string cscPath)
     {
-        lock (_compositeScales)
+        lock (_compositeParts)
         {
-            if (_compositeScales.TryGetValue(cscPath, out var cached)) return cached;
-            var scale = 0f;
-            try
-            {
-                if (Models.Source.TryRead(cscPath) is { } b)
-                    for (var i = 0; i + 10 <= b.Length && i < 160 && scale == 0; i++)
-                        if (b[i] == 0x0A && b[i + 5] == 0x0A && BitConverter.ToSingle(b, i + 1) == 1f)
-                        {
-                            var v = BitConverter.ToSingle(b, i + 6);
-                            if (v is > 0.001f and <= 10f) scale = v;
-                        }
-            }
-            catch (Exception) { }
-            if (scale == 0 || (scale == 1 && CompositeModels(cscPath).Any(m => m.Contains("/fauna/", StringComparison.OrdinalIgnoreCase))))
-                scale = CompositeModels(cscPath).Any(m => m.Contains("/fauna/", StringComparison.OrdinalIgnoreCase)) ? 0.1f : 1f;
-            return _compositeScales[cscPath] = scale;
-        }
-    }
-
-    /// <summary>
-    /// The models a composite scene (.csc) uses. The .csc is a binary CA format; its model paths are stored as plain
-    /// strings, found here by their extension and walked back over path characters. The scene's own element
-    /// transforms and animation are not decoded (single-model scenes, like the living-campaign figures and animals,
-    /// are exact at the entity's transform).
-    /// </summary>
-    public IReadOnlyList<string> CompositeModels(string cscPath)
-    {
-        lock (_compositeModels)
-        {
-            if (_compositeModels.TryGetValue(cscPath, out var cached)) return cached;
-            var found = new List<string>();
+            if (_compositeParts.TryGetValue(cscPath, out var cached)) return cached;
+            var parts = new List<(string, TerryTransform)>();
             try
             {
                 if (Models.Source.TryRead(cscPath) is { } bytes)
-                {
-                    var text = System.Text.Encoding.Latin1.GetString(bytes);
-                    foreach (var ext in new[] { ".wsmodel", ".rigid_model_v2" })
-                        for (var i = text.IndexOf(ext, StringComparison.OrdinalIgnoreCase); i >= 0; i = text.IndexOf(ext, i + 1, StringComparison.OrdinalIgnoreCase))
-                        {
-                            var start = i;
-                            while (start > 0 && (char.IsAsciiLetterOrDigit(text[start - 1]) || text[start - 1] is '_' or '-' or '.' or '/' or '\\')) start--;
-                            var path = text[start..(i + ext.Length)].Replace('\\', '/');
-                            if (path.Contains('/') && !found.Contains(path, StringComparer.OrdinalIgnoreCase)) found.Add(path);
-                        }
-                }
+                    foreach (var (model, m) in AtlasWH3.Formats.Esf.CompositeScene.Read(bytes).Models())
+                    {
+                        // row-vector matrix -> column convention (R·S) for TerryTransform
+                        double[] linear = [m.M11, m.M21, m.M31, m.M12, m.M22, m.M32, m.M13, m.M23, m.M33];
+                        var (rotation, scale) = TerryTransform.Decompose(linear);
+                        parts.Add((model, new TerryTransform([m.M41, m.M42, m.M43], rotation, scale)));
+                    }
             }
-            catch (Exception) { }
-            return _compositeModels[cscPath] = found;
+            catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or ArgumentException) { }
+            return _compositeParts[cscPath] = parts;
         }
     }
 
@@ -467,8 +440,7 @@ public sealed class SceneModel
     {
         lock (_prefabContent) _prefabContent.Clear();
         lock (_prefabParts) _prefabParts.Clear();
-        lock (_compositeModels) _compositeModels.Clear();
-        lock (_compositeScales) _compositeScales.Clear();
+        lock (_compositeParts) _compositeParts.Clear();
         Editor = new EntityEditor(_paths, Editor.TerryPath);
         Layers = Editor.Layers();
         _byLayer = Editor.ReadAll().ToDictionary(x => x.Layer.Id, x => x.Entities);
@@ -480,8 +452,8 @@ public sealed class SceneModel
             try { TerrainBlend = (TerrainComposite.Indexed(Project, "BlendCampaign").Indices, arrays); }
             catch (Exception ex) when (ex is IOException or InvalidDataException) { TerrainNote = "ground textures not read: " + ex.Message; }
         }
-        if (Terrain is not null) LoadTrees();
         if (Terrain is not null && Tiles.Count == 0) LoadTiles();
+        if (Terrain is not null) LoadTrees();
     }
 
     /// <summary>The composited Height and HeightSea maps; the world width is the .terry's world_width, else the map's

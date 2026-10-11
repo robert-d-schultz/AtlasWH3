@@ -306,7 +306,7 @@ public sealed partial class SceneWindow
                 Step("3d frame time", true, $"overview frame (CPU build + submit): {frames.Skip(1).Average():F1} ms; {_view3d.FrameBreakdown}");
                 for (var wait = 0; wait < 100 && !_view3d.RiversReady; wait++) await Task.Delay(100);
                 var scenes = _model.All.Where(i => i.Entity.Type == "CompositeScene").Select(i => i.Entity.Component("ECCompositeScene")?["path"]).Distinct().ToList();
-                var scenesWithModels = scenes.Count(p => p is not null && _model.CompositeModels(p).Count > 0);
+                var scenesWithModels = scenes.Count(p => p is not null && _model.CompositeParts(p).Count > 0);
                 Step("3d campaign world", _model.Terrain is null || (_model.Trees.Count > 0 && _view3d.RiversReady),
                     $"{_model.TreesNote}; rivers ready {_view3d.RiversReady}; "
                     + $"composite scenes with models {scenesWithModels}/{scenes.Count}");

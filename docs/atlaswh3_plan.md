@@ -613,6 +613,16 @@ Started 2026-10-11, after Phase 6.
   `ExpandCanvas`, `GlobalProps.ReadRegions` and the 3K painter (`MainWindow`), all still 3K-shaped; the cut commit
   restores the rest.
 - [ ] Still 3K-shaped: the lake commands (`lake-*`, `LakeBuilder`: lf shaping on 3K's u16 TIF) and the painter.
+- [x] 5.4 Fixes from the user's first look (2026-10-11):
+  - the sea: the scene draws each tile on the ground the game does, HeightSea under the tiles that use the alternative
+    lf (tile_list.bin's sea tiles), Height elsewhere (`CampaignTerrain.Shown`). Height is about +0.5 under IEE's open
+    sea, so drawing it alone hid the water planes;
+  - WH3's mountains (`rigid_campaign_mountain`, `add_terrain_height`) get the terrain under every vertex, like 3K's
+    lf-offset mountains, so they stand on the ground instead of at y ≈ 0. The map audit's mountain checks now see
+    them: IEE has 25 mountain props 0.3-1.7 above the ground and 1 buried (not checked in game);
+  - composite scenes: `CompositeScene` reads the .csc (ESF) grammar after the Asset Editor's CSC editor, and the scene
+    places every model element at its time-0 transform through its attach parents. Every game .csc reads but the 328
+    ROOT v6 quest-battle scenes.
 - [ ] Seen on the way: some props draw white or black in the 3D view (their textures not found).
 
 

@@ -65,8 +65,11 @@ public sealed record MaterialFile(string Name, string Shader, IReadOnlyDictionar
     /// How much of the terrain height the vertex shader adds to each vertex (0 = none): the campaign mountains'
     /// shaders/rigid_detail_map_terrain_blend_with_LF_offset adds sp_adjust_model_to_terrain × the lf height at the
     /// vertex's world x/z to its world y (vs40_main disassembly), so their stored y is an offset above the ground.
+    /// WH3's mountains (shaders/rigid_campaign_mountain, t_xml_height_map = full_height_map) do the same through
+    /// add_terrain_height.
     /// </summary>
-    public float TerrainOffset => Shader.Contains("with_lf_offset", StringComparison.OrdinalIgnoreCase) ? Float("adjust_model_to_terrain", 1) : 0;
+    public float TerrainOffset =>
+        Shader.Contains("with_lf_offset", StringComparison.OrdinalIgnoreCase) ? Float("adjust_model_to_terrain", 1) : Float("add_terrain_height");
 
     public float Float(string name, float fallback = 0) =>
         Params.TryGetValue(name, out var p) && float.TryParse(p.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;

@@ -221,11 +221,11 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
             if (!Path.GetFullPath(dir).TrimEnd('\\').Equals(Path.GetFullPath(mapPaths.AkTerrainDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
                 journalDir = Path.Combine(journalDir, "custom_" + FileJournal.Hash(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(dir).ToLowerInvariant()))[..8].ToLowerInvariant());
             var journal = new FileJournal(journalDir);
-            var seaLayers = KitTerrainEditSession.MapLayers.Of(project, "HeightSea");
+            var seaLayers = terrain.SeaFloor is null ? null : KitTerrainEditSession.MapLayers.Of(project, "HeightSea");
             var treeLayers = model.TreeMap is null ? null : KitTerrainEditSession.MapLayers.Of(project, "CampaignTree");
             _session = new KitTerrainEditSession(journal, terrain.WorldW,
                 landLayers, terrain.Land,
-                seaLayers, seaLayers is null ? null : () => TerrainComposite.Heights(project, "HeightSea"),
+                seaLayers, seaLayers is null ? null : () => terrain.SeaFloor!,
                 treeLayers, model.TreeMap?.Map, model.TreeMap?.Palette);
             _session.Changed += _ => _view.Invalidate();
             for (var i = 0; i < 256; i++)
@@ -496,7 +496,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         if (edit is not null && _model is not null)
         {
             if (edit.Hexes.Length > 0) _model.RegenerateTrees(edit.Hexes);
-            if (edit.Target == KitTarget.Land) _view3d.ReloadTerrain();
+            if (edit.Target is KitTarget.Land or KitTarget.Sea) _view3d.ReloadTerrain();
             _view3d.ReloadTrees();
             if (edit.Target == KitTarget.Trees) RefreshCounts();
         }
