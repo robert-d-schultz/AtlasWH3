@@ -243,6 +243,9 @@ public static class HlpBuilder
         List<int>? CentrePath(Entry from, Entry to)
         {
             int a = from.Centre, b = to.Centre;
+            // a centre that is a settlement's slot hex but not the area's own settlement (sea areas whose map_data centre
+            // lies in a port slot): the game finds no path towards it (Old World, probe.py --centre: 16 of 16 pairs)
+            if (!to.Settled && g.Slot[b]) return null;
             var edges = g.Gated(options.CentrePathZero, g.Hlci[a], g.Hlci[b]);
             var block = options.CentrePathZero ? null : blocked;
             if (to.Settled && !options.LegacyCentrePath)

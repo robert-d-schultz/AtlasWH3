@@ -126,6 +126,10 @@ prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and 
       height, against squared distances).
     - A settlement end then loses its hexes of game type ≥ 4: slot hexes, port/bridge (5), river (6).
     - Fewer than 2 hexes left make no waypoints (`0x141e481e4`), so that pair has no centre transition.
+    - Towards an area without its own settlement whose centre is a settlement's slot hex, the game finds no centre
+      path. These are sea areas whose map_data centre lies in a port slot (Old World, `probe.py --centre`
+      2026-10-11: 16 of 16 such pairs empty; from such a centre the paths exist). Those pairs get only their
+      cluster transitions.
     - On IEE 2,138 of the game's 2,164 centre paths are now ours exactly (1,609 before). The rest are equal-cost ties
       and one search the game fails (sea → another region's port-slot hex).
     - Identical areas: IEE 965 → 1,050, Old World 1,491 → 1,671, Classic 853 → 978, combi 5 635 → 706, combi 7
@@ -194,20 +198,18 @@ are exact on every map checked, so every difference left comes from a differing 
 
 | map | hlp_data.esf | areas | region costs | region hops |
 |---|---|---|---|---|
-| prologue, chaos 1–4, combi 1–5, 7 | byte-identical | all | 100 % | 100 % |
+| prologue, chaos 1–4, combi 1–5, 7, Old World Classic, Darklands | byte-identical | all | 100 % | 100 % |
 | IEE | 1 area (transition order) | 1,067 / 1,068 | 100 % | 100 % |
-| Old World | 8 areas | 1,695 / 1,703 | 99.37 % | 99.84 % |
-| Old World Classic | 3 areas | 989 / 992 | 99.53 % | 99.96 % |
-| Darklands | 4 areas | 299 / 303 | 95.0 % | 99.0 % |
+| Old World | 1 matrix value | 1,702 / 1,703 | 100 % | 100 % |
 
 Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the others with the current rule.
 
 Open on hlp:
 - IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
   at cost 1,180 in one big tie, and the game's pop order differs from ours.
-- Old World (8 areas), Classic (3) and Darklands (4): transitions whose hexes differ (different border hexes chosen
-  from the centre paths), mostly land-sea ones in the eastern sea areas. `probe.py --centre` on Old World would show
-  the game's centre paths; `HLP_DUMP_CENTRE=<file>` writes ours.
+- Old World: area (1044,2)'s matrix value from (1632,22) to (1580,23) is 6,800 in CA's file. Our search gives the
+  optimal 6,576 both ways, and 6,800 is the cost with two road steps replaced by 192-cost steps. The game's grid
+  must differ on that route; an entry snapshot of Old World (`probe.py`) would show it.
 
 ### The game's generator (Warhammer3.exe, 2026-10-10)
 
