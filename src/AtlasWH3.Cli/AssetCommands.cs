@@ -186,7 +186,12 @@ static class AssetCommands
         {
             var (model, error) = lib.TryLoad(kv.Key);
             if (model is null) failed.Add((kv.Key, kv.Value, error ?? "unreadable"));
-            else foreach (var pr in model.Problems) problems.Add((kv.Key, pr));
+            else
+            {
+                foreach (var pr in model.Problems) problems.Add((kv.Key, pr));
+                foreach (var tex in model.Lods[0].Select(m => m.BaseColour).OfType<string>().Distinct())
+                    if (lib.Source.Exists(tex) && lib.Texture(tex, 16) is null) problems.Add((kv.Key, $"texture does not decode: {tex}"));
+            }
         });
         return new JsonObject
         {

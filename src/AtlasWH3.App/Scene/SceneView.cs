@@ -281,6 +281,11 @@ public sealed class SceneView : FrameworkElement
                 double v = (terrain.Shown(col, row) * (1 - tx) + terrain.Shown(col + 1, row) * tx) * (1 - ty)
                            + (terrain.Shown(col, row + 1) * (1 - tx) + terrain.Shown(col + 1, row + 1) * tx) * ty;
                 var ground = v;
+                if (terrain.CoverAt(col, row) == AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.None)
+                {
+                    _buffer[line + x] = 0xFF101010u; // a void: no tile, the game draws nothing
+                    continue;
+                }
                 var shade = Math.Clamp(1 + (terrain.Shown(col - 1, row) - terrain.Shown(col + 1, row) + terrain.Shown(col, row - 1) - terrain.Shown(col, row + 1)) * relief, 0.55, 1.4);
                 byte r, g, b;
                 if (ground <= sea) (r, g, b) = (28, 52, 78);

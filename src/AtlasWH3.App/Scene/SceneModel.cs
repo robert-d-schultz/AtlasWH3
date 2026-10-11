@@ -165,7 +165,7 @@ public sealed class SceneModel
             }
             var index = new int[gw * gh];
             Array.Fill(index, -1);
-            var altLf = new bool[gw * gh];
+            var cover = new AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover[gw * gh];
             foreach (var pass in new[] { true, false }) // base tiles first, features over them
                 for (var i = 0; i < tiles.Count; i++)
                 {
@@ -176,12 +176,13 @@ public sealed class SceneModel
                             if (x >= 0 && y >= 0)
                             {
                                 index[y * gw + x] = i;
-                                altLf[y * gw + x] = useAltLf[i];
+                                cover[y * gw + x] = useAltLf[i] ? AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.AltLf
+                                    : AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.Land;
                             }
                 }
             Tiles = tiles;
             _tileIndex = index;
-            Terrain.AltLf = (altLf, gw, gh);
+            Terrain.Tiles = (cover, gw, gh);
             TileGrid = (gw, gh, worldW / gw, worldH / gh);
             TilesNote = $"{tiles.Count} tiles ({tiles.Count(t => !t.Base)} features) from {source}" + (unknown > 0 ? $"; {unknown} not in the tile database" : "");
         }
@@ -395,8 +396,8 @@ public sealed class SceneModel
                 foreach (var x in PrefabExpander.Expand(probe, Prefabs))
                 {
                     var data = LayerDocument.Describe(x.Entity, Config);
-                    if (data.Transform is not var (p, r, sc)) continue;
-                    parts.Add(new PrefabPart(data.Type, ModelPathOf(data), new TerryTransform(p, r, sc), data));
+                    if (data.Placement is not { } placement) continue;
+                    parts.Add(new PrefabPart(data.Type, ModelPathOf(data), placement, data));
                 }
             }
             catch (Exception) { }

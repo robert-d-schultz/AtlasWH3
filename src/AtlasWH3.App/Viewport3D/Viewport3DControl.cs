@@ -78,6 +78,8 @@ public sealed class Viewport3DControl : Grid
     private SceneModel.TileOverlay _tileMeshMode = SceneModel.TileOverlay.Off;
     private bool _tilesBuilding;
     private int _riversVersion = -1;
+    private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _waterPlanes;
+    private int _waterPlanesVersion = -1;
     private bool _riversBuilding;
 
     public bool ShowTrees { get; set; } = true;
@@ -191,8 +193,7 @@ public sealed class Viewport3DControl : Grid
         foreach (var it in _model.All)
         {
             var e = it.Entity;
-            if (TerryEntityTypes.IsLayerType(e.Type) || e.Transform is not var (p, r, s) || !_model.IsDrawn(it)) continue;
-            var t = new TerryTransform(p, r, s);
+            if (TerryEntityTypes.IsLayerType(e.Type) || e.Placement is not { } t || !_model.IsDrawn(it)) continue;
             var outline = new List<(Vector3, Vector3)>();
             foreach (var o in e.Outlines)
             {
@@ -426,17 +427,23 @@ public sealed class Viewport3DControl : Grid
                 (v[o + 3], v[o + 4], v[o + 5]) = (n.X, n.Y, n.Z);
             }
         });
-        var idx = new uint[(cols - 1) * (rows - 1) * 6];
+        // no quad over a void (a tile-map cell without a tile): the game draws nothing there
+        var keep = new bool[(cols - 1) * (rows - 1)];
         Parallel.For(0, rows - 1, j =>
         {
             for (var i = 0; i < cols - 1; i++)
-            {
-                var o = (j * (cols - 1) + i) * 6;
-                uint a = (uint)(j * cols + i), b = a + 1, c = a + (uint)cols, d = c + 1;
-                (idx[o], idx[o + 1], idx[o + 2], idx[o + 3], idx[o + 4], idx[o + 5]) = (a, b, c, b, d, c);
-            }
+                keep[j * (cols - 1) + i] = terrain.CoverAt(Math.Min(i * step + step / 2, raster.Width - 1),
+                    Math.Min(j * step + step / 2, raster.Height - 1)) != AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Cover.None;
         });
-        return r.CreateTerrain(v, idx);
+        var idx = new List<uint>((cols - 1) * (rows - 1) * 6);
+        for (var j = 0; j < rows - 1; j++)
+            for (var i = 0; i < cols - 1; i++)
+            {
+                if (!keep[j * (cols - 1) + i]) continue;
+                uint a = (uint)(j * cols + i), b = a + 1, c = a + (uint)cols, d = c + 1;
+                idx.AddRange([a, b, c, b, d, c]);
+            }
+        return r.CreateTerrain(v, [.. idx]);
     }
 
     /// <summary>Heights for the terrain-offset shader (at most 4096 px across).</summary>
@@ -856,12 +863,23 @@ public sealed class Viewport3DControl : Grid
             try { v = model.Models.Load(path)?.Lods.SelectMany(l => l).Select(m => m.TerrainOffset).DefaultIfEmpty(0).Max() ?? 0; } catch (Exception) { v = 0; }
             return drapes[path] = v;
         }
+        // WH3's tile meshes (cliffs) carry no texture: the game paints them with the tile's terrain textures, which this
+        // view does not model, so they get a rock colour rather than white
+        var bare = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        bool Untextured(string path)
+        {
+            if (bare.TryGetValue(path, out var v)) return v;
+            try { v = model.Models.Load(path) is { } rm && rm.Lods.Count > 0 && rm.Lods[0].All(m => m.BaseColour is null); } catch (Exception) { v = false; }
+            return bare[path] = v;
+        }
+        var rock = new Vector4(0.42f, 0.38f, 0.33f, 1f);
         foreach (var t in model.Tiles)
         {
             var folder = t.Path.Replace('\\', '/').Trim('/');
             if (!content.TryGetValue(folder, out var c))
             {
-                var mesh = folder + "/custom_mesh.wsmodel";
+                // 3K's tiles have a custom_mesh.wsmodel, WH3's only the custom_mesh.rigid_model_v2
+                var mesh = model.Models.Source.Exists(folder + "/custom_mesh.wsmodel") ? folder + "/custom_mesh.wsmodel" : folder + "/custom_mesh.rigid_model_v2";
                 var props = new List<(string, Matrix4x4, bool, float)>();
                 try
                 {
@@ -904,7 +922,7 @@ public sealed class Viewport3DControl : Grid
             {
                 // Custom meshes: z from −H to 0 (b = z + H), y = 0 at the record's high height.
                 var world = Matrix4x4.CreateTranslation(0, 0, t.TileH * 128f) * TileMatrix(t, sx, sz, t.High);
-                Add(c.Mesh, world, sx);
+                Add(c.Mesh, world, sx, Untextured(c.Mesh) ? rock : default);
             }
             // River meshes: tile space as the land mesh (z 0..H), baked into one coloured mesh with every vertex
             // just above the lf ground (the lf has no carved channels to hold a flat per-tile water level).
@@ -937,6 +955,39 @@ public sealed class Viewport3DControl : Grid
         }
         return (result.ToDictionary(kv => kv.Key, kv => (kv.Value.I.ToArray(), kv.Value.C.ToArray(), kv.Value.S.ToArray()), StringComparer.OrdinalIgnoreCase),
             [.. riverVerts], [.. riverIdx]);
+    }
+
+    /// <summary>
+    /// The water planes: every drawn ECPolygonMesh whose material is a campaign water plane (WH3 has no map-wide sea; the
+    /// map author places these polygons), flat at the entity's height, triangulated as the build does.
+    /// </summary>
+    private void EnsureWaterPlanes()
+    {
+        if (_model is null || _r is null || _waterPlanesVersion == _model.Version) return;
+        _waterPlanesVersion = _model.Version;
+        if (_waterPlanes is { } old) { old.V.Dispose(); old.I.Dispose(); _waterPlanes = null; }
+        var colour = new Vector4(0.09f, 0.22f, 0.34f, 0.78f);
+        var verts = new List<LineVertex>();
+        var idx = new List<uint>();
+        foreach (var it in _model.All)
+        {
+            var e = it.Entity;
+            if (e.Component("ECPolygonMesh")?["material"] is not { } material || !material.Contains("water_plane", StringComparison.OrdinalIgnoreCase)
+                || !_model.IsDrawn(it) || e.Placement is not { } t) continue;
+            foreach (var o in e.Outlines)
+            {
+                if (!o.Closed || o.Points.Count < 3) continue;
+                var b0 = (uint)verts.Count;
+                foreach (var pt in o.Points)
+                {
+                    var (x, y, z) = t.Apply(pt.X, 0, pt.Z);
+                    verts.Add(new LineVertex(new Vector3((float)x, (float)y, (float)z), colour));
+                }
+                foreach (var i in AtlasWH3.Core.Campaign.Props.Wh3GlobalPropsBuilder.Triangulate([.. o.Points.Select(pt => ((float)pt.X, (float)pt.Z))]))
+                    idx.Add(b0 + i);
+            }
+        }
+        if (idx.Count > 0) _waterPlanes = _r.CreateColoured([.. verts], [.. idx]);
     }
 
     /// <summary>Milliseconds the last frame took to build and submit (CPU side).</summary>
@@ -1191,21 +1242,12 @@ public sealed class Viewport3DControl : Grid
 
         // Water (campaign sea level), markers, shapes, selection.
         EnsureRivers();
+        EnsureWaterPlanes();
+        if (ShowWater && _waterPlanes is { } wp) r.DrawColoured(wp.V, wp.I, wp.Count);
         EnsureTileMesh();
         if (_tileMesh is { } tm2 && _model.TilesShown != SceneModel.TileOverlay.Off) r.DrawColoured(tm2.V, tm2.I, tm2.Count);
         if (ShowWater && ShowTileMeshes && _tileRivers is { } trv) r.DrawColoured(trv.V, trv.I, trv.Count);
         if (ShowWater && _rivers is { } rv) r.DrawColoured(rv.V, rv.I, rv.Count);
-        if (ShowWater && _model.Terrain is var (_, ww, wh))
-        {
-            // the sea: WH3's sea water planes sit at sea level
-            var c = new Vector4(0.09f, 0.22f, 0.34f, 0.78f); // deep enough to read as sea over the textured seabed
-            float sx = (float)ww, sz = (float)wh, y = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.SeaLevel + 0.02f;
-            r.DrawLines(stackalloc LineVertex[]
-            {
-                new(new(0, y, 0), c), new(new(sx, y, 0), c), new(new(sx, y, sz), c),
-                new(new(0, y, 0), c), new(new(sx, y, sz), c), new(new(0, y, sz), c),
-            }, triangles: true);
-        }
         foreach (var item in placeholders)
         {
             var isSelected = Selection.Contains(item.Id);

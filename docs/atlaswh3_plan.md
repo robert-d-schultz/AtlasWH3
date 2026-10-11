@@ -623,7 +623,16 @@ Started 2026-10-11, after Phase 6.
   - composite scenes: `CompositeScene` reads the .csc (ESF) grammar after the Asset Editor's CSC editor, and the scene
     places every model element at its time-0 transform through its attach parents. Every game .csc reads but the 328
     ROOT v6 quest-battle scenes.
-- [ ] Seen on the way: some props draw white or black in the 3D view (their textures not found).
+- [x] 5.5 The user's second look (2026-10-11):
+  - entities are placed with their ECTransform pivot (`TerryEntityData.Placement`, the build's rule);
+  - no map-wide sea: the water is the map's `ECPolygonMesh`es with a campaign water-plane material, triangulated as the
+    build does;
+  - voids (no tile in tile_map.png) are left empty, and WH3's tile meshes draw (`custom_mesh.rigid_model_v2`, not 3K's
+    `.wsmodel`), so the coast cliffs show; they have no texture of their own, so they get a rock colour;
+  - textures: old rigid models name `<name>_diffuse.dds`, which WH3 ships as `<name>_base_colour.dds` (or in
+    commontextures). IEE's models with texture problems: 666 → 1 (`asset-check`).
+- [ ] Left: some props still draw black; tile meshes untextured; tile props (WH3's tile `bmd_data.bin` is BMD v26, which
+  the 3K reader skips); culture-masked `ECTerrainHole`s; non-water polygon meshes.
 
 
 - **Scene editor:** WH3 entity types and attributes (`ECCampaignProperties.culture_mask`, `visible_in_shroud`,

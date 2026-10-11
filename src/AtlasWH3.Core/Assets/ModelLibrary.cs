@@ -128,7 +128,9 @@ public sealed class ModelLibrary(AssetSource source)
                     colour = m.Texture(RigidModel.TexBaseColour) ?? m.Texture(RigidModel.TexDiffuse);
                     alpha = m.AlphaMode == 1;
                 }
+                colour = ResolveColour(colour);
                 if (l == 0 && colour is not null && !Source.Exists(colour)) problems.Add($"texture {colour} not found");
+                if (l == 0 && colour is null) problems.Add($"no base colour texture (shader {shader})");
                 meshes.Add(new RenderMesh(m.Positions, m.Normals, m.Uvs, m.Indices, colour, alpha, materialPath, shader, terrainOffset));
             }
             lods.Add(meshes);
@@ -136,6 +138,20 @@ public sealed class ModelLibrary(AssetSource source)
         var bounds = rmv2.Bounds;
         if (bounds.All(v => v == 0)) bounds = RigidModel.HeaderBounds(bytes) ?? bounds; // decal stubs: no vertices
         return new RenderModel(path, geometry, lods, bounds, rmv2.Lods.Select(l => l.Distance).ToList(), problems);
+    }
+
+    /// <summary>
+    /// A colour texture as WH3 ships it: many old rigid models still name <c>&lt;name&gt;_diffuse.dds</c>, which WH3 renamed
+    /// <c>&lt;name&gt;_base_colour.dds</c>, or a shared texture that moved to commontextures\. The path as given when
+    /// it exists or nothing better does.
+    /// </summary>
+    private string? ResolveColour(string? path)
+    {
+        if (path is null || Source.Exists(path)) return path;
+        if (path.EndsWith("_diffuse.dds", StringComparison.OrdinalIgnoreCase)
+            && path[..^"_diffuse.dds".Length] + "_base_colour.dds" is var renamed && Source.Exists(renamed)) return renamed;
+        var common = "commontextures/" + Path.GetFileName(path.Replace('\\', '/'));
+        return Source.Exists(common) ? common : path;
     }
 
     private RenderMesh DecalQuad(RigidModel.Mesh m, string stub)

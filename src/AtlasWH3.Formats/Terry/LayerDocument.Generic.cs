@@ -28,11 +28,29 @@ public sealed record TerryEntityData(string Id, string? Name, string Type, IRead
                LayerDocument.ReadVector(t["scale"] ?? "1 1 1"))
             : null;
 
-    /// <summary>A local x/z point (y = 0) placed in the world by the entity's transform, projected to x/z.</summary>
+    /// <summary>
+    /// Where the entity's model space sits in the world: its transform with rotation and scale turned about the
+    /// ECTransform pivot, so the origin moves to position + pivot − R·S·pivot (as the build places it; BOB's IEE
+    /// dragonspine mountains). Null without a transform.
+    /// </summary>
+    public TerryTransform? Placement
+    {
+        get
+        {
+            if (Transform is not var (p, r, s)) return null;
+            var t = new TerryTransform(p, r, s);
+            if (Component("ECTransform")?["pivot"] is not { } pv || LayerDocument.ReadVector(pv) is not [var px, var py, var pz]
+                || (px == 0 && py == 0 && pz == 0)) return t;
+            var (rx, ry, rz) = new TerryTransform([0, 0, 0], r, s).Apply(px, py, pz);
+            return t with { Position = [p[0] + px - rx, p[1] + py - ry, p[2] + pz - rz] };
+        }
+    }
+
+    /// <summary>A local x/z point (y = 0) placed in the world by the entity's placement, projected to x/z.</summary>
     public (double X, double Z) ToWorld(double x, double z)
     {
-        if (Transform is not var (p, r, s)) return (x, z);
-        var (wx, _, wz) = new TerryTransform(p, r, s).Apply(x, 0, z);
+        if (Placement is not { } t) return (x, z);
+        var (wx, _, wz) = t.Apply(x, 0, z);
         return (wx, wz);
     }
 }

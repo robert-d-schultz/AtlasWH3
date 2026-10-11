@@ -853,7 +853,7 @@ public sealed class Wh3GlobalPropsBuilder
     /// polygon meshes of BOB's IEE and Old World global_props.bin: 1,252 identical (2026-10-09; the other is one where
     /// BOB stops with seven vertices left).
     /// </summary>
-    private static List<ushort> Triangulate(List<(float X, float Z)> pts)
+    public static List<ushort> Triangulate(List<(float X, float Z)> pts)
     {
         var idx = Enumerable.Range(0, pts.Count).ToList();
         double area = 0;

@@ -27,9 +27,21 @@ public sealed class CampaignTerrain
     /// <summary>Composited HeightSea (world y), the same size as <see cref="Land"/>; null when the project has none.</summary>
     public Raster<float>? SeaFloor { get; }
 
-    /// <summary>Per tile-map cell (row 0 = south, as tile_list.bin), whether its tile uses the alternative lf; null
-    /// until a tile list is known (everything is drawn on Height).</summary>
-    public (bool[] Cells, int Width, int Height)? AltLf { get; set; }
+    /// <summary>What covers each tile-map cell (row 0 = south, as tile_list.bin); null until a tile list is known
+    /// (everything is drawn on Height).</summary>
+    public (Cover[] Cells, int Width, int Height)? Tiles { get; set; }
+
+    /// <summary>A tile-map cell: no tile (a void, black in tile_map.png), a tile on Height, or one on HeightSea.</summary>
+    public enum Cover : byte { None, Land, AltLf }
+
+    /// <summary>The tile-map cover of a pixel; <see cref="Cover.Land"/> without a tile list.</summary>
+    public Cover CoverAt(int col, int row)
+    {
+        if (Tiles is not var (cells, w, h)) return Cover.Land;
+        var tx = col * w / Land.Width;
+        var ty = h - 1 - row * h / Land.Height;
+        return (uint)tx < (uint)w && (uint)ty < (uint)h ? cells[ty * w + tx] : Cover.None;
+    }
 
     public double WorldW { get; }
     public double WorldH { get; }
@@ -57,17 +69,10 @@ public sealed class CampaignTerrain
         new(TerrainComposite.Heights(project, "Height"),
             project.Find("HeightSea") is not null ? TerrainComposite.Heights(project, "HeightSea") : null, worldWidth);
 
-    /// <summary>The ground the game draws at a pixel: HeightSea under an alt-lf (sea) tile, else Height.</summary>
-    public float Shown(int col, int row)
-    {
-        if (SeaFloor is { } sea && AltLf is var (cells, w, h))
-        {
-            var tx = col * w / Land.Width;
-            var ty = h - 1 - row * h / Land.Height;
-            if ((uint)tx < (uint)w && (uint)ty < (uint)h && cells[ty * w + tx]) return sea[col, row];
-        }
-        return Land[col, row];
-    }
+    /// <summary>The ground the game draws at a pixel: HeightSea under an alt-lf (sea) tile, else Height (also under a
+    /// void, see <see cref="CoverAt"/>).</summary>
+    public float Shown(int col, int row) =>
+        SeaFloor is { } sea && CoverAt(col, row) == Cover.AltLf ? sea[col, row] : Land[col, row];
 
     /// <summary>Shown ground at a world point, bilinear between texel centres.</summary>
     public double At(double x, double z)
