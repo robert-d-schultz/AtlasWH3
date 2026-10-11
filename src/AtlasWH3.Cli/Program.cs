@@ -93,7 +93,7 @@ switch (command)
         return FixtureCommands.Run(paths, c, args.Skip(1).ToArray());
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
-        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--patch-mask fitted|vanilla] [--devastated <map>|none] [--lookup-last <region,..|file.txt>] [--json]   native replacement for BOB's campaign actions (--patch-mask vanilla: BOB's patch_mask.dds with its north-band bug; --devastated: the devastated project devastation_pieces also cuts, default <map>_devastate_1 when the kit has it; --lookup-last: regions moved past the 1024 lookup palette entries the game reads)");
+        Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--patch-mask fitted|vanilla] [--devastated <map>|none] [--lookup-last <region,..|file.txt>] [--global-lighting <path>|terry] [--json]   native replacement for BOB's campaign actions (--patch-mask vanilla: BOB's patch_mask.dds with its north-band bug; --devastated: the devastated project devastation_pieces also cuts, default <map>_devastate_1 when the kit has it; --lookup-last: regions moved past the 1024 lookup palette entries the game reads; --global-lighting: environment_collection.xml's, default weather/campaign/combi/default.environment, terry = the .terry's)");
         Console.WriteLine("          diagnose-campaign [--out <dir>] [--json]              per-step input check");
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
         Console.WriteLine("                [--out <dir>] [--pack-output <file>] [--json]      a project's build (as the GUI's Build window)");
@@ -138,6 +138,7 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--patch-mask", out var patchMask);
     a = TakeOption(a, "--devastated", out var devastated);
     a = TakeOption(a, "--lookup-last", out var lookupLast);
+    a = TakeOption(a, "--global-lighting", out var globalLighting);
     var json = TakeFlag(ref a, "--json");
     var sw = Stopwatch.StartNew();
     var ctx = new CampaignBuildContext(paths, outDir, json ? Console.Error.WriteLine : Console.WriteLine)
@@ -146,6 +147,7 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
         PatchMask = patchMask is null ? PatchMaskMode.Fitted : Enum.Parse<PatchMaskMode>(patchMask, ignoreCase: true),
         DevastatedMap = CampaignBuildContext.DevastatedSetting(devastated),
         LookupLastRegions = (lookupLast ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        GlobalLighting = globalLighting is null ? EnvironmentStep.DefaultGlobalLighting : globalLighting == "terry" ? "" : globalLighting,
     };
     var outcomes = new CampaignBuildPipeline().Run(ctx, steps?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     if (json)

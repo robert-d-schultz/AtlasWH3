@@ -18,6 +18,10 @@ public sealed class CampaignBuildContext
     /// text files of them; <see cref="LookupStep.RegionList"/>).</summary>
     public IReadOnlyList<string> LookupLastRegions { get; init; } = [];
 
+    /// <summary>environment step: the global_lighting written into environment_collection.xml; empty = the .terry's
+    /// (<see cref="EnvironmentStep.DefaultGlobalLighting"/> by default).</summary>
+    public string GlobalLighting { get; init; } = EnvironmentStep.DefaultGlobalLighting;
+
     /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
     public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
 

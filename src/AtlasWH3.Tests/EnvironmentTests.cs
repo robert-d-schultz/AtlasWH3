@@ -20,6 +20,20 @@ public class EnvironmentTests
         Assert.Equal(File.ReadAllText(bob), text);
     }
 
+    /// <summary>The profile's global_lighting replaces the .terry's (which is what Terry shows); empty keeps the .terry's.</summary>
+    [Fact]
+    public void Build_GlobalLighting_ReplacesTheTerrys()
+    {
+        const string map = "cr_combi_expanded_map_devastate_1";
+        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
+        if (!File.Exists(terry)) return;
+        var project = TerryProject.Load(terry);
+        Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{EnvironmentStep.DefaultGlobalLighting}'>\r\n",
+            EnvironmentStep.Build(project, EnvironmentStep.DefaultGlobalLighting).Text);
+        Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{project.Setting("global_lighting")}'>\r\n",
+            EnvironmentStep.Build(project, "").Text);
+    }
+
     /// <summary>Per type (the untyped files last), the effects no map-wide object uses, each once.</summary>
     [Fact]
     public void EventVfx_GroupsByTypeAndLeavesOutMapWideEffects()
