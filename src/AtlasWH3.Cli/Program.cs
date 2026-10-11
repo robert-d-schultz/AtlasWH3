@@ -27,20 +27,8 @@ switch (command)
     case "render":
         Render(paths, args.Skip(1).ToArray());
         break;
-    case "trees-test":
-        TreesTest(paths);
-        break;
     case "trees-decode":
         return TreesDecode(paths, args.Skip(1).ToArray());
-    case "expand-test":
-        ExpandTest(paths);
-        break;
-    case "export-ak":
-        ExportAk(paths, args.Length > 1 ? args[1] : Path.Combine(paths.OutputRoot, "ak_test"));
-        break;
-    case "props-to-layers":
-        PropsToLayers(paths, args.Skip(1).ToArray());
-        break;
     case "build-campaign":
         return BuildCampaign(paths, args.Skip(1).ToArray());
     case "diagnose-campaign":
@@ -105,7 +93,6 @@ switch (command)
         return FixtureCommands.Run(paths, c, args.Skip(1).ToArray());
     default:
         Console.WriteLine("Commands: info | trees-roundtrip | find-textures | render [mapX mapY scale width height]");
-        Console.WriteLine("          props-to-layers [targetDir|ak] [shiftX shiftZ]");
         Console.WriteLine("          build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--patch-mask fitted|vanilla] [--devastated <map>|none] [--lookup-last <region,..|file.txt>] [--json]   native replacement for BOB's campaign actions (--patch-mask vanilla: BOB's patch_mask.dds with its north-band bug; --devastated: the devastated project devastation_pieces also cuts, default <map>_devastate_1 when the kit has it; --lookup-last: regions moved past the 1024 lookup palette entries the game reads)");
         Console.WriteLine("          diagnose-campaign [--out <dir>] [--json]              per-step input check");
         Console.WriteLine("          build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]");
@@ -612,148 +599,6 @@ static void Info(ProjectPaths paths)
     Console.WriteLine($"total {sw.ElapsedMilliseconds} ms");
 }
 
-static void TreesTest(ProjectPaths paths)
-{
-    var terrain = TerrainData.LoadVanilla(paths);
-    var trees = CampaignTreeList.Load(paths.TreeList);
-    var db = TreeDatabase.Load(paths.TreeIdsTsv, paths.TreeVariantsTsv);
-    var log = new AtlasWH3.Core.Editing.TreeEditLog();
-    var textures = TerrainTextureSet.Load(paths, terrain.TextureArrays);
-    var overlay = new TreeOverlay(trees, db);
-    var renderer = new TerrainRenderer(terrain, textures);
-    var view = new Viewport(3300, 2300, 0.6);
-    const int w = 1000, h = 700;
-    void Snapshot(string name)
-    {
-        var px = new uint[w * h];
-        renderer.Render(view, w, h, px);
-        overlay.Draw(view, w, h, px, terrain.Width, terrain.HeightPx, terrain.Coords);
-        SavePng(Path.Combine(paths.OutputRoot, "previews", name), px, w, h);
-    }
-
-    var before = trees.TotalInstances;
-    Snapshot("trees_before.png");
-
-    var brush = new AtlasWH3.Core.Editing.TreeBrush(trees, db, log)
-    {
-        Mode = AtlasWH3.Core.Editing.TreeBrushMode.Scatter, Species = "bamboo_1", Radius = 60, Strength = 0.8, Density = 8,
-    };
-    brush.Begin(terrain, 3450, 2450);
-    for (var x = 3450; x <= 3750; x += 15) brush.Dab(x, 2450 + (x - 3450) / 3.0);
-    var scatter = brush.End();
-    var afterScatter = trees.TotalInstances;
-
-    brush.Mode = AtlasWH3.Core.Editing.TreeBrushMode.Erase;
-    brush.Radius = 70; brush.Strength = 1;
-    brush.Begin(terrain, 3500, 2650);
-    brush.Dab(3500, 2650);
-    brush.End();
-    var afterErase = trees.TotalInstances;
-    Console.WriteLine($"trees: {before:N0} -> scatter {afterScatter:N0} (+{afterScatter - before}) -> erase {afterErase:N0} (-{afterScatter - afterErase})");
-    Snapshot("trees_after.png");
-
-    var compiled = TreeExporter.WriteCompiled(trees, Path.Combine(paths.OutputRoot, "trees_test"), paths.MapName);
-    var reread = CampaignTreeList.Load(compiled);
-    Console.WriteLine($"compiled list: {compiled} ({new FileInfo(compiled).Length:N0} bytes), re-read {reread.TotalInstances:N0} trees, types {reread.Types.Count}");
-
-    var target = Path.Combine(paths.OutputRoot, "ak_trees_test");
-    if (Directory.Exists(target)) Directory.Delete(target, true);
-    var export = new AkExporter(paths).Export(terrain, null, target, _ => { }, new TreeExportInput(trees, db, log));
-    foreach (var note in export.Notes) Console.WriteLine("note: " + note);
-}
-
-static void ExpandTest(ProjectPaths paths)
-{
-    var target = Path.Combine(paths.OutputRoot, "ak_expand_test");
-    if (Directory.Exists(target)) Directory.Delete(target, true);
-
-    var terrain = TerrainData.LoadVanilla(paths);
-    var trees = CampaignTreeList.Load(paths.TreeList);
-    var firstTree = trees.Types[0].Instances[0];
-    var pending = new PendingExpansion();
-    var result = ExpandCanvas.Apply(terrain, trees, new HexPadding(60, 50, 0, 0));
-    pending.Add(result);
-    Console.WriteLine($"expanded to {terrain.Width}x{terrain.HeightPx}, world {result.NewWorldWidth:F3}x{result.NewWorldHeight:F3}, shift x {result.ShiftX:F3} z {result.ShiftZ:F3}");
-    var movedTree = trees.Types[0].Instances[0];
-    Console.WriteLine($"tree 0: ({firstTree.X:F3},{firstTree.Z:F3}) -> ({movedTree.X:F3},{movedTree.Z:F3})");
-
-    // The tree must still sit on the same terrain pixel after the shift.
-    var (c0, r0) = WorldCoords.Vanilla3K.ToPixel(firstTree.X, firstTree.Z, 7136, 5620);
-    var (c1, r1) = terrain.Coords.ToPixel(movedTree.X, movedTree.Z, terrain.Width, terrain.HeightPx);
-    Console.WriteLine($"tree pixel before ({c0:F2},{r0:F2}) after ({c1:F2},{r1:F2}) expected ({c0 + 480:F2},{r0 + 400:F2})");
-
-    var export = new AkExporter(paths).Export(terrain, pending, target, Console.WriteLine);
-    foreach (var note in export.Notes) Console.WriteLine("note: " + note);
-    Console.WriteLine($"written {export.Written.Count} files");
-
-    // Second export must not shift layers again.
-    var again = new AkExporter(paths).Export(terrain, pending, target, _ => { });
-    foreach (var note in again.Notes) Console.WriteLine("2nd export note: " + note);
-
-    Console.WriteLine(pending.DescribeDbChanges(paths.MapName));
-    var renderer = new TerrainRenderer(terrain, TerrainTextureSet.Load(paths, terrain.TextureArrays));
-    var w = terrain.Width / 5; var h = terrain.HeightPx / 5;
-    var pixels = new uint[w * h];
-    renderer.Render(new Viewport(0, 0, 5), w, h, pixels);
-    new TreeOverlay(trees, null).Draw(new Viewport(0, 0, 5), w, h, pixels, terrain.Width, terrain.HeightPx, terrain.Coords);
-    SavePng(Path.Combine(paths.OutputRoot, "previews", "expanded.png"), pixels, w, h);
-}
-
-static void SavePng(string outPath, uint[] pixels, int w, int h)
-{
-    Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-    using var bmp = new SKBitmap(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Opaque));
-    System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.AsSpan()).CopyTo(bmp.GetPixelSpan());
-    using var data = bmp.Encode(SKEncodedImageFormat.Png, 90);
-    using var fs = File.Create(outPath);
-    data.SaveTo(fs);
-    Console.WriteLine(outPath);
-}
-
-static void ExportAk(ProjectPaths paths, string target)
-{
-    var sw = Stopwatch.StartNew();
-    var terrain = TerrainData.LoadVanilla(paths);
-    var result = new AkExporter(paths).Export(terrain, null, target, Console.WriteLine);
-    Console.WriteLine($"exported {result.Written.Count} files to {result.TargetDir} in {sw.ElapsedMilliseconds} ms");
-
-    // Verify: re-read what was written and compare with the in-memory rasters and the existing AK sources.
-    var project = AtlasWH3.Formats.Terry.TerryProject.Load(Path.Combine(target, paths.MapName + ".terry"));
-    var heightTif = Path.Combine(target, Path.GetFileName(project.LayerTifPath(project.Find("LowFrequencyHeight")!)));
-    var blendTif = Path.Combine(target, Path.GetFileName(project.LayerTifPath(project.Find("BlendCampaign")!)));
-    var h = TiffMap.ReadGray16(heightTif);
-    Console.WriteLine($"height re-read identical: {h.Data.AsSpan().SequenceEqual(terrain.Height.Data)}");
-    var (b, _) = TiffMap.ReadPalette8(blendTif);
-    Console.WriteLine($"blend re-read identical: {b.Data.AsSpan().SequenceEqual(terrain.BlendGroup.Data)}");
-
-    var akHeight = TiffMap.ReadGray16(Path.Combine(paths.AkTerrainDir, Path.GetFileName(heightTif)));
-    var diffs = 0; var maxDiff = 0;
-    for (var i = 0; i < akHeight.Data.Length; i++)
-    {
-        var d = Math.Abs(akHeight.Data[i] - terrain.Height.Data[i]);
-        if (d > 0) { diffs++; maxDiff = Math.Max(maxDiff, d); }
-    }
-    Console.WriteLine($"vs current AK height tif: {diffs:N0} pixels differ, max diff {maxDiff}");
-    var (akBlend, _) = TiffMap.ReadPalette8(Path.Combine(paths.AkTerrainDir, Path.GetFileName(blendTif)));
-    Console.WriteLine($"vs current AK blend tif identical: {akBlend.Data.AsSpan().SequenceEqual(terrain.BlendGroup.Data)}");
-}
-
-// Regenerates the AK region layers from vanilla global_props.bin with their building/settlement tags.
-// Default target is output\props_layers (dry run); "ak" writes into the assembly kit folder after a backup.
-static void PropsToLayers(ProjectPaths paths, string[] a)
-{
-    var sw = Stopwatch.StartNew();
-    var target = a.Length > 0 ? a[0] : Path.Combine(paths.OutputRoot, "props_layers");
-    if (target == "ak") target = paths.AkTerrainDir;
-    (double, double)? shift = a.Length >= 3 ? (double.Parse(a[1]), double.Parse(a[2])) : null;
-    var result = new PropLayerExporter(paths).Export(target, shift, Console.WriteLine);
-    foreach (var (tags, count) in result.TaggedByTags.OrderByDescending(kv => kv.Value))
-        Console.WriteLine($"{count,7:N0}  {tags}");
-    foreach (var note in result.Notes) Console.WriteLine("note: " + note);
-    Console.WriteLine($"wrote {result.Written.Count} layers to {result.TargetDir} in {sw.ElapsedMilliseconds} ms" +
-                      (result.BackupDir != null ? $" (backup: {result.BackupDir})" : ""));
-}
-
 // Reverses a compiled trees.campaign_tree_list into the AK CampaignTree map BOB would need to make it, and checks
 // that regenerating from that map (with the list's own heights) gives the same bytes.
 static int TreesDecode(ProjectPaths paths, string[] a)
@@ -781,7 +626,7 @@ static int TreesDecode(ProjectPaths paths, string[] a)
     outPath ??= Path.Combine(paths.OutputRoot, "trees_decoded", $"{paths.MapName}.tree.tif");
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
     var (map, palette) = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.WriteTreeMap(
-        colours, grid, grid.Columns * 2, grid.Rows * 2 + 1, db, AkExporter.NoTreeIndex);
+        colours, grid, grid.Columns * 2, grid.Rows * 2 + 1, db, TreeExporter.NoTreeIndex);
     TiffMap.WritePalette8(outPath, map, palette, lzw: true);
     Console.WriteLine($"tree map {map.Width}x{map.Height} -> {outPath}");
     return same ? 0 : 1;

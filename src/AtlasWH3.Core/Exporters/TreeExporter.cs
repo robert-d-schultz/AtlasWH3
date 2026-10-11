@@ -6,6 +6,9 @@ namespace AtlasWH3.Core.Exporters;
 
 public static class TreeExporter
 {
+    /// <summary>Palette index of "no tree" in 3K's CampaignTree map (WH3's is 255, <see cref="Campaign.Trees.TreesStep.EmptyIndex"/>).</summary>
+    public const byte NoTreeIndex = 19;
+
     /// <summary>Pack-relative path of the compiled tree list.</summary>
     public static string PackPath(string mapName) =>
         Path.Combine("campaign_maps", mapName, "display", "trees", "trees.campaign_tree_list");
@@ -29,7 +32,7 @@ public static class TreeExporter
 
     /// <summary>
     /// Updates the AK tree paint (1 cell = 4x4 lf px) in every cell where trees were added or removed: the cell
-    /// takes the colour group of its most common remaining species, or <see cref="AkExporter.NoTreeIndex"/> if empty.
+    /// takes the colour group of its most common remaining species, or <see cref="NoTreeIndex"/> if empty.
     /// Returns the number of cells changed.
     /// </summary>
     public static int UpdatePaint(Raster<byte> paint, TiffMap.Palette palette, CampaignTreeList trees,
@@ -58,7 +61,7 @@ public static class TreeExporter
         var changed = 0;
         foreach (var cell in touched)
         {
-            var value = AkExporter.NoTreeIndex;
+            var value = NoTreeIndex;
             if (counts.TryGetValue(cell, out var perSpecies))
             {
                 var species = perSpecies.MaxBy(kv => kv.Value).Key;
@@ -75,12 +78,12 @@ public static class TreeExporter
     public static byte PaletteIndexFor(string species, TiffMap.Palette palette, TreeDatabase? db)
     {
         if (db == null || !db.Ids.TryGetValue(species, out var id))
-            return AkExporter.NoTreeIndex;
+            return NoTreeIndex;
         int r = (int)(id.ColourRgb >> 16) & 0xFF, g = (int)(id.ColourRgb >> 8) & 0xFF, b = (int)id.ColourRgb & 0xFF;
-        var best = AkExporter.NoTreeIndex;
+        var best = NoTreeIndex;
         var bestDist = int.MaxValue;
         // Entries 0-18 are the tree colour groups; 19 is "no tree"; the rest of the palette is unused.
-        for (var i = 0; i < Math.Min(palette.R.Length, AkExporter.NoTreeIndex); i++)
+        for (var i = 0; i < Math.Min(palette.R.Length, NoTreeIndex); i++)
         {
             int dr = (palette.R[i] >> 8) - r, dg = (palette.G[i] >> 8) - g, db2 = (palette.B[i] >> 8) - b;
             var dist = dr * dr + dg * dg + db2 * db2;

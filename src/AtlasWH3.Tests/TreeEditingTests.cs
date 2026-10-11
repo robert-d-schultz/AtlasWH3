@@ -124,7 +124,7 @@ public class TreeEditingTests
     {
         var trees = ExistingForest();
         var paint = new Raster<byte>(100, 100);
-        Array.Fill(paint.Data, AkExporter.NoTreeIndex);
+        Array.Fill(paint.Data, TreeExporter.NoTreeIndex);
         var r = new ushort[256]; var g = new ushort[256]; var b = new ushort[256];
         r[3] = 0x10 * 257; g[3] = 0x20 * 257; b[3] = 0x30 * 257;  // not the fir colour
         r[5] = 0x40 * 257; g[5] = 0x50 * 257; b[5] = 0x60 * 257;  // fir colour
@@ -141,7 +141,7 @@ public class TreeEditingTests
         var changed = TreeExporter.UpdatePaint(paint, palette, trees, db, log);
         Assert.Equal(2, changed);
         Assert.Equal(5, paint[cellA.Item1, cellA.Item2]);
-        Assert.Equal(AkExporter.NoTreeIndex, paint[cellB.Item1, cellB.Item2]);
+        Assert.Equal(TreeExporter.NoTreeIndex, paint[cellB.Item1, cellB.Item2]);
     }
 
     private static TreeDatabase TreeDatabaseFor(string id, uint colour)

@@ -604,8 +604,15 @@ Started 2026-10-11, after Phase 6.
   Terry's own layout (float32 LZW, one row per strip). `HeightSea` loads only when its tool is chosen (400 MB on IEE).
   IEE self-test (`--terrain-selftest` on a copy): raise, undo, redo, sea floor set, tree paint / fill / erase, save;
   the saved layers recomposite to exactly what the scene shows.
-- [ ] 5.3 The rest of the 3K `LowFrequencyHeight` users: prop placement's kit ground (`PropEditor`), the lake
-  commands, the map audit, `AkExporter` / `PropLayerExporter` and the tile validator's size check.
+- [x] 5.3 The 3K `LowFrequencyHeight` users: prop placement and prop preview, the map audit (a prop "in the sea" stands
+  below sea level) and the tile validator's size check (Height, HeightSea, BlendCampaign 4× the tile map,
+  CampaignTree 1×) use the Height map.
+- [x] Cut 2026-10-11 (the user): what duplicates the decompiler, compiled map → kit project. `AkExporter` (CLI
+  `export-ak`, the painter's Export to Assembly Kit), `PropLayerExporter` (CLI `props-to-layers`, global_props.bin →
+  region layers) and their CLI checks `trees-test` / `expand-test`. Left as loose ends: `TerrainData.LoadVanilla`,
+  `ExpandCanvas`, `GlobalProps.ReadRegions` and the 3K painter (`MainWindow`), all still 3K-shaped; the cut commit
+  restores the rest.
+- [ ] Still 3K-shaped: the lake commands (`lake-*`, `LakeBuilder`: lf shaping on 3K's u16 TIF) and the painter.
 - [ ] Seen on the way: some props draw white or black in the 3D view (their textures not found).
 
 

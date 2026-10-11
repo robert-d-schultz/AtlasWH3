@@ -276,51 +276,6 @@ public partial class MainWindow : Window
     private void Fit_Click(object sender, RoutedEventArgs e) => Map.FitToWindow();
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
-    private async void ExportAk_Click(object sender, RoutedEventArgs e)
-    {
-        if (_terrain == null) return;
-        var answer = MessageBox.Show(this,
-            $"Write the terrain (height, sea height, ground textures) into the Assembly Kit?\n\n{_paths.AkTerrainDir}\n\n" +
-            $"Existing files are backed up first to:\n{Path.Combine(_paths.OutputRoot, "backups")}\n\n" +
-            "Yes = write to Assembly Kit   |   No = write to a test folder in output\\ak_export",
-            "Export to Assembly Kit", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-        if (answer == MessageBoxResult.Cancel) return;
-        var target = answer == MessageBoxResult.Yes ? _paths.AkTerrainDir : Path.Combine(_paths.OutputRoot, "ak_export");
-
-        IsEnabled = false;
-        StatusText.Text = "Exporting...";
-        try
-        {
-            var terrain = _terrain;
-            var treeInput = _trees != null ? new Core.Exporters.TreeExportInput(_trees, _treeDb, _treeLog) : null;
-            var result = await Task.Run(() => new Core.Exporters.AkExporter(_paths).Export(terrain, _pending, target,
-                msg => Dispatcher.Invoke(() => StatusText.Text = msg), treeInput));
-            StatusText.Text = $"Exported {result.Written.Count} files to {result.TargetDir}";
-            var dbNote = _pending.IsEmpty ? "" : "\n\n" + _pending.DescribeDbChanges(_paths.MapName);
-            if (answer == MessageBoxResult.Yes)
-            {
-                _pending.Clear();
-                _treeLog.Clear();
-            }
-            MessageBox.Show(this,
-                $"Wrote {result.Written.Count} files to\n{result.TargetDir}" +
-                (result.BackupDir != null ? $"\n\nBackup of previous files:\n{result.BackupDir}" : "") +
-                (result.Notes.Count > 0 ? "\n\n" + string.Join("\n", result.Notes) : "") +
-                dbNote +
-                "\n\nBuild the map (Build > Open Build window, Ctrl+B) to compile it.",
-                "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = "Export failed: " + ex.Message;
-            ErrorDialog.Show(this, "Export failed.", ex);
-        }
-        finally
-        {
-            IsEnabled = true;
-        }
-    }
-
     private void Expand_Click(object sender, RoutedEventArgs e)
     {
         if (_terrain == null) return;
