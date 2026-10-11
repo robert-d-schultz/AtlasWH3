@@ -14,7 +14,7 @@ namespace AtlasWH3.App.Scene;
 /// </summary>
 public sealed class PropToolsPanel : ScrollViewer
 {
-    public enum GroundSource { Scene, Built, KitLf }
+    public enum GroundSource { Scene, Built, KitHeight }
 
     private readonly TextBox _search = new() { Margin = new Thickness(0, 0, 0, 4) };
     private readonly CheckBox _allModels = new() { Content = "All models (not only campaign)", Margin = new Thickness(0, 0, 0, 4) };
@@ -74,7 +74,7 @@ public sealed class PropToolsPanel : ScrollViewer
         root.Children.Add(Theme.Header("Clamp to ground", 16).Card("scene.clamp"));
         _ground.Items.Add("Scene height: terrain + prop height patches (as BOB's trees)");
         _ground.Items.Add("Built terrain only: full_logic_map");
-        _ground.Items.Add("Kit lf height map (includes unbuilt edits)");
+        _ground.Items.Add("Kit Height map (includes unbuilt edits)");
         _ground.SelectedIndex = 0;
         root.Children.Add(_ground.Card("scene.clamp.ground"));
         root.Children.Add(_groundNote);
@@ -118,7 +118,7 @@ public sealed class PropToolsPanel : ScrollViewer
     public double YOffset => Parse(_yOffset, 0);
     public bool SeatBase => _seatBase.IsChecked == true;
     public bool Repeat => _repeat.IsChecked == true;
-    public GroundSource Ground => _ground.SelectedIndex switch { 1 => GroundSource.Built, 2 => GroundSource.KitLf, _ => GroundSource.Scene };
+    public GroundSource Ground => _ground.SelectedIndex switch { 1 => GroundSource.Built, 2 => GroundSource.KitHeight, _ => GroundSource.Scene };
     public bool SkipSettlements => _skipSettlements.IsChecked == true;
     public ClampMode Mode => _mode.SelectedIndex switch { 1 => ClampMode.Base, 2 => ClampMode.VanillaSink, _ => ClampMode.Origin };
     public double ClampOffset => Parse(_clampOffset, 0);

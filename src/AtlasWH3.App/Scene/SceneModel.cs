@@ -28,28 +28,28 @@ public sealed class SceneModel
     public IReadOnlySet<string> Frozen { get; private set; } = new HashSet<string>();
     public string? ActiveLayer { get; private set; }
 
-    /// <summary>Campaign height raster for the background, with the world size it covers (null for battle projects).</summary>
-    public (Raster<ushort> Height, double WorldW, double WorldH)? Terrain { get; private set; }
+    /// <summary>Campaign terrain: the composited Height and HeightSea maps in world units, with the world size they cover
+    /// (null for battle projects, or with the reason in <see cref="TerrainNote"/>).</summary>
+    public AtlasWH3.Core.Campaign.Terrain.CampaignTerrain? Terrain { get; private set; }
+    public string? TerrainNote { get; private set; }
 
-    /// <summary>Campaign ground: per lf pixel the texture group (the project's BlendCampaign TIF, texture_arrays.xml
-    /// order), and the groups' base colour textures. Null when the project has none.</summary>
+    /// <summary>Campaign ground: per Height pixel the texture group (the project's composited BlendCampaign map,
+    /// texture_arrays.xml order), and the groups' base colour textures. Null when the project has none.</summary>
     public (Raster<byte> Groups, TextureArrays Arrays)? TerrainBlend { get; private set; }
 
-    /// <summary>Campaign sea surface (LowFrequencyHeightSea TIF, half the lf resolution, same height units).</summary>
-    public Raster<ushort>? SeaHeight { get; private set; }
 
     /// <summary>One tree of the campaign forests: generated from the CampaignTree map exactly as the build does.</summary>
     public readonly record struct Tree(string TreeId, float X, float Y, float Z, float YawDegrees);
 
-    /// <summary>Forests: one tree per hex from the CampaignTree map (BOB's placement, see CampaignTreeGenerator), with
-    /// heights from the lf terrain. Empty when the project or the tree DB tables are missing.</summary>
+    /// <summary>Forests: one tree per hex from the composited CampaignTree map (BOB's placement, see
+    /// CampaignTreeGenerator), with heights from the terrain. Empty when the project or the tree tables are missing.</summary>
     public IReadOnlyList<Tree> Trees { get; private set; } = [];
     public string? TreesNote { get; private set; }
     private AtlasWH3.Formats.Trees.TreeDatabase? _treeDb;
 
     /// <summary>One placed campaign tile from tile_list.bin: tile-map rectangle (y = 0 the south row; w/h already
     /// swapped for the 90°/270° orientations), its tile set and name, and whether it is a base tile. TileW/TileH are
-    /// the database size before the turn; Low/High the record's normalized lf height range (0..1 of the 16-bit raster).</summary>
+    /// the database size before the turn; Low/High the record's height range (world y, from Height or HeightSea).</summary>
     public sealed record TilePlacement(int X, int Y, int W, int H, string TileSet, string Name, string Path, byte Orientation, bool Base, string Climate,
         int TileW = 1, int TileH = 1, float Low = 0, float High = 0, IReadOnlyList<string>? Layers = null)
     {
@@ -474,42 +474,53 @@ public sealed class SceneModel
         _byLayer = Editor.ReadAll().ToDictionary(x => x.Layer.Id, x => x.Entities);
         Reindex();
         ReadUser();
-        if (Terrain is null && Project.Database == "campaign" && Project.Find("LowFrequencyHeight") is { } map
-            && File.Exists(Project.LayerTifPath(map)))
+        if (Terrain is null && Project.Database == "campaign") LoadTerrain();
+        if (TerrainBlend is null && Terrain is not null && Project.Find("BlendCampaign") is not null && LoadTextureArrays() is { } arrays)
         {
-            var raster = TiffMap.ReadGray16(Project.LayerTifPath(map));
-            Terrain = (raster, raster.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, raster.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ);
+            try { TerrainBlend = (TerrainComposite.Indexed(Project, "BlendCampaign").Indices, arrays); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException) { TerrainNote = "ground textures not read: " + ex.Message; }
         }
-        if (TerrainBlend is null && Terrain is not null && Project.Find("BlendCampaign") is { } blend && File.Exists(Project.LayerTifPath(blend))
-            && LoadTextureArrays() is { } arrays)
-            TerrainBlend = (TiffMap.ReadPalette8(Project.LayerTifPath(blend)).Indices, arrays);
-        if (SeaHeight is null && Terrain is not null && Project.Find("LowFrequencyHeightSea") is { } sea && File.Exists(Project.LayerTifPath(sea)))
-            SeaHeight = TiffMap.ReadGray16(Project.LayerTifPath(sea));
         if (Terrain is not null) LoadTrees();
         if (Terrain is not null && Tiles.Count == 0) LoadTiles();
     }
 
-    /// <summary>Generates the forests from the project's CampaignTree map (tree ids by colour from campaign_tree_ids).</summary>
+    /// <summary>The composited Height and HeightSea maps; the world width is the .terry's world_width, else the map's
+    /// map_data.esf width.</summary>
+    private void LoadTerrain()
+    {
+        try
+        {
+            if (Project.Find("Height") is null) { TerrainNote = "no Height map in the .terry"; return; }
+            var width = (double?)Project.WorldWidth;
+            if (width is null)
+            {
+                var mapData = Path.Combine((_paths with { MapName = Project.MapName }).AkWorkingCampaignMapDir, "map_data.esf");
+                if (File.Exists(mapData)) width = AtlasWH3.Formats.Esf.MapDataBounds.Read(mapData).Width;
+            }
+            if (width is null) { TerrainNote = "the .terry has no world_width and the kit has no map_data.esf"; return; }
+            Terrain = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Load(Project, width.Value);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException) { TerrainNote = "terrain not read: " + ex.Message; }
+    }
+
+    /// <summary>Generates the forests from the project's composited CampaignTree map (tree ids by colour from the
+    /// campaign_tree_* tables of the game and the linked mod packs, as the build reads them).</summary>
     private void LoadTrees()
     {
         try
         {
-            if (Project.Find("CampaignTree") is not { } treeMap || !File.Exists(Project.LayerTifPath(treeMap)))
+            if (Project.Find("CampaignTree") is null)
             {
                 TreesNote = "no CampaignTree map";
                 return;
             }
-            if (!File.Exists(_paths.TreeIdsTsv) || !File.Exists(_paths.TreeVariantsTsv))
-            {
-                TreesNote = $"tree DB tables not found ({_paths.TreeIdsTsv})";
-                return;
-            }
-            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.Load(_paths.TreeIdsTsv, _paths.TreeVariantsTsv);
-            var (map, palette) = TiffMap.ReadPalette8(Project.LayerTifPath(treeMap));
-            var (height, worldW, _) = Terrain!.Value;
+            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.FromPacks(GameSetup.OpenWithLinked(_paths.GameDataDir, _paths.ModPacks));
+            var (map, palette) = TerrainComposite.Indexed(Project, "CampaignTree");
+            if (palette is null) { TreesNote = "the CampaignTree map has no palette"; return; }
+            var (_, worldW, _) = Terrain!;
             var grid = AtlasWH3.Core.Campaign.Trees.HexGrid.ForTreeMap(map.Width, map.Height, (float)worldW);
             TreeMap = (map, palette, grid);
-            var colours = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.ReadTreeMap(map, palette, grid, AtlasWH3.Core.Exporters.AkExporter.NoTreeIndex);
+            var colours = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.ReadTreeMap(map, palette, grid, KitTerrainEditSession.NoTreeIndex);
             var list = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.Generate(colours, grid, _treeDb, (_, _, x, z) => (float)GroundY(x, z));
             _treeByHex = new Tree?[grid.Columns * grid.Rows];
             foreach (var type in list.Types)
@@ -537,7 +548,7 @@ public sealed class SceneModel
         if (TreeMap is not var (map, palette, grid) || _treeDb is null || _treeByHex.Length != grid.Columns * grid.Rows) return;
         var touched = hexes.Where(i => (uint)i < (uint)_treeByHex.Length).ToHashSet();
         if (touched.Count == 0) return;
-        var all = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.ReadTreeMap(map, palette, grid, AtlasWH3.Core.Exporters.AkExporter.NoTreeIndex);
+        var all = AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.ReadTreeMap(map, palette, grid, KitTerrainEditSession.NoTreeIndex);
         var colours = new int[all.Length];
         Array.Fill(colours, AtlasWH3.Core.Campaign.Trees.CampaignTreeGenerator.NoTree);
         foreach (var i in touched)
@@ -557,17 +568,8 @@ public sealed class SceneModel
         TreesNote = $"{Trees.Count} trees";
     }
 
-    /// <summary>Terrain height (world y) at a world point, bilinear over the lf raster.</summary>
-    public double GroundY(double x, double z)
-    {
-        if (Terrain is not var (h, worldW, worldH)) return 0;
-        var col = Math.Clamp(x / worldW * h.Width - 0.5, 0, h.Width - 1.001);
-        var row = Math.Clamp((1 - z / worldH) * h.Height - 0.5, 0, h.Height - 1.001);
-        int c0 = (int)col, r0 = (int)row;
-        double fx = col - c0, fz = row - r0;
-        double v = h[c0, r0] * (1 - fx) * (1 - fz) + h[c0 + 1, r0] * fx * (1 - fz) + h[c0, r0 + 1] * (1 - fx) * fz + h[c0 + 1, r0 + 1] * fx * fz;
-        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
-    }
+    /// <summary>Terrain height (world y) at a world point, bilinear over the Height map.</summary>
+    public double GroundY(double x, double z) => Terrain?.At(x, z) ?? 0;
 
     /// <summary>A map file from the <c>--pack</c> mod packs (first that has it), with the pack's path.</summary>
     private (byte[] Bytes, string Pack)? FromModPacks(string relative)

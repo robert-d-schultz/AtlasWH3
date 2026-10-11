@@ -5,7 +5,7 @@ using AtlasWH3.Formats.Maps;
 
 namespace AtlasWH3.Tests;
 
-/// <summary>Scene-editor terrain tools on the kit sources: TIF round trips, height brush math, tree hexes, save.</summary>
+/// <summary>Scene-editor terrain tools on the kit sources: TIF round trips, height brush math, tree hexes, layered edits, save.</summary>
 public class KitTerrainEditTests
 {
     private static string TempDir()
@@ -114,9 +114,28 @@ public class KitTerrainEditTests
         Directory.Delete(dir, true);
     }
 
+    [Fact]
+    public void Float32_SaveLike_KeepsLayoutAndPixels()
+    {
+        var dir = TempDir();
+        var path = Path.Combine(dir, "h.tif");
+        var r = new Raster<float>(37, 23);
+        for (var i = 0; i < r.Data.Length; i++) r.Data[i] = (i % 11 - 5) * 0.37f;
+        TiffMap.WriteFloat32(path, r);
+        var layout = TiffMap.ReadLayout(path);
+        Assert.Equal((5, 1, 32), (layout.Compression, layout.RowsPerStrip, layout.Bits));   // Terry's: LZW, one row per strip
+        Assert.Equal(r.Data, TiffMap.ReadFloat32(path).Data);
+
+        TiffMap.WriteFloat32(path, r, lzw: false, rowsPerStrip: 4);
+        r[3, 4] = -12.5f;
+        TiffMap.SaveFloat32Like(path, r);
+        Assert.Equal((1, 4), (TiffMap.ReadLayout(path).Compression, TiffMap.ReadLayout(path).RowsPerStrip));
+        Assert.Equal(r.Data, TiffMap.ReadFloat32(path).Data);
+        Directory.Delete(dir, true);
+    }
+
     /// <summary>The fixture maps' tree TIFs: an unchanged save keeps every pixel (the LZW tree map is rewritten, so its
-    /// bytes are compared only when it is uncompressed). WH3's height TIFs are float32, which the 16-bit painter does not
-    /// edit yet (Phase 5).</summary>
+    /// bytes are compared only when it is uncompressed).</summary>
     [Theory]
     [InlineData(TestKits.Iee)]
     [InlineData(TestKits.OldWorld)]
@@ -144,9 +163,9 @@ public class KitTerrainEditTests
 
     // ---------------------------------------------------------------- brush math
 
-    private static Raster<ushort> Flat(int w, int h, ushort v)
+    private static Raster<float> Flat(int w, int h, float v)
     {
-        var r = new Raster<ushort>(w, h);
+        var r = new Raster<float>(w, h);
         Array.Fill(r.Data, v);
         return r;
     }
@@ -154,85 +173,91 @@ public class KitTerrainEditTests
     [Fact]
     public void HeightBrush_RaiseLowerSet_AndUndo()
     {
-        var r = Flat(64, 64, 20000);
-        var brush = new KitHeightBrush { Mode = KitHeightMode.Raise, Radius = 10, Strength = 1, Softness = 0.5, MaxStepPerDab = 500 };
+        var r = Flat(64, 64, 2f);
+        var brush = new KitHeightBrush { Mode = KitHeightMode.Raise, Radius = 10, Strength = 1, Softness = 0.5, MaxStepPerDab = 0.5 };
         brush.Begin(r, 32, 32);
         var rect = brush.Dab(32, 32);
-        Assert.Equal(20500, r[32, 32]);                       // hard core: full step
-        Assert.Equal(20000, r[32 + 10, 32]);                  // at the radius: untouched
-        Assert.True(r[32 + 7, 32] is > 20000 and < 20500);     // soft edge: part step
+        Assert.Equal(2.5f, r[32, 32]);                        // hard core: full step
+        Assert.Equal(2f, r[32 + 10, 32]);                     // at the radius: untouched
+        Assert.True(r[32 + 7, 32] is > 2f and < 2.5f);        // soft edge: part step
         Assert.True(rect.X0 <= 22 && rect.X1 >= 42);
         var undo = brush.End()!;
         undo.Undo();
-        Assert.All(r.Data, v => Assert.Equal(20000, v));
+        Assert.All(r.Data, v => Assert.Equal(2f, v));
         undo.Redo();
-        Assert.Equal(20500, r[32, 32]);
+        Assert.Equal(2.5f, r[32, 32]);
 
         brush.Mode = KitHeightMode.SetValue;
-        brush.Value = KitTerrainEditSession.SeaLevel;
+        brush.Value = -1.25f;
         brush.Softness = 0;
         brush.Begin(r, 10, 10);
         brush.Dab(10, 10);
         brush.End();
-        Assert.Equal(KitTerrainEditSession.SeaLevel, r[10, 10]);
-        Assert.Equal(KitTerrainEditSession.SeaLevel, r[10 + 9, 10]);
+        Assert.Equal(-1.25f, r[10, 10]);
+        Assert.Equal(-1.25f, r[10 + 9, 10]);
 
         brush.Mode = KitHeightMode.Lower;
         brush.Begin(r, 50, 50);
         brush.Dab(50, 50);
         brush.End();
-        Assert.Equal(19500, r[50, 50]);
+        Assert.Equal(1.5f, r[50, 50]);
     }
 
     [Fact]
     public void HeightBrush_SmoothFlattensASpike_FlattenPullsToStart()
     {
-        var r = Flat(40, 40, 10000);
-        r[20, 20] = 30000;
+        var r = Flat(40, 40, 1f);
+        r[20, 20] = 10f;
         var brush = new KitHeightBrush { Mode = KitHeightMode.Smooth, Radius = 6, Strength = 1, Softness = 0 };
         brush.Begin(r, 20, 20);
         brush.Dab(20, 20);
         brush.End();
-        Assert.True(r[20, 20] < 13000, $"spike {r[20, 20]}");     // 3x3 mean of the spike = 12222
+        Assert.True(r[20, 20] < 2.1f, $"spike {r[20, 20]}");      // 3x3 mean of the spike = 2
 
-        var slope = new Raster<ushort>(40, 40);
-        for (var y = 0; y < 40; y++) for (var x = 0; x < 40; x++) slope[x, y] = (ushort)(10000 + 100 * x);
+        var slope = new Raster<float>(40, 40);
+        for (var y = 0; y < 40; y++) for (var x = 0; x < 40; x++) slope[x, y] = 0.1f * x;
         brush.Mode = KitHeightMode.Flatten;
         brush.Begin(slope, 20, 20);
         for (var i = 0; i < 20; i++) brush.Dab(20, 20);
         brush.End();
-        Assert.InRange(slope[23, 20], 12000, 12010);
-        Assert.InRange(slope[17, 20], 11990, 12000);
+        Assert.InRange(slope[23, 20], 2f, 2.001f);
+        Assert.InRange(slope[17, 20], 1.999f, 2f);
     }
 
-    // ---------------------------------------------------------------- tree hexes
+    // ---------------------------------------------------------------- layered session
 
-    private static (KitTerrainEditSession Session, string Dir) TreeSession(int mapW = 40, int mapH = 31)
+    private const byte Empty = KitTerrainEditSession.NoTreeIndex;
+
+    /// <summary>A project's maps as layer TIFs: Height = base (flat 2) + "top" at opacity 0.5 (zero), HeightSea one flat
+    /// layer (-3) at the same size, CampaignTree base + top (both empty), 40 × 31 (20 × 15 hexes); world 100 wide.</summary>
+    private static (KitTerrainEditSession Session, string Dir) LayeredSession()
     {
         var dir = TempDir();
-        var land = Flat(80, 60, 20000);
-        var sea = Flat(40, 30, KitTerrainEditSession.SeaLevel);
-        var map = new Raster<byte>(mapW, mapH);
-        Array.Fill(map.Data, KitTerrainEditSession.NoTreeIndex);
+        string P(string kind, string id) => Path.Combine(dir, $"m.{kind}.{id}.tif");
+        TiffMap.WriteFloat32(P("height", "base"), Flat(80, 60, 2f));
+        TiffMap.WriteFloat32(P("height", "top"), Flat(80, 60, 0f));
+        TiffMap.WriteFloat32(P("sea_height", "sea"), Flat(80, 60, -3f));
+        var trees = new Raster<byte>(40, 31);
+        Array.Fill(trees.Data, Empty);
         var r = new ushort[256]; var g = new ushort[256]; var b = new ushort[256];
         r[2] = 0x1100; g[5] = 0x2200;
         var palette = new TiffMap.Palette(r, g, b);
-        string landPath = Path.Combine(dir, "m.height.1.tif"), seaPath = Path.Combine(dir, "m.sea_height.2.tif"), treePath = Path.Combine(dir, "m.tree.3.tif");
-        TiffMap.WriteGray16(landPath, land);
-        TiffMap.WriteGray16(Path.Combine(dir, "lf_heights.tif"), land);
-        TiffMap.WriteGray16(seaPath, sea);
-        TiffMap.WritePalette8(treePath, map, palette, lzw: true);
-        var session = new KitTerrainEditSession(new FileJournal(Path.Combine(dir, "journal")), 100, 80,
-            landPath, TiffMap.ReadGray16(landPath), [Path.Combine(dir, "lf_heights.tif")],
-            seaPath, TiffMap.ReadGray16(seaPath), null,
-            treePath, TiffMap.ReadPalette8(treePath).Indices, palette);
+        TiffMap.WritePalette8(P("tree", "tbase"), trees, palette, lzw: true, rowsPerStrip: 5);
+        TiffMap.WritePalette8(P("tree", "ttop"), trees, palette, lzw: true, rowsPerStrip: 5);
+        var land = new KitTerrainEditSession.MapLayers("Height", 80, 60,
+            [new("base", "base", P("height", "base"), 1f), new("top", "top", P("height", "top"), 0.5f)]);
+        var sea = new KitTerrainEditSession.MapLayers("HeightSea", 80, 60, [new("sea", "sea", P("sea_height", "sea"), 1f)]);
+        var treeLayers = new KitTerrainEditSession.MapLayers("CampaignTree", 40, 31,
+            [new("tbase", "base", P("tree", "tbase"), 1f), new("ttop", "top", P("tree", "ttop"), 1f)]);
+        var session = new KitTerrainEditSession(new FileJournal(Path.Combine(dir, "journal")), 100,
+            land, Flat(80, 60, 2f), sea, () => Flat(80, 60, -3f), treeLayers, trees.Clone(), palette);
         return (session, dir);
     }
 
     [Fact]
     public void Hexes_CentreAndPixelMapping_RoundTrip()
     {
-        var (s, dir) = TreeSession();
+        var (s, dir) = LayeredSession();
         var g = s.Grid!.Value;
         Assert.Equal((20, 15), (g.Columns, g.Rows));
         for (var c = 0; c < g.Columns; c++)
@@ -246,15 +271,16 @@ public class KitTerrainEditTests
                     Assert.Contains((c, row), s.Neighbours(nc, nr));
             }
 
-        // painting a hex sets its 2x2 footprint, which is what ReadTreeMap samples
+        // painting a hex sets its 2x2 footprint in the top layer, which is what ReadTreeMap samples
         s.TreeIndex = 2;
         s.RadiusWorld = 0.01;
         var (hx, hz) = s.HexCentre(7, 4);
         s.BeginStroke(KitTarget.Trees, hx, hz);
         var edit = s.EndStroke()!;
         Assert.Equal([s.HexId(7, 4)], edit.Hexes);
+        Assert.Equal("ttop", edit.LayerId);
         Assert.Equal(4, s.TreeMap!.Data.Count(v => v == 2));
-        var colours = CampaignTreeGenerator.ReadTreeMap(s.TreeMap, s.TreePalette!, g, KitTerrainEditSession.NoTreeIndex);
+        var colours = CampaignTreeGenerator.ReadTreeMap(s.TreeMap, s.TreePalette!, g, Empty);
         Assert.Equal(0x110000, colours[s.HexId(7, 4)]);
         Assert.Equal(1, colours.Count(c => c != CampaignTreeGenerator.NoTree));
         Assert.Equal(1, s.TreeCounts()[2]);
@@ -262,9 +288,40 @@ public class KitTerrainEditTests
     }
 
     [Fact]
+    public void Trees_EraseInTheTopLayer_ShowsTheLayerBelow()
+    {
+        var (s, dir) = LayeredSession();
+        s.RadiusWorld = 0.01;
+        var (hx, hz) = s.HexCentre(4, 6);
+        s.SetLayer(KitTarget.Trees, "tbase");
+        s.TreeIndex = 5;
+        s.BeginStroke(KitTarget.Trees, hx, hz);
+        s.EndStroke();
+        s.SetLayer(KitTarget.Trees, "ttop");
+        s.TreeIndex = 2;
+        s.BeginStroke(KitTarget.Trees, hx, hz);
+        s.EndStroke();
+        Assert.Equal(2, s.HexIndex(4, 6));                         // the top layer wins
+        s.BeginStroke(KitTarget.Trees, hx, hz, erase: true);
+        s.EndStroke();
+        Assert.Equal(5, s.HexIndex(4, 6));                         // cleared: the base layer's tree shows
+        s.Undo();
+        Assert.Equal(2, s.HexIndex(4, 6));
+
+        // saving writes both tree layers; they composite to what the session shows
+        var (files, _) = s.Save("trees");
+        Assert.Equal(2, files.Count);
+        var bottom = TiffMap.ReadPalette8(files.Single(f => f.Contains("tbase"))).Indices;
+        var top = TiffMap.ReadPalette8(files.Single(f => f.Contains("ttop"))).Indices;
+        Assert.Equal(s.TreeMap!.Data, bottom.Data.Zip(top.Data, (lo, hi) => hi != Empty ? hi : lo).ToArray());
+        Assert.Equal(5, TiffMap.ReadLayout(files[0]).RowsPerStrip);
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
     public void Trees_FillConnected_StopsAtOtherSpecies_AndUndoes()
     {
-        var (s, dir) = TreeSession();
+        var (s, dir) = LayeredSession();
         var g = s.Grid!.Value;
         // a wall of species 5 down column 10
         s.TreeIndex = 5;
@@ -296,31 +353,33 @@ public class KitTerrainEditTests
         Directory.Delete(dir, true);
     }
 
-    // ---------------------------------------------------------------- session save
-
     [Fact]
-    public void Session_DirtyTracking_SaveWithMirrorsAndJournal()
+    public void Session_LandStroke_GoesIntoTheLayerByOpacity_SaveAndJournal()
     {
-        var (s, dir) = TreeSession();
+        var (s, dir) = LayeredSession();
         Assert.False(s.IsDirty());
+        Assert.Equal("top", s.LayerOf(KitTarget.Land)!.Id);          // the top layer by default
         s.HeightBrush.Mode = KitHeightMode.Raise;
         s.HeightBrush.Strength = 1;
+        s.HeightBrush.Softness = 0;
+        s.HeightBrush.MaxStepPerDab = 0.25;
         s.RadiusWorld = 5;
         s.BeginStroke(KitTarget.Land, 50, 40);
-        s.StrokeTo(60, 40);
         var edit = s.EndStroke()!;
-        Assert.Equal(KitTarget.Land, edit.Target);
+        Assert.Equal((KitTarget.Land, "top"), (edit.Target, edit.LayerId));
         Assert.NotEmpty(edit.Hexes);                                 // trees there follow the ground
         Assert.True(s.IsDirty(KitTarget.Land));
         Assert.False(s.IsDirty(KitTarget.Sea));
+        Assert.Equal(2.25f, s.ValueAt(KitTarget.Land, 50, 40));
 
         var (files, seq) = s.Save("test");
         Assert.Equal(1, seq);
-        Assert.Equal(2, files.Count);                                // the layer TIF and lf_heights.tif
+        Assert.Equal([s.PathOf(KitTarget.Land)!], files);             // only the edited layer
         Assert.False(s.IsDirty());
-        var saved = TiffMap.ReadGray16(s.PathOf(KitTarget.Land)!);
-        Assert.Equal(s.Land.Data, saved.Data);
-        Assert.Equal(s.Land.Data, TiffMap.ReadGray16(Path.Combine(dir, "lf_heights.tif")).Data);
+        var top = TiffMap.ReadFloat32(files[0]);
+        Assert.Equal(0.5f, top.Data.Max());                          // 0.25 on the composite at opacity 0.5
+        var bottom = TiffMap.ReadFloat32(Path.Combine(dir, "m.height.base.tif"));
+        Assert.Equal(s.Land.Data, bottom.Data.Zip(top.Data, (a, b) => a + 0.5f * b).ToArray());
         Assert.Single(s.Journal.History());
 
         // undo past the save is dirty again; a file changed by another tool blocks the save
@@ -329,24 +388,34 @@ public class KitTerrainEditTests
         File.SetLastWriteTimeUtc(s.PathOf(KitTarget.Land)!, DateTime.UtcNow.AddMinutes(5));
         Assert.Throws<InvalidOperationException>(() => s.Save("blocked"));
         s.Save("forced", force: true);
-        Assert.Equal(20000, TiffMap.ReadGray16(s.PathOf(KitTarget.Land)!).Data.Max());
+        Assert.Equal(0f, TiffMap.ReadFloat32(s.PathOf(KitTarget.Land)!).Data.Max());
+
+        // another layer: its own dirty state and file
+        s.SetLayer(KitTarget.Land, "base");
+        s.BeginStroke(KitTarget.Land, 20, 20);
+        s.EndStroke();
+        Assert.Equal(["m.height.base.tif"], s.DirtyLayers().Select(l => Path.GetFileName(l.Path)));
         Directory.Delete(dir, true);
     }
 
     [Fact]
-    public void Session_SeaTarget_UsesItsOwnResolution()
+    public void Session_SeaTarget_LoadsOnFirstUse()
     {
-        var (s, dir) = TreeSession();
+        var (s, dir) = LayeredSession();
+        Assert.Null(s.SeaIfLoaded);
+        Assert.Null(s.ValueAt(KitTarget.Sea, 50, 40));
         s.HeightBrush.Mode = KitHeightMode.SetValue;
-        s.HeightBrush.Value = 15000;
+        s.HeightBrush.Value = -5;
         s.HeightBrush.Strength = 1;
         s.HeightBrush.Softness = 0;
-        s.RadiusWorld = 10;                                          // sea: 0.4 px per world unit → radius 4 px
-        s.BeginStroke(KitTarget.Sea, 50, 40);
+        s.RadiusWorld = 10;
+        var info = s.BeginStroke(KitTarget.Sea, 50, 40)!;
         s.EndStroke();
-        Assert.Equal((ushort)15000, s.RawAt(KitTarget.Sea, 50, 40));
-        Assert.Equal(KitTerrainEditSession.SeaLevel, s.RawAt(KitTarget.Sea, 50 + 12, 40));
-        Assert.All(s.Land.Data, v => Assert.Equal(20000, v));
+        Assert.Empty(info.Hexes);                                    // trees stand on the Height map
+        Assert.Equal(-5f, s.ValueAt(KitTarget.Sea, 50, 40));
+        Assert.Equal(-3f, s.ValueAt(KitTarget.Sea, 50 + 12, 40));
+        Assert.All(s.Land.Data, v => Assert.Equal(2f, v));
+        Assert.Equal(-5f, TiffMap.ReadFloat32(s.Save("sea").Files.Single()).Data.Min());
         Directory.Delete(dir, true);
     }
 }

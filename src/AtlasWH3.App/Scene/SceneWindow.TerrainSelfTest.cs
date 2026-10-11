@@ -4,12 +4,13 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AtlasWH3.Core.Editing;
 using AtlasWH3.Formats.Maps;
+using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.App.Scene;
 
 /// <summary>
-/// Scripted check of the terrain tools, in-process: land raise + undo/redo, sea set-to-value, tree paint / fill / erase,
-/// trees following the ground, then Save, verifying the TIFs hold the edited rasters and only their pixel bytes changed.
+/// Scripted check of the terrain tools, in-process: land raise + undo/redo, sea floor set-to-value, tree paint / fill /
+/// erase, trees following the ground, then Save, verifying that the saved layers composite to what the scene shows.
 /// Start with: AtlasWH3.App --scene &lt;copy of a campaign project&gt;.terry --terrain-selftest &lt;out dir&gt;. It saves into
 /// the project, so never point it at the real kit.
 /// </summary>
@@ -29,11 +30,12 @@ public sealed partial class SceneWindow
             while (!_loadedOnce) await Task.Delay(200);
             var tools = TerrainTools;
             var s = tools.Session;
-            Step("session", s is not null, s is null ? null : string.Join(", ", new[] { KitTarget.Land, KitTarget.Sea, KitTarget.Trees }.Select(t => $"{t}={Path.GetFileName(s.PathOf(t))}")));
+            Step("session", s is not null, s is null ? null : string.Join(", ", new[] { KitTarget.Land, KitTarget.Sea, KitTarget.Trees }
+                .Select(t => $"{t}={(s.LayerOf(t) is { } l ? $"{l.Name} ({Path.GetFileName(l.Path)})" : "none")}")));
             if (s is null || _model.Terrain is not var (land, worldW, worldH)) return;
             _rightTabs!.SelectedIndex = 1;
             var landPath = s.PathOf(KitTarget.Land)!;
-            var landFileBefore = File.ReadAllBytes(landPath);
+            var landLayerBefore = TiffMap.ReadFloat32(landPath);
 
             // A land point: the highest pixel of a band through the middle of the map.
             var (bx, by) = (0, 0);
@@ -76,8 +78,10 @@ public sealed partial class SceneWindow
             tools.End();
             Step("land raise", land[px, py] > before && s.IsDirty(KitTarget.Land), $"pixel ({px}, {py}) {before} -> {land[px, py]}");
             var movedTree = _model.Trees.FirstOrDefault(t => t.X == nearTree.X && t.Z == nearTree.Z);
-            Step("trees follow the ground", nearTree.TreeId is null || movedTree.Y > nearTree.Y,
-                 nearTree.TreeId is null ? "no tree nearby" : $"{nearTree.TreeId} y {nearTree.Y:0.###} -> {movedTree.Y:0.###}");
+            // the stroke runs wx .. wx + 1.5 with radius 3; its core (radius 1.5) raises every tree under it
+            var treeDistance = Math.Sqrt((nearTree.X - wx) * (nearTree.X - wx) + (nearTree.Z - wz) * (nearTree.Z - wz));
+            Step("trees follow the ground", nearTree.TreeId is null || treeDistance > 1.5 || movedTree.Y > nearTree.Y,
+                 nearTree.TreeId is null ? "no tree nearby" : $"{nearTree.TreeId} {treeDistance:0.##} from the stroke, y {nearTree.Y:0.###} -> {movedTree.Y:0.###}");
             await Shot(outDir, "t01_land_raised");
             tools.Undo();
             Step("land undo", Hash(land.Data) == landHash && !s.IsDirty(KitTarget.Land));
@@ -86,12 +90,12 @@ public sealed partial class SceneWindow
 
             tools.TargetIndex = 2;
             tools.HeightModeIndex = (int)KitHeightMode.SetValue;
-            tools.ValueText = "16000";
+            tools.ValueText = "-5";
             tools.Radius = 4;
             tools.Softness = 0;
             tools.Begin(wx, wz);
             tools.End();
-            Step("sea set to value", s.RawAt(KitTarget.Sea, wx, wz) == 16000, $"sea raw {s.RawAt(KitTarget.Sea, wx, wz)}");
+            Step("sea floor set to value", s.ValueAt(KitTarget.Sea, wx, wz) is { } seaY && Math.Abs(seaY + 5) < 1e-4f, $"sea floor y {s.ValueAt(KitTarget.Sea, wx, wz)}");
             await Shot(outDir, "t02_sea");
 
             tools.TargetIndex = 3;
@@ -121,31 +125,31 @@ public sealed partial class SceneWindow
                 Step("tree fill connected", s.HexIndex(hc, hr) == species[0] && s.TreeCounts()[species[0]] > fillBefore,
                      $"{s.TreeCounts()[species[0]] - fillBefore} hexes");
 
+                // erase clears the edited layer: the hex shows what the layers below hold there
                 tools.TreeModeIndex = 1;
-                var treesBefore = _model.Trees.Count;
                 tools.Begin(tx, tz);
                 tools.End();
-                Step("tree erase", s.HexIndex(hc, hr) == KitTerrainEditSession.NoTreeIndex && _model.Trees.Count < treesBefore,
-                     $"{treesBefore} -> {_model.Trees.Count} trees");
+                Step("tree erase", s.HexIndex(hc, hr) != species[0], $"hex ({hc}, {hr}) index {s.HexIndex(hc, hr)}");
                 await Shot(outDir, "t03_trees");
             }
             else Step("tree paint", false, "fewer than two species on the map");
 
             await Shot3D("t04_3d_after", 3000);
 
-            var dirty = new[] { KitTarget.Land, KitTarget.Sea, KitTarget.Trees }.Where(s.IsDirty).ToList();
+            var dirty = s.DirtyLayers().Select(l => Path.GetFileName(l.Path)).ToList();
             var saved = tools.SaveNow();
-            var landFileAfter = File.ReadAllBytes(landPath);
-            var changedBytes = landFileAfter.Length == landFileBefore.Length
-                ? Enumerable.Range(0, landFileAfter.Length).Count(i => landFileAfter[i] != landFileBefore[i]) : -1;
-            var layout = TiffMap.ReadLayout(landPath);
-            var pixelStart = layout.StripOffsets.Min();
-            var headerSame = layout.Compression != 1 || landFileAfter.AsSpan(0, (int)pixelStart).SequenceEqual(landFileBefore.AsSpan(0, (int)pixelStart));
-            Step("save", saved && !s.IsDirty() && Hash(TiffMap.ReadGray16(landPath).Data) == Hash(land.Data)
-                         && (s.Sea is null || Hash(TiffMap.ReadGray16(s.PathOf(KitTarget.Sea)!).Data) == Hash(s.Sea.Data))
-                         && (s.TreeMap is null || Hash(TiffMap.ReadPalette8(s.PathOf(KitTarget.Trees)!).Indices.Data) == Hash(s.TreeMap.Data)),
-                 $"saved {string.Join(", ", dirty)}");
-            Step("land TIF: only pixel bytes changed", changedBytes > 0 && headerSame, $"{changedBytes} bytes differ, same length {landFileAfter.Length == landFileBefore.Length}");
+            // the saved layers composite (as the build does) to what the scene shows
+            static float MaxDiff(float[] a, float[] b) => a.Length != b.Length ? float.PositiveInfinity : a.Zip(b, (x, y) => Math.Abs(x - y)).Max();
+            var project = _model.Project;
+            var landDiff = MaxDiff(TerrainComposite.Heights(project, "Height").Data, land.Data);
+            var seaDiff = s.SeaIfLoaded is { } seaNow ? MaxDiff(TerrainComposite.Heights(project, "HeightSea").Data, seaNow.Data) : 0;
+            var treesSame = s.TreeMap is null || Hash(TerrainComposite.Indexed(project, "CampaignTree").Indices.Data) == Hash(s.TreeMap.Data);
+            Step("save", saved && !s.IsDirty() && landDiff < 1e-4f && seaDiff < 1e-4f && treesSame,
+                 $"saved {string.Join(", ", dirty)}; recomposited land off by {landDiff}, sea floor {seaDiff}, trees same {treesSame}");
+            var landLayerAfter = TiffMap.ReadFloat32(landPath);
+            var changedPixels = landLayerAfter.Data.Zip(landLayerBefore.Data).Count(p => p.First != p.Second);
+            Step("land layer TIF: only the stroke's pixels changed", changedPixels > 0 && changedPixels < 20000 && TiffMap.ReadLayout(landPath).RowsPerStrip == 1,
+                 $"{changedPixels} pixels differ");
             Step("journal backup", s.Journal.History().Count > 0, s.Journal.Dir);
             report["state"] = tools.StateText;
             await Shot(outDir, "t05_saved");

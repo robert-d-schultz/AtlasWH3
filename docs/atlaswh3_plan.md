@@ -589,14 +589,24 @@ and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they
 
 ### Phase 5: Editors on WH3 (3–5 weeks)
 
-**Deferred (2026-10-10, the user):** Phase 6 first; the editors are revisited the week after. Checked so they are not
-broken:
-- the solution builds without warnings, and all 250 tests pass;
-- on WH3 data the editors stop with a message rather than crash:
-  - the scene view has no terrain: it looks for 3K's `LowFrequencyHeight` map, while WH3's is the float32 `Height`
-    map;
-  - prop placement (`PropEditor.Terrain`) reports the missing `LowFrequencyHeight` map;
-  - the Campaign battles window shows "Load failed" for WH3's `battle_locations_map.bin`.
+Started 2026-10-11, after Phase 6.
+
+- [x] 5.1 **Scene terrain on WH3** (`CampaignTerrain`): the 2D and 3D views draw the composited float `Height` map in
+  world units, over x 0..world_width and z 0..h · (world_width / w) · 1.15476, as BOB's terrain provider maps the logic
+  map. Trees come from the composited `CampaignTree` map and the packs' tree tables (mods included), as the build reads
+  them. The sea is WH3's water-plane props at y = 0 (the decompiler's sea test), not a raster: `HeightSea` is the ground
+  of the sea tiles (`use_alt_lf`), so 3K's "water where the sea map is above the land" is gone (on IEE only 0.5% of
+  the map has `HeightSea` above `Height`).
+- [x] 5.2 **Terrain tools on WH3 layers** (`KitTerrainEditSession`): the land (Height), sea floor (HeightSea) and tree
+  (CampaignTree) brushes paint the composite the view shows and write the change into a chosen Terry layer (the top
+  one by default): d / opacity for the heights, which add, and a top-down recomposite for the trees, whose layers
+  replace where not 255 (255 = empty, so an erase shows the layers below). Save writes only the edited layer TIFs, in
+  Terry's own layout (float32 LZW, one row per strip). `HeightSea` loads only when its tool is chosen (400 MB on IEE).
+  IEE self-test (`--terrain-selftest` on a copy): raise, undo, redo, sea floor set, tree paint / fill / erase, save;
+  the saved layers recomposite to exactly what the scene shows.
+- [ ] 5.3 The rest of the 3K `LowFrequencyHeight` users: prop placement's kit ground (`PropEditor`), the lake
+  commands, the map audit, `AkExporter` / `PropLayerExporter` and the tile validator's size check.
+- [ ] Seen on the way: some props draw white or black in the 3D view (their textures not found).
 
 
 - **Scene editor:** WH3 entity types and attributes (`ECCampaignProperties.culture_mask`, `visible_in_shroud`,
@@ -604,8 +614,8 @@ broken:
   prefabs.
 - **Tile map painter:** WH3 tile sets (`cliff_gen`, `roads_grey`, `river_mouth`, …) and the Errors tab against the
   WH3 rules from 3.6. The validator's set categories and reference tile map are still 3K's (4.6).
-- **Terrain painter:** float32 heights, shroud height, colour overlay, corruption and snow layers, and Terry's
-  compositing rules.
+- **Terrain painter:** float32 heights (done in the scene's terrain tools, 5.2), shroud height, colour overlay,
+  corruption and snow layers, and Terry's compositing rules.
 - **Campaign battles window:** WH3 `battle_locations_map.bin` / catchments and battle tables.
 
 ### Phase 6: AI pathfinding, hlp/spd (3–5 weeks, last)
@@ -624,17 +634,16 @@ broken:
     Classic (95.4 %, one extra set).
   - Area costs are 99.99 %.
 - [x] 6.4 hlp region tables (cost, hops, max). Prologue's hlp is byte-identical.
-- [ ] 6.5 hlp on the big maps.
-  - Done:
+- [x] 6.5 hlp on the big maps (2026-10-11): spd byte-identical on all 15 reference maps, hlp on 14 of 15. Old World's
+  one differing matrix value is the exe's A* stamp-wrap bug, which AtlasWH3 does not copy (it keeps the optimum). Read
+  off Warhammer3.exe with the Frida probe; details in [`hlp_spd.md`](hlp_spd.md).
+  - Earlier steps:
     - the faction path keeps its own settlement open;
     - land-sea transitions take the cheaper of the A* and landmark-grid paths, with flag 2 = that path goes through a
       settlement;
     - a bridge's whole deck run counts 500;
     - the region tables sum in wrapping u32 (Old World's unreachable matrix pairs are steps of −1);
     - the hop table's lower triangle is the land-only hop count.
-  - Identical areas: chaos 99–100 %, combi 85–94 %, IEE 87 %, Old World 80 %, Darklands 91 %. From CA's own
-    transitions, the region tables are 99.1–100 % on every map.
-  - Open: the remaining port and bridge transition costs.
 - [ ] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash).
   - `hlp_spd` is a pipeline step now (runs by default; inputs from the build output, else the kit's working_data).
   - IEE: 17 s through `build-campaign`.

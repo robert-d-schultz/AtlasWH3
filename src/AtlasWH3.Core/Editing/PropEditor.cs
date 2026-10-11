@@ -25,7 +25,7 @@ public sealed class PropEditor
     private readonly Dictionary<string, LayerDocument> _open = new(StringComparer.OrdinalIgnoreCase);
     private List<LayerInfo>? _layers;
     private Dictionary<string, LayerInfo>? _idIndex;
-    private (Raster<ushort> Height, double WorldW, double WorldH)? _terrain;
+    private AtlasWH3.Core.Campaign.Terrain.CampaignTerrain? _terrain;
 
     public PropEditor(ProjectPaths paths) => _paths = paths;
 
@@ -154,27 +154,17 @@ public sealed class PropEditor
 
     // ---------------------------------------------------------------- terrain
 
-    /// <summary>Ground height (world y) at a world point, from the AK LowFrequencyHeight TIF.</summary>
-    public double GroundY(double x, double z)
-    {
-        var (h, worldW, worldH) = Terrain();
-        var col = Math.Clamp(x / worldW * h.Width - 0.5, 0, h.Width - 1.001);
-        var row = Math.Clamp((1 - z / worldH) * h.Height - 0.5, 0, h.Height - 1.001);
-        int c0 = (int)col, r0 = (int)row;
-        double fx = col - c0, fz = row - r0;
-        double v = h[c0, r0] * (1 - fx) * (1 - fz) + h[c0 + 1, r0] * fx * (1 - fz)
-                 + h[c0, r0 + 1] * (1 - fx) * fz + h[c0 + 1, r0 + 1] * fx * fz;
-        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
-    }
+    /// <summary>Ground height (world y) at a world point, from the project's composited Height map.</summary>
+    public double GroundY(double x, double z) => Terrain().At(x, z);
 
-    public (Raster<ushort> Height, double WorldW, double WorldH) Terrain()
+    /// <summary>The project's composited Height map (loaded once).</summary>
+    public AtlasWH3.Core.Campaign.Terrain.CampaignTerrain Terrain()
     {
         if (_terrain is { } t) return t;
         var project = TerryProject.Load(TerryPath);
-        var map = project.Find("LowFrequencyHeight") ?? throw new InvalidDataException("no LowFrequencyHeight map in the .terry");
-        var raster = TiffMap.ReadGray16(project.LayerTifPath(map));
-        _terrain = (raster, raster.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX, raster.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ);
-        return _terrain.Value;
+        if (project.Find("Height") is null) throw new InvalidDataException("no Height map in the .terry");
+        var width = project.WorldWidth ?? throw new InvalidDataException("the .terry has no world_width");
+        return _terrain = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Load(project, width);
     }
 
     // ---------------------------------------------------------------- edits

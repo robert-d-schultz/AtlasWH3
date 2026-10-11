@@ -230,64 +230,25 @@ public static class TileMapValidator
 
     private static void CheckSizes(ProjectPaths paths, HexTileMap map, Action<string, string, string, IReadOnlyList<int[]>?, int?> add)
     {
-        int w = map.Width, h = map.Height;
-        (int, int) full = (8 * w, 8 * h + 4), sea = (4 * w, 4 * h + 2), quarter = (map.PixelWidth, map.PixelHeight);
+        int w = map.PixelWidth, h = map.PixelHeight;
+        (int, int) full = (4 * w, 4 * h), tiles = (w, h);
         void Expect(string what, (int W, int H) actual, (int W, int H) expected)
         {
             if (actual != expected)
                 add("inputs.sizes", TileMapFinding.Error,
-                    $"{what} is {actual.W}x{actual.H}, expected {expected.W}x{expected.H} for a {w}x{h}-hex tile map (8 px/hex + 4 rows full, 4 + 2 sea, tile-map size quarter)", null, null);
+                    $"{what} is {actual.W}x{actual.H}, expected {expected.W}x{expected.H} for a {w}x{h} tile map (the height and blend maps 4 px per tile-map pixel, the tree map 1)", null, null);
         }
-
-        if (w % 4 != 0)
-            add("layout.mesh_columns", TileMapFinding.Error,
-                $"hex width {w} is not a multiple of 4: BOB builds an extra global-mesh column and the game shows see-through notches beside road tiles", null, null);
 
         var terry = Path.Combine(paths.AkTerrainDir, paths.MapName + ".terry");
-        if (File.Exists(terry))
+        if (!File.Exists(terry)) return;
+        var project = TerryProject.Load(terry);
+        foreach (var (type, expected) in new[] { ("Height", full), ("HeightSea", full), ("BlendCampaign", full), ("CampaignTree", tiles) })
         {
-            var project = TerryProject.Load(terry);
-            foreach (var (type, expected) in new[] { ("LowFrequencyHeight", full), ("LowFrequencyHeightSea", sea), ("BlendCampaign", full), ("CampaignTree", quarter) })
-            {
-                if (project.Find(type) is not { } m) continue;
-                Expect($".terry {type} size", m.Size, expected);
-                var tif = project.LayerTifPath(m);
-                if (File.Exists(tif)) Expect(Path.GetFileName(tif), TiffMap.ReadSize(tif), expected);
-            }
+            if (project.Find(type) is not { } m) continue;
+            Expect($".terry {type} size", m.Size, expected);
+            foreach (var layer in m.Layers)
+                if (project.LayerTifPath(m, layer) is var tif && File.Exists(tif)) Expect(Path.GetFileName(tif), TiffMap.ReadSize(tif), expected);
         }
-        foreach (var (file, expected) in new[] { ("lf_heights.tif", full), ("lf_sea_heights.tif", sea) })
-        {
-            var p = Path.Combine(paths.AkTerrainDir, file);
-            if (File.Exists(p)) Expect(file, TiffMap.ReadSize(p), expected);
-        }
-
-        // BOB bakes tile heights from the kit's working_data lf maps: stale ones give raised / sunk tiles
-        var workingLf = Path.Combine(paths.AkWorkingDir, "terrain", "campaigns", paths.MapName, "lf_height_map.dds");
-        if (File.Exists(workingLf))
-        {
-            var size = DdsSize(workingLf);
-            if (size != full)
-                add("inputs.stale_lf", TileMapFinding.Error,
-                    $"working_data lf_height_map.dds is {size.W}x{size.H}, expected {full.Item1}x{full.Item2}: rebuild the lf maps (rasters step) before Tilemap", null, null);
-            var source = new[] { Path.Combine(paths.AkTerrainDir, "lf_heights.tif") }
-                .Concat(File.Exists(terry) && TerryProject.Load(terry) is var tp && tp.Find("LowFrequencyHeight") is { } lf ? [tp.LayerTifPath(lf)] : Array.Empty<string>())
-                .Where(File.Exists).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
-            if (File.GetLastWriteTimeUtc(workingLf) < source)
-                add("inputs.stale_lf", TileMapFinding.Warning,
-                    "working_data lf_height_map.dds is older than the kit's height TIF: rebuild the lf maps before Tilemap", null, null);
-        }
-        else
-            add("inputs.stale_lf", TileMapFinding.Warning, $"{workingLf} is missing: BOB needs the lf maps in working_data to bake tile heights", null, null);
-
-        CheckExtents(paths, w, h, add);
-    }
-
-    private static (int W, int H) DdsSize(string path)
-    {
-        Span<byte> b = stackalloc byte[20];
-        using var fs = File.OpenRead(path);
-        if (fs.Read(b) < 20 || b[0] != 'D' || b[1] != 'D' || b[2] != 'S') return (0, 0);
-        return (BitConverter.ToInt32(b[16..20]), BitConverter.ToInt32(b[12..16]));
     }
 
     /// <summary>BOB reads the world size from campaign_map_playable_areas: a row left over from another grid size

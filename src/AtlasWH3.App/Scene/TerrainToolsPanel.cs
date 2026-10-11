@@ -7,16 +7,20 @@ using System.Windows.Input;
 using System.Windows.Media;
 using AtlasWH3.Core;
 using AtlasWH3.Core.Campaign;
+using AtlasWH3.Core.Campaign.Terrain;
 using AtlasWH3.Core.Editing;
+using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.App.Scene;
 
 /// <summary>
-/// The scene editor's terrain tools: height brushes on the kit's land (LowFrequencyHeight) and sea (LowFrequencyHeightSea)
-/// TIFs, and the tree editor on the CampaignTree TIF, through a <see cref="KitTerrainEditSession"/>. The session edits the
-/// scene's own rasters, so the 2D view redraws live; at the end of each stroke the touched hexes' trees are regenerated
-/// (BOB's placement) and the 3D view re-meshes. Undo/redo per stroke; Save writes the TIFs in their own format, backed up
-/// through the terrain_edits journal. While a target is chosen the panel is the 2D view's <see cref="SceneView.Tool"/>.
+/// The scene editor's terrain tools: height brushes on the .terry's Height (land) and HeightSea (the sea tiles' ground)
+/// maps, and the tree editor on the CampaignTree map, through a <see cref="KitTerrainEditSession"/>. Each map is a stack
+/// of Terry layers: the tools paint what the scene shows (the composite) and write the change into the layer chosen under
+/// Layer. The session edits the scene's own rasters, so the 2D view redraws live; at the end of each stroke the touched
+/// hexes' trees are regenerated (BOB's placement) and the 3D view re-meshes. Undo/redo per stroke; Save writes the layer
+/// TIFs in their own format, backed up through the terrain_edits journal. While a target is chosen the panel is the 2D
+/// view's <see cref="SceneView.Tool"/>.
 /// </summary>
 public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
 {
@@ -32,6 +36,8 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
 
     private readonly TextBlock _sources = Dim("");
     private readonly ComboBox _target = new() { Margin = new Thickness(0, 2, 0, 2) };
+    private readonly ComboBox _layer = new() { Margin = new Thickness(0, 2, 0, 2), ToolTip = "The Terry layer the strokes are written to (the map's visible layers, bottom first)" };
+    private readonly StackPanel _layerBox = new();
     private readonly StackPanel _heightBox = new();
     private readonly StackPanel _treeBox = new();
     private readonly ComboBox _heightMode = new() { Margin = new Thickness(0, 2, 0, 2) };
@@ -40,11 +46,11 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     private readonly Slider _strength = new() { Minimum = 0.01, Maximum = 1, Value = 0.4, Margin = new Thickness(0, 2, 0, 2) };
     private readonly Slider _softness = new() { Minimum = 0, Maximum = 1, Value = 0.7, Margin = new Thickness(0, 2, 0, 2) };
     private readonly TextBlock _radiusText = Dim(""), _strengthText = Dim(""), _softnessText = Dim("");
-    private readonly TextBox _value = new() { Width = 70, Text = KitTerrainEditSession.SeaLevel.ToString(CultureInfo.InvariantCulture) };
+    private readonly TextBox _value = new() { Width = 70, Text = "0" };
     private readonly TextBlock _valueWorld = Dim("");
     private readonly ComboBox _restrict = new() { Margin = new Thickness(0, 2, 0, 2), ToolTip = "Which hexes the paint brush and fills may change" };
     private readonly CheckBox _treeOverlay = Check("Show tree map", "Draw the CampaignTree map over the 2D view (each hex's colour)");
-    private readonly CheckBox _seaOverlay = Check("Show water (sea target)", "Tint where the sea surface is above the land, by water level");
+    private readonly CheckBox _seaOverlay = Check("Show sea floor (sea target)", "Tint where the HeightSea map is below sea level, by depth");
     private readonly TextBox _fillLimit = new() { Width = 50, Text = "0", ToolTip = "Fills stop this far (world units) from the clicked hex; 0 = no limit" };
     private readonly ListBox _species = new() { Height = 260, Background = Brushes.Transparent, Foreground = Theme.Brush("Text") };
     private readonly TextBlock _readout = new() { FontFamily = new FontFamily("Consolas"), Foreground = Theme.Brush("DimText"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 2) };
@@ -89,15 +95,20 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     {
         var root = new StackPanel { Margin = new Thickness(8) };
         root.Children.Add(Theme.Header("Terrain & trees", 0));
-        root.Children.Add(Dim("Paints the kit sources (the .terry's height, sea height and tree TIFs). Left-drag paints in the 2D view; "
-                              + "Alt+click picks the value or species under the cursor; [ and ] resize the brush; right/middle drag still pans."));
+        root.Children.Add(Dim("Paints the kit sources (the .terry's Height, HeightSea and CampaignTree maps): you paint what the view shows, "
+                              + "and the change goes into the chosen layer. Left-drag paints in the 2D view; Alt+click picks the value or species "
+                              + "under the cursor; [ and ] resize the brush; right/middle drag still pans."));
         root.Children.Add(_sources);
 
         root.Children.Add(Label("Tool"));
-        foreach (var t in new[] { "Off (select / move entities)", "Land height", "Sea height (water surface)", "Trees (CampaignTree map)" }) _target.Items.Add(t);
+        foreach (var t in new[] { "Off (select / move entities)", "Land height (Height)", "Sea floor height (HeightSea)", "Trees (CampaignTree)" }) _target.Items.Add(t);
         _target.SelectedIndex = 0;
         _target.SelectionChanged += (_, _) => TargetChanged();
         root.Children.Add(_target);
+        _layerBox.Children.Add(Label("Layer"));
+        _layerBox.Children.Add(_layer);
+        _layer.SelectionChanged += (_, _) => LayerChanged();
+        root.Children.Add(_layerBox);
 
         root.Children.Add(Label("Brush"));
         root.Children.Add(Row(_radius, _radiusText));
@@ -113,14 +124,14 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         _strength.ValueChanged += (_, _) => BrushChanged();
         _softness.ValueChanged += (_, _) => BrushChanged();
         var valueRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-        valueRow.Children.Add(new TextBlock { Text = "Value (raw u16) ", Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center });
+        valueRow.Children.Add(new TextBlock { Text = "Value (world y) ", Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center });
         valueRow.Children.Add(_value);
         var seaLevel = Btn("Sea level");
         seaLevel.Margin = new Thickness(6, 0, 0, 0);
-        seaLevel.ToolTip = $"Set to value {KitTerrainEditSession.SeaLevel}: the vanilla sea surface (LowFrequencyHeightSea is flat {KitTerrainEditSession.SeaLevel} over the open sea)";
+        seaLevel.ToolTip = $"Set to value {CampaignTerrain.SeaLevel}: the height of the sea's water planes";
         seaLevel.Click += (_, _) =>
         {
-            _value.Text = KitTerrainEditSession.SeaLevel.ToString(CultureInfo.InvariantCulture);
+            _value.Text = CampaignTerrain.SeaLevel.ToString(CultureInfo.InvariantCulture);
             _heightMode.SelectedIndex = (int)KitHeightMode.SetValue;
         };
         valueRow.Children.Add(seaLevel);
@@ -133,7 +144,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         root.Children.Add(_heightBox);
 
         // trees
-        foreach (var m in new[] { "Paint species", "Erase (no tree)", "Fill connected (same species)", "Fill region (map.hex)" }) _treeMode.Items.Add(m);
+        foreach (var m in new[] { "Paint species", "Erase (clear the layer)", "Fill connected (same species)", "Fill region (map.hex)" }) _treeMode.Items.Add(m);
         _treeMode.SelectedIndex = 0;
         _treeMode.SelectionChanged += (_, _) => { BrushChanged(); _view.InvalidateVisual(); };
         _treeBox.Children.Add(_treeMode);
@@ -158,8 +169,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         var buttons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         _undo.ToolTip = "Undo the last terrain/tree stroke (Ctrl+Z while this tab is shown)";
         _redo.ToolTip = "Redo (Ctrl+Y)";
-        _save.ToolTip = "Write the changed TIFs (land also updates lf_heights.tif, sea lf_sea_heights.tif when present) in their own format; "
-                        + "the originals are backed up first in output\\terrain_edits";
+        _save.ToolTip = "Write the changed layer TIFs in their own format; the originals are backed up first in output\\terrain_edits";
         _build.ToolTip = "Open the Build window: re-run heightmaps, tile_list, camera_heightmap (heights) and trees so the game sees the edits";
         _undo.Click += (_, _) => Undo();
         _redo.Click += (_, _) => Redo();
@@ -191,38 +201,42 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         if (ReferenceEquals(model, _model) && _session is not null) { UpdateState(); return; }
         _model = model;
         _session = null;
-        if (model.Terrain is not var (land, worldW, worldH) || model.Project.Find("LowFrequencyHeight") is not { } landMap)
+        if (model.Terrain is not { } terrain)
         {
-            Detach("No campaign terrain in this project (needs a LowFrequencyHeight map).");
+            Detach("No campaign terrain in this project" + (model.TerrainNote is { } note ? $" ({note})." : "."));
+            return;
+        }
+        var project = model.Project;
+        if (KitTerrainEditSession.MapLayers.Of(project, "Height") is not { } landLayers)
+        {
+            Detach("The Height map has no visible layer to paint.");
             return;
         }
         try
         {
-            var project = model.Project;
-            var landPath = project.LayerTifPath(landMap);
-            var dir = Path.GetDirectoryName(landPath)!;
-            var seaPath = model.SeaHeight is not null && project.Find("LowFrequencyHeightSea") is { } seaMap ? project.LayerTifPath(seaMap) : null;
-            var treePath = model.TreeMap is not null && project.Find("CampaignTree") is { } treeMap ? project.LayerTifPath(treeMap) : null;
             // output\terrain_edits\<map>; a project outside the kit's own campaign folder (a copy) gets its own journal.
+            var dir = Path.GetDirectoryName(project.Path)!;
             var mapPaths = _paths with { MapName = project.MapName };
             var journalDir = FileJournal.EditDir(mapPaths, "terrain_edits");
             if (!Path.GetFullPath(dir).TrimEnd('\\').Equals(Path.GetFullPath(mapPaths.AkTerrainDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
                 journalDir = Path.Combine(journalDir, "custom_" + FileJournal.Hash(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(dir).ToLowerInvariant()))[..8].ToLowerInvariant());
             var journal = new FileJournal(journalDir);
-            _session = new KitTerrainEditSession(journal, worldW, worldH,
-                landPath, land, [Path.Combine(dir, "lf_heights.tif")],
-                seaPath, model.SeaHeight, [Path.Combine(dir, "lf_sea_heights.tif")],
-                treePath, model.TreeMap?.Map, model.TreeMap?.Palette);
+            var seaLayers = KitTerrainEditSession.MapLayers.Of(project, "HeightSea");
+            var treeLayers = model.TreeMap is null ? null : KitTerrainEditSession.MapLayers.Of(project, "CampaignTree");
+            _session = new KitTerrainEditSession(journal, terrain.WorldW,
+                landLayers, terrain.Land,
+                seaLayers, seaLayers is null ? null : () => TerrainComposite.Heights(project, "HeightSea"),
+                treeLayers, model.TreeMap?.Map, model.TreeMap?.Palette);
             _session.Changed += _ => _view.Invalidate();
             for (var i = 0; i < 256; i++)
             {
                 var rgb = (uint)_session.PaletteRgb(i);
                 _paletteBgra[i] = 0xFF000000u | rgb;
             }
-            _sources.Text = string.Join("\n", new[] { KitTarget.Land, KitTarget.Sea, KitTarget.Trees }.Select(t =>
-                _session.PathOf(t) is { } p
-                    ? $"{t}: {Path.GetFileName(p)}" + (_session.MirrorsOf(t) is { Count: > 0 } m ? $" (+ {string.Join(", ", m.Select(Path.GetFileName))})" : "")
-                    : $"{t}: none" + (t == KitTarget.Trees && model.TreesNote is { } note ? $" ({note})" : "")));
+            _sources.Text = string.Join("\n", new[] { (KitTarget.Land, "Height"), (KitTarget.Sea, "HeightSea"), (KitTarget.Trees, "CampaignTree") }.Select(p =>
+                _session.Has(p.Item1)
+                    ? $"{p.Item2}: {string.Join(", ", _session.Layers(p.Item1).Select(l => l.Name))}"
+                    : $"{p.Item2}: none" + (p.Item1 == KitTarget.Trees && model.TreesNote is { } note ? $" ({note})" : "")));
             IsEnabled = true;
             FillSpecies();
             TargetChanged();
@@ -258,8 +272,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     /// <summary>Saves the unsaved terrain / tree edits (File > Save, Ctrl+S). False when the save failed or was declined.</summary>
     public bool SaveEdits() => !HasUnsaved || Save();
 
-    private string DirtyList() => _session is null ? "" :
-        string.Join(", ", new[] { KitTarget.Land, KitTarget.Sea, KitTarget.Trees }.Where(_session.IsDirty).Select(t => Path.GetFileName(_session.PathOf(t))));
+    private string DirtyList() => _session is null ? "" : string.Join(", ", _session.DirtyLayers().Select(l => Path.GetFileName(l.Path)));
 
     private void FillSpecies()
     {
@@ -311,16 +324,59 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         var target = Target;
         if (target is { } t && _session?.Has(t) != true)
         {
-            if (_session is not null) Status?.Invoke($"This project has no {t} source to edit.", true);
+            if (_session is not null) Status?.Invoke($"This project has no {t} map to edit.", true);
             _target.SelectedIndex = 0;
             return;
         }
+        if (target == KitTarget.Sea && _session!.SeaIfLoaded is null)
+        {
+            var cursor = Mouse.OverrideCursor;
+            Mouse.OverrideCursor = Cursors.Wait;
+            try { _ = _session.Sea; }
+            catch (Exception ex) when (ex is IOException or InvalidDataException)
+            {
+                Status?.Invoke("HeightSea not read: " + ex.Message, true);
+                _target.SelectedIndex = 0;
+                return;
+            }
+            finally { Mouse.OverrideCursor = cursor; }
+        }
+        FillLayers(target);
         _heightBox.Visibility = target is KitTarget.Land or KitTarget.Sea ? Visibility.Visible : Visibility.Collapsed;
         _treeBox.Visibility = target == KitTarget.Trees ? Visibility.Visible : Visibility.Collapsed;
         _seaOverlay.Visibility = target == KitTarget.Sea ? Visibility.Visible : Visibility.Collapsed;
         _view.Tool = target is null ? null : this;
         BrushChanged();
         _view.Invalidate();
+    }
+
+    private bool _fillingLayers;
+
+    /// <summary>The layer list of the chosen target, its edited layer selected.</summary>
+    private void FillLayers(KitTarget? target)
+    {
+        _fillingLayers = true;
+        _layer.Items.Clear();
+        if (_session is not null && target is { } t)
+        {
+            var current = _session.LayerOf(t);
+            foreach (var l in _session.Layers(t))
+            {
+                _layer.Items.Add(l.Opacity < 1 ? $"{l.Name} (opacity {l.Opacity:0.##})" : l.Name);
+                if (l.Id == current?.Id) _layer.SelectedIndex = _layer.Items.Count - 1;
+            }
+        }
+        _layerBox.Visibility = _layer.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _fillingLayers = false;
+    }
+
+    private void LayerChanged()
+    {
+        if (_fillingLayers || _session is null || Target is not { } t || _layer.SelectedIndex < 0) return;
+        var layer = _session.Layers(t)[_layer.SelectedIndex];
+        try { _session.SetLayer(t, layer.Id); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException) { Status?.Invoke(ex.Message, true); }
+        Status?.Invoke($"{t} strokes now go into layer '{layer.Name}' ({Path.GetFileName(layer.Path)}).", false);
     }
 
     private double RadiusWorld => Math.Exp(_radius.Value);
@@ -330,15 +386,15 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         _radiusText.Text = $"radius {RadiusWorld:0.##}";
         _strengthText.Text = $"strength {_strength.Value:0.00}";
         _softnessText.Text = $"softness {_softness.Value:0.00}";
-        var ok = ushort.TryParse(_value.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var raw);
-        _valueWorld.Text = ok ? $"= world height {raw * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset:0.###}" : "not a 0-65535 value";
+        var ok = float.TryParse(_value.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && float.IsFinite(value);
+        _valueWorld.Text = ok ? $"sea level is {CampaignTerrain.SeaLevel}" : "not a number";
         if (_session is null) return;
         _session.RadiusWorld = RadiusWorld;
         var b = _session.HeightBrush;
         b.Mode = (KitHeightMode)Math.Max(0, _heightMode.SelectedIndex);
         b.Strength = _strength.Value;
         b.Softness = _softness.Value;
-        if (ok) b.Value = raw;
+        if (ok) b.Value = value;
         if (_species.SelectedIndex >= 0 && _species.SelectedIndex < _speciesIndex.Length && _speciesIndex[_species.SelectedIndex] is { } index)
             _session.TreeIndex = index;
         _session.TreeFilter = _restrict.SelectedIndex switch
@@ -427,10 +483,10 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
             SelectSpecies(index);
             Status?.Invoke($"Picked species {index} at hex ({c}, {r}).", false);
         }
-        else if (_session.RawAt(target, x, z) is { } raw)
+        else if (_session.ValueAt(target, x, z) is { } value)
         {
-            _value.Text = raw.ToString(CultureInfo.InvariantCulture);
-            Status?.Invoke($"Picked {target} value {raw}.", false);
+            _value.Text = value.ToString("0.###", CultureInfo.InvariantCulture);
+            Status?.Invoke($"Picked {target} height {value:0.###}.", false);
         }
     }
 
@@ -440,7 +496,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         if (edit is not null && _model is not null)
         {
             if (edit.Hexes.Length > 0) _model.RegenerateTrees(edit.Hexes);
-            if (edit.Target is KitTarget.Land or KitTarget.Sea) _view3d.ReloadTerrain();
+            if (edit.Target == KitTarget.Land) _view3d.ReloadTerrain();
             _view3d.ReloadTrees();
             if (edit.Target == KitTarget.Trees) RefreshCounts();
         }
@@ -478,29 +534,25 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
                 }
             });
         }
-        else if (Target == KitTarget.Sea && _seaOverlay.IsChecked == true && _session.Sea is { } sea)
+        else if (Target == KitTarget.Sea && _seaOverlay.IsChecked == true && _session.SeaIfLoaded is { } sea)
         {
-            var land = _session.Land;
             var frame = _session.Frame(KitTarget.Sea);
             Parallel.For(0, h, y =>
             {
                 var wz = oz - (y + 0.5) * scale;
                 var sy = (int)Math.Round((1 - wz / frame.WorldH) * sea.Height - 0.5);
                 if ((uint)sy >= (uint)sea.Height) return;
-                var ly = Math.Clamp((int)((sy + 0.5) * land.Height / sea.Height), 0, land.Height - 1);
                 var line = y * w;
                 for (var x = 0; x < w; x++)
                 {
                     var wx = ox + (x + 0.5) * scale;
                     var sx = (int)Math.Round(wx / frame.WorldW * sea.Width - 0.5);
                     if ((uint)sx >= (uint)sea.Width) continue;
-                    var s = sea[sx, sy];
-                    var l = land[Math.Clamp((int)((sx + 0.5) * land.Width / sea.Width), 0, land.Width - 1), ly];
-                    if (s <= l) continue;
-                    // hue by water level, so lakes at their own levels stand apart from the sea
-                    var t = Math.Clamp((s - (double)KitTerrainEditSession.SeaLevel) / 4000.0, -1, 1);
-                    var c = t >= 0 ? Rgb(40, (byte)(120 + 100 * t), (byte)(230 - 60 * t)) : Rgb((byte)(40 - 30 * t), 80, (byte)(200 + 40 * t));
-                    buffer[line + x] = Mix(buffer[line + x], c, Math.Clamp(0.35 + (s - l) / 3000.0, 0.35, 0.7));
+                    var depth = CampaignTerrain.SeaLevel - sea[sx, sy];
+                    if (depth <= 0) continue;
+                    // light near the coast, dark in deep water
+                    var t = Math.Clamp(depth / 20.0, 0, 1);
+                    buffer[line + x] = Mix(buffer[line + x], Rgb((byte)(60 - 40 * t), (byte)(170 - 110 * t), (byte)(230 - 80 * t)), 0.55);
                 }
             });
         }
@@ -519,8 +571,8 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
         if (_session is null || !IsVisible) return;
         var parts = new List<string>();
         foreach (var t in new[] { KitTarget.Land, KitTarget.Sea })
-            if (_session.RawAt(t, x, z) is { } raw)
-                parts.Add($"{t.ToString().ToLowerInvariant(),-4} {raw,5}  y {raw * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset,7:0.000}");
+            if (_session.ValueAt(t, x, z) is { } value)
+                parts.Add($"{(t == KitTarget.Land ? "land" : "sea floor"),-9} y {value,8:0.000}");
         if (_session.Grid is { } g && x >= 0 && z >= 0 && x <= _session.WorldW && z <= _session.WorldH)
         {
             var (c, r) = _session.NearestHex(x, z);
@@ -596,10 +648,10 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     {
         if (_session is null || _model is null) yield break;
         var ctx = new CampaignBuildContext(_paths with { MapName = _model.Project.MapName });
-        DateTime Newest(params KitTarget[] targets) => targets.Select(_session.PathOf).OfType<string>().Where(File.Exists)
+        DateTime Newest(params KitTarget[] targets) => targets.SelectMany(_session.Layers).Select(l => l.Path).Where(File.Exists)
             .Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
-        var heights = ctx.OutFile("lf_height_map.compressed_map");
-        var trees = Path.Combine(ctx.CampaignMapOutDir, "display", "trees", "trees.campaign_tree_list");
+        var heights = ctx.OutFile("full_logic_map.compressed_map");
+        var trees = Path.Combine(ctx.TargetRoot, AtlasWH3.Core.Exporters.TreeExporter.PackPath(ctx.MapName));
         var stale = new List<string>();
         if (!File.Exists(heights) || File.GetLastWriteTimeUtc(heights) < Newest(KitTarget.Land, KitTarget.Sea))
             stale.Add("heightmaps, tile_list, camera_heightmap");

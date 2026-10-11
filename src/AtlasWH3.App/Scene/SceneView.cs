@@ -254,7 +254,10 @@ public sealed class SceneView : FrameworkElement
             DrawGrid(w, h);
             return;
         }
+        const float sea = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.SeaLevel;
         double kx = raster.Width / worldW, kz = raster.Height / worldH;
+        // relief shading per world unit of height difference across two texels
+        var relief = 2.7 * 0.0834 / (worldW / raster.Width);
         Parallel.For(0, h, y =>
         {
             var wz = _oz - (y + 0.5) * _scale;
@@ -276,10 +279,10 @@ public sealed class SceneView : FrameworkElement
                 // Bilinear, so close zoom is smooth rather than blocky.
                 double v = (raster[col, row] * (1 - tx) + raster[col + 1, row] * tx) * (1 - ty)
                            + (raster[col, row + 1] * (1 - tx) + raster[col + 1, row + 1] * tx) * ty;
-                var ground = v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
-                var shade = Math.Clamp(1 + (raster[col - 1, row] - raster[col + 1, row] + raster[col, row - 1] - raster[col, row + 1]) * 0.0006, 0.55, 1.4);
+                var ground = v;
+                var shade = Math.Clamp(1 + (raster[col - 1, row] - raster[col + 1, row] + raster[col, row - 1] - raster[col, row + 1]) * relief, 0.55, 1.4);
                 byte r, g, b;
-                if (ground <= 0.05) (r, g, b) = (28, 52, 78);
+                if (ground <= sea) (r, g, b) = (28, 52, 78);
                 else
                 {
                     var t = Math.Clamp(ground / 10.0, 0, 1);

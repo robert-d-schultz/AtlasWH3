@@ -70,13 +70,31 @@ public static class TiffMap
     /// <summary>Makes LibTiff quiet (Photoshop's private tags); runs once, from any reader.</summary>
     internal static void Quiet() { }
 
-    /// <summary>A 32-bit float greyscale TIF (Terry's WH3 height layers), LZW.</summary>
-    public static void WriteFloat32(string path, Raster<float> raster)
+    /// <summary>A 32-bit float greyscale TIF (Terry's WH3 height layers).</summary>
+    public static Raster<float> ReadFloat32(string path)
+    {
+        using var tif = Tiff.Open(path, "r") ?? throw new IOException($"Cannot open {path}");
+        var (w, h) = Size(tif);
+        if (tif.GetField(TiffTag.BITSPERSAMPLE)[0].ToInt() != 32 || tif.GetField(TiffTag.SAMPLEFORMAT)?[0].ToInt() != (int)SampleFormat.IEEEFP)
+            throw new InvalidDataException($"{Path.GetFileName(path)} is not 32-bit float.");
+        var raster = new Raster<float>(w, h);
+        var row = new byte[tif.ScanlineSize()];
+        for (var y = 0; y < h; y++)
+        {
+            tif.ReadScanline(row, y);
+            Buffer.BlockCopy(row, 0, raster.Data, y * w * 4, w * 4);
+        }
+        return raster;
+    }
+
+    /// <summary>A 32-bit float greyscale TIF (Terry's WH3 height layers), LZW with one row per strip as Terry writes
+    /// them, unless another compression or strip height is given.</summary>
+    public static void WriteFloat32(string path, Raster<float> raster, bool lzw = true, int rowsPerStrip = 1)
     {
         WriteAtomically(path, temp =>
         {
             using var tif = Tiff.Open(temp, "w") ?? throw new IOException($"Cannot create {temp}");
-            SetCommon(tif, raster.Width, raster.Height, 32, Photometric.MINISBLACK, Compression.LZW, 1);
+            SetCommon(tif, raster.Width, raster.Height, 32, Photometric.MINISBLACK, lzw ? Compression.LZW : Compression.NONE, rowsPerStrip);
             tif.SetField(TiffTag.SAMPLEFORMAT, SampleFormat.IEEEFP);
             var row = new byte[raster.Width * 4];
             for (var y = 0; y < raster.Height; y++)
@@ -221,6 +239,13 @@ public static class TiffMap
         }
         WriteGray16(path, raster);
         return false;
+    }
+
+    /// <summary>Saves a float raster over an existing float TIF with the file's own compression and rows per strip.</summary>
+    public static void SaveFloat32Like(string path, Raster<float> raster)
+    {
+        var layout = ReadLayout(path);
+        WriteFloat32(path, raster, lzw: layout.Compression != 1, rowsPerStrip: layout.RowsPerStrip);
     }
 
     /// <summary>

@@ -38,8 +38,7 @@ public sealed class MapAudit
     private readonly EntityEditor _editor;
     private readonly ModelLibrary _models;
     private readonly Action<string> _log;
-    private Raster<ushort>? _lf, _sea;
-    private double _worldW, _worldH;
+    private AtlasWH3.Core.Campaign.Terrain.CampaignTerrain? _terrain;
     private HexRegionLookup? _hex;
     private readonly Dictionary<string, ModelInfo?> _modelInfo = new(StringComparer.OrdinalIgnoreCase);
 
@@ -68,32 +67,17 @@ public sealed class MapAudit
     private void LoadTerrain()
     {
         var project = _editor.Project;
-        if (project.Find("LowFrequencyHeight") is { } lf && File.Exists(project.LayerTifPath(lf)))
-        {
-            _lf = TiffMap.ReadGray16(project.LayerTifPath(lf));
-            _worldW = _lf.Width * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeX;
-            _worldH = _lf.Height * AtlasWH3.Core.Campaign.Terrain.Lf3K.PixelSizeZ;
-        }
-        else Notes.Add("no LowFrequencyHeight map: height checks skipped");
-        if (project.Find("LowFrequencyHeightSea") is { } sea && File.Exists(project.LayerTifPath(sea)))
-            _sea = TiffMap.ReadGray16(project.LayerTifPath(sea));
+        if (project.Find("Height") is null) Notes.Add("no Height map: height checks skipped");
+        else if (project.WorldWidth is not { } width) Notes.Add("the .terry has no world_width: height checks skipped");
+        else
+            try { _terrain = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Load(project, width); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException) { Notes.Add("Height map not read (" + ex.Message + "): height checks skipped"); }
         _hex = HexRegionLookup.ForMap(_paths with { MapName = project.MapName }, out var why);
         if (_hex is null) Notes.Add("no map.hex region lookup (" + why + "): region / city checks skipped");
     }
 
-    /// <summary>Terrain height (world y) at a world point, bilinear over the lf raster (row 0 = north).</summary>
-    public double Ground(double x, double z) => Sample(_lf, x, z);
-
-    private double Sample(Raster<ushort>? r, double x, double z)
-    {
-        if (r is null) return 0;
-        var col = Math.Clamp(x / _worldW * r.Width - 0.5, 0, r.Width - 1.001);
-        var row = Math.Clamp((1 - z / _worldH) * r.Height - 0.5, 0, r.Height - 1.001);
-        int c0 = (int)col, r0 = (int)row;
-        double fx = col - c0, fz = row - r0;
-        var v = r[c0, r0] * (1 - fx) * (1 - fz) + r[c0 + 1, r0] * fx * (1 - fz) + r[c0, r0 + 1] * (1 - fx) * fz + r[c0 + 1, r0 + 1] * fx * fz;
-        return v * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
-    }
+    /// <summary>Terrain height (world y) at a world point, bilinear over the composited Height map.</summary>
+    public double Ground(double x, double z) => _terrain?.At(x, z) ?? 0;
 
     public ModelInfo? Model(string path)
     {
@@ -162,11 +146,11 @@ public sealed class MapAudit
 
         var mountains = props.Where(p => p.Info.TerrainOffset > 0).ToList();
         var allMountains = props.Where(p => Category(p.Model) == "mountain").ToList();
-        if (_lf is not null)
+        if (_terrain is not null)
         {
             if (On("floating-mountain") || On("buried-mountain")) CheckMountains(mountains, On);
             if (On("buried-prop") || On("floating-prop")) CheckPropHeights(props, allMountains, On);
-            if (On("prop-in-sea") && _sea is not null) CheckSea(props);
+            if (On("prop-in-sea")) CheckSea(props);
         }
         if (_hex is not null)
         {
@@ -262,7 +246,8 @@ public sealed class MapAudit
         }
     }
 
-    /// <summary>Land props (not boats, ports, bridges or water plants) standing where the sea surface is above the ground.</summary>
+    /// <summary>Land props (not boats, ports, bridges or water plants) standing where the ground is below sea level (the
+    /// sea's water planes sit at y = 0).</summary>
     private void CheckSea(List<Prop> props)
     {
         foreach (var p in props)
@@ -270,8 +255,8 @@ public sealed class MapAudit
             var cat = Category(p.Model);
             if (cat is not ("tree" or "building") || WaterModel(p.Model) || p.Layer.Contains("_sea_") || p.Layer.Contains("riv_")) continue;
             var ground = Ground(p.X, p.Z);
-            var sea = Sample(_sea, p.X, p.Z);
-            if (sea > ground + 0.2 && sea > 0)
+            const double sea = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.SeaLevel;
+            if (sea > ground + 0.2)
                 Add("prop-in-sea", Warning, p.Entity, p.Layer, RegionAt(p.X, p.Z), p.Model, p.X, p.Z, sea - ground,
                     $"{cat} under {sea - ground:F2} of water");
         }

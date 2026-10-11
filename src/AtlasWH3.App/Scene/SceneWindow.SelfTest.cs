@@ -307,8 +307,8 @@ public sealed partial class SceneWindow
                 for (var wait = 0; wait < 100 && !_view3d.RiversReady; wait++) await Task.Delay(100);
                 var scenes = _model.All.Where(i => i.Entity.Type == "CompositeScene").Select(i => i.Entity.Component("ECCompositeScene")?["path"]).Distinct().ToList();
                 var scenesWithModels = scenes.Count(p => p is not null && _model.CompositeModels(p).Count > 0);
-                Step("3d campaign world", _model.Terrain is null || (_model.Trees.Count > 0 && _model.SeaHeight is not null && _view3d.RiversReady),
-                    $"{_model.TreesNote}; sea map {(_model.SeaHeight is { } sh ? $"{sh.Width}x{sh.Height}" : "none")}; rivers ready {_view3d.RiversReady}; "
+                Step("3d campaign world", _model.Terrain is null || (_model.Trees.Count > 0 && _view3d.RiversReady),
+                    $"{_model.TreesNote}; rivers ready {_view3d.RiversReady}; "
                     + $"composite scenes with models {scenesWithModels}/{scenes.Count}");
                 Save3D(outDir, "11_3d_overview");
                 async Task CloseUp(System.Numerics.Vector3 at, float distance, string name, float pitch = 0.55f)

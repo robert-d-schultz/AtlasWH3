@@ -119,7 +119,7 @@ public sealed class Renderer3D : IDisposable
     {
         public Vector4 Flags;   // x: has texture, y: alpha test, z: terrain offset (share of the lf height added per vertex)
         public Vector4 Colour;
-        public Vector4 Terrain; // world w, world h, height per raw unit (×65535), height offset
+        public Vector4 Terrain; // world w, world h, height scale, height offset
     }
 
     private const string Hlsl = """
@@ -669,28 +669,27 @@ public sealed class Renderer3D : IDisposable
     /// The lf heights for the LF-offset mountain shader (R16 UNorm, row 0 = north; any resolution covering the
     /// world) and how raw values map to world heights (raw × step + offset).
     /// </summary>
-    public void SetTerrainHeight(ushort[] raw, int width, int height, float worldW, float worldH, float step, float offset)
+    /// <summary>The terrain heights (world y, row 0 = north) the terrain-offset shader samples.</summary>
+    public void SetTerrainHeight(float[] heights, int width, int height, float worldW, float worldH)
     {
+        var bytes = new byte[heights.Length * 4];
+        Buffer.BlockCopy(heights, 0, bytes, 0, bytes.Length);
         if (_terrainHeightTex is { } existing && (_terrainHeightSize) == (width, height))
         {
             // After a height edit: re-upload into the same texture rather than allocating a new one.
-            var data = new byte[raw.Length * 2];
-            Buffer.BlockCopy(raw, 0, data, 0, data.Length);
-            _pendingUploads.Enqueue((existing, 0, data, width * 2));
+            _pendingUploads.Enqueue((existing, 0, bytes, width * 4));
             return;
         }
         var tex = Device.CreateTexture2D(new Texture2DDescription
         {
-            Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1, Format = Format.R16_UNorm,
+            Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1, Format = Format.R32_Float,
             SampleDescription = new SampleDescription(1, 0), Usage = ResourceUsage.Default, BindFlags = BindFlags.ShaderResource,
         });
-        var bytes = new byte[raw.Length * 2];
-        Buffer.BlockCopy(raw, 0, bytes, 0, bytes.Length);
-        _pendingUploads.Enqueue((tex, 0, bytes, width * 2));
+        _pendingUploads.Enqueue((tex, 0, bytes, width * 4));
         _terrainHeight = Device.CreateShaderResourceView(tex);
         _terrainHeightTex = tex;
         _terrainHeightSize = (width, height);
-        _terrainConstants = new Vector4(worldW, worldH, step * 65535, offset);
+        _terrainConstants = new Vector4(worldW, worldH, 1, 0);
     }
     private ID3D11Texture2D? _terrainHeightTex;
     private (int W, int H) _terrainHeightSize;

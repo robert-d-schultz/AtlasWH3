@@ -72,7 +72,6 @@ public sealed class Viewport3DControl : Grid
     private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _terrain;
     private bool _terrainRequested;
     private TerrainMaterial? _ground;
-    private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _water;
     private readonly Dictionary<string, string?> _treeModels = new(StringComparer.OrdinalIgnoreCase);
     private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _rivers;
     private (Vortice.Direct3D11.ID3D11Buffer V, Vortice.Direct3D11.ID3D11Buffer I, int Count)? _tileMesh;
@@ -88,8 +87,7 @@ public sealed class Viewport3DControl : Grid
     public bool ShowTileMeshes { get; set; } = true;
 
     /// <summary>True once the terrain mesh (and its ground textures, when the project has a blend map) are on the GPU.</summary>
-    public bool TerrainReady => _model?.Terrain is null || (_terrain is not null && (_model.TerrainBlend is null || _ground is not null)
-                                                            && (_model.SeaHeight is null || _water is not null));
+    public bool TerrainReady => _model?.Terrain is null || (_terrain is not null && (_model.TerrainBlend is null || _ground is not null));
     private bool _dirty = true;
 
     // input
@@ -161,7 +159,6 @@ public sealed class Viewport3DControl : Grid
         _builtVersion = -1;
         _terrain = null;
         _ground = null;
-        _water = null;
         _treeModels.Clear();
         _tileMeshCache = null;
         _tileRivers = null;
@@ -380,21 +377,17 @@ public sealed class Viewport3DControl : Grid
         var r = _r;
         if (_terrain is { } oldTerrain)
         {
-            // Reload after an edit: same ground, new mesh and water.
+            // Reload after an edit: same ground, new mesh.
             _terrainReloading = true;
             var keptGround = _ground;
-            var oldWater = _water;
             Task.Run(() =>
             {
                 var t = CreateTerrainMesh(r, raster, worldW, worldH);
-                var water = _model.SeaHeight is { } sea ? CreateWater(r, raster, sea, (float)worldW, (float)worldH) : null;
                 Dispatcher.BeginInvoke(() =>
                 {
                     _terrain = t;
-                    _water = water;
                     _ground = keptGround;
                     oldTerrain.V.Dispose(); oldTerrain.I.Dispose();
-                    if (oldWater is { } ow) { ow.V.Dispose(); ow.I.Dispose(); }
                     UploadTerrainHeight(r, raster, worldW, worldH);
                     _terrainReloading = false;
                     if (_terrainReloadAgain) { _terrainReloadAgain = false; _terrainRequested = false; }
@@ -408,19 +401,17 @@ public sealed class Viewport3DControl : Grid
             var t = CreateTerrainMesh(r, raster, worldW, worldH);
             UploadTerrainHeight(r, raster, worldW, worldH);
             var ground = _model.TerrainBlend is var (groups, arrays) ? CreateGround(r, groups, arrays, (float)worldW, (float)worldH) : null;
-            var water = _model.SeaHeight is { } sea ? CreateWater(r, raster, sea, (float)worldW, (float)worldH) : null;
-            Dispatcher.BeginInvoke(() => { _terrain = t; _ground = ground; _water = water; Invalidate(); });
+            Dispatcher.BeginInvoke(() => { _terrain = t; _ground = ground; Invalidate(); });
         });
     }
 
     private static (Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int) CreateTerrainMesh(Renderer3D r,
-        AtlasWH3.Formats.Maps.Raster<ushort> raster, double worldW, double worldH)
+        AtlasWH3.Formats.Maps.Raster<float> raster, double worldW, double worldH)
     {
         var step = Math.Max(1, (int)Math.Ceiling(Math.Max(raster.Width, raster.Height) / 2048.0));
         int cols = (raster.Width - 1) / step + 1, rows = (raster.Height - 1) / step + 1;
         double px = worldW / raster.Width, pz = worldH / raster.Height;
-        float H(int c, int rr) => (float)(raster[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)]
-                                          * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
+        float H(int c, int rr) => raster[Math.Clamp(c, 0, raster.Width - 1), Math.Clamp(rr, 0, raster.Height - 1)];
         var v = new float[cols * rows * 6];
         Parallel.For(0, rows, j =>
         {
@@ -449,14 +440,14 @@ public sealed class Viewport3DControl : Grid
         return r.CreateTerrain(v, idx);
     }
 
-    /// <summary>Heights for the LF-offset mountain shader (at most 4096 px across).</summary>
-    private static void UploadTerrainHeight(Renderer3D r, AtlasWH3.Formats.Maps.Raster<ushort> raster, double worldW, double worldH)
+    /// <summary>Heights for the terrain-offset shader (at most 4096 px across).</summary>
+    private static void UploadTerrainHeight(Renderer3D r, AtlasWH3.Formats.Maps.Raster<float> raster, double worldW, double worldH)
     {
         var hs = Math.Max(1, (int)Math.Ceiling(Math.Max(raster.Width, raster.Height) / 4096.0));
         int hw = raster.Width / hs, hh = raster.Height / hs;
-        var raw = new ushort[hw * hh];
-        Parallel.For(0, hh, y => { for (var x = 0; x < hw; x++) raw[y * hw + x] = raster[x * hs, y * hs]; });
-        r.SetTerrainHeight(raw, hw, hh, (float)worldW, (float)worldH, (float)AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep, (float)AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
+        var heights = new float[hw * hh];
+        Parallel.For(0, hh, y => { for (var x = 0; x < hw; x++) heights[y * hw + x] = raster[x * hs, y * hs]; });
+        r.SetTerrainHeight(heights, hw, hh, (float)worldW, (float)worldH);
     }
 
     /// <summary>
@@ -625,43 +616,6 @@ public sealed class Viewport3DControl : Grid
         }
     }
 
-
-    /// <summary>
-    /// The water surface from the LowFrequencyHeightSea map (half lf resolution, same height units): a grid over the
-    /// sea raster (every 4th pixel) keeping the cells where the water is above the land at any corner, at the sea
-    /// height — the sea, and lakes at their own levels.
-    /// </summary>
-    private static (Vortice.Direct3D11.ID3D11Buffer, Vortice.Direct3D11.ID3D11Buffer, int)? CreateWater(Renderer3D r,
-        AtlasWH3.Formats.Maps.Raster<ushort> land, AtlasWH3.Formats.Maps.Raster<ushort> sea, float worldW, float worldH)
-    {
-        const int step = 4;
-        int cols = (sea.Width - 1) / step + 1, rows = (sea.Height - 1) / step + 1;
-        var colour = new Vector4(0.09f, 0.22f, 0.34f, 0.78f);
-        var verts = new LineVertex[cols * rows];
-        var wet = new bool[cols * rows];
-        Parallel.For(0, rows, j =>
-        {
-            for (var i = 0; i < cols; i++)
-            {
-                int sx = Math.Min(i * step, sea.Width - 1), sy = Math.Min(j * step, sea.Height - 1);
-                var s = sea[sx, sy];
-                var l = land[Math.Min(sx * land.Width / sea.Width, land.Width - 1), Math.Min(sy * land.Height / sea.Height, land.Height - 1)];
-                wet[j * cols + i] = s > l;
-                var x = (sx + 0.5f) / sea.Width * worldW;
-                var z = worldH - (sy + 0.5f) / sea.Height * worldH;
-                verts[j * cols + i] = new LineVertex(new Vector3(x, (float)(s * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset), z), colour);
-            }
-        });
-        var idx = new List<uint>();
-        for (var j = 0; j < rows - 1; j++)
-            for (var i = 0; i < cols - 1; i++)
-            {
-                uint a = (uint)(j * cols + i), b = a + 1, c = a + (uint)cols, d = c + 1;
-                if (!(wet[a] || wet[b] || wet[c] || wet[d])) continue;
-                idx.AddRange([a, b, c, b, d, c]);
-            }
-        return idx.Count == 0 ? null : r.CreateColoured(verts, [.. idx]);
-    }
 
     /// <summary>Trees as ready instances: world rows (yaw only, no scale) per tree, grouped by tree id.</summary>
     private Dictionary<string, (InstanceData[] Instances, Vector3[] Positions)>? _treeCache;
@@ -886,7 +840,6 @@ public sealed class Viewport3DControl : Grid
         var riverIdx = new List<uint>();
         var (_, _, cx, cz) = model.TileGrid;
         float sx = (float)(cx / 128), sz = (float)(cz / 128);
-        static float Lf(float v) => (float)(v * 65535 * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset);
         var content = new Dictionary<string, (string? Mesh, string? River, List<(string Path, Matrix4x4 Local, bool OnTerrain, float Scale)> Props)>(StringComparer.OrdinalIgnoreCase);
         var water = new Vector4(0.13f, 0.30f, 0.43f, 0.85f);
         var result = new Dictionary<string, (List<InstanceData> I, List<Vector3> C, List<float> S)>(StringComparer.OrdinalIgnoreCase);
@@ -951,7 +904,7 @@ public sealed class Viewport3DControl : Grid
             if (c.Mesh is not null)
             {
                 // Custom meshes: z from −H to 0 (b = z + H), y = 0 at the record's high height.
-                var world = Matrix4x4.CreateTranslation(0, 0, t.TileH * 128f) * TileMatrix(t, sx, sz, Lf(t.High));
+                var world = Matrix4x4.CreateTranslation(0, 0, t.TileH * 128f) * TileMatrix(t, sx, sz, t.High);
                 Add(c.Mesh, world, sx);
             }
             // River meshes: tile space as the land mesh (z 0..H), baked into one coloured mesh with every vertex
@@ -1238,16 +1191,16 @@ public sealed class Viewport3DControl : Grid
         FrameBreakdown = $"setup {tItems:F1}, entities {tTrees - tItems:F1}, trees {tDraw - tTrees:F1}, draws {tAfterDraw - tDraw:F1} ({ranges.Count} ranges, {total} instances)";
 
         // Water (campaign sea level), markers, shapes, selection.
-        if (ShowWater && _water is { } wm) r.DrawColoured(wm.V, wm.I, wm.Count);
         EnsureRivers();
         EnsureTileMesh();
         if (_tileMesh is { } tm2 && _model.TilesShown != SceneModel.TileOverlay.Off) r.DrawColoured(tm2.V, tm2.I, tm2.Count);
         if (ShowWater && ShowTileMeshes && _tileRivers is { } trv) r.DrawColoured(trv.V, trv.I, trv.Count);
         if (ShowWater && _rivers is { } rv) r.DrawColoured(rv.V, rv.I, rv.Count);
-        else if (ShowWater && _model.Terrain is var (_, ww, wh) && _model.SeaHeight is null)
+        if (ShowWater && _model.Terrain is var (_, ww, wh))
         {
+            // the sea: WH3's sea water planes sit at sea level
             var c = new Vector4(0.09f, 0.22f, 0.34f, 0.78f); // deep enough to read as sea over the textured seabed
-            float sx = (float)ww, sz = (float)wh, y = 0.02f;
+            float sx = (float)ww, sz = (float)wh, y = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.SeaLevel + 0.02f;
             r.DrawLines(stackalloc LineVertex[]
             {
                 new(new(0, y, 0), c), new(new(sx, y, 0), c), new(new(sx, y, sz), c),
@@ -1778,8 +1731,7 @@ public sealed class Viewport3DControl : Grid
                 var col = (int)(p.X / worldW * raster.Width);
                 var row = (int)((1 - p.Z / worldH) * raster.Height);
                 if (col < 0 || row < 0 || col >= raster.Width || row >= raster.Height) { prev = p; continue; }
-                var ground = raster[col, row] * AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightStep + AtlasWH3.Core.Campaign.Terrain.Lf3K.HeightOffset;
-                if (p.Y <= ground) return (prev + p) / 2;
+                if (p.Y <= raster[col, row]) return (prev + p) / 2;
                 prev = p;
             }
             return null;

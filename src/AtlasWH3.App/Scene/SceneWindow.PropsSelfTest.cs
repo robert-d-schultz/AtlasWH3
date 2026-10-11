@@ -39,7 +39,7 @@ public sealed partial class SceneWindow
             var ground = await GroundAsync();
 
             // a land point near the middle of the map
-            var (_, worldW, worldH) = _model.Terrain!.Value;
+            var (_, worldW, worldH) = _model.Terrain!;
             double x = worldW / 2, z = worldH / 2;
             for (var i = 0; i < 400 && _model.GroundY(x, z) < 0.5; i++) (x, z) = (worldW * (0.3 + 0.4 * ((i * 37) % 100) / 100.0), worldH * (0.3 + 0.4 * ((i * 61) % 100) / 100.0));
             _view.FitTo(x - 20, z - 15, x + 20, z + 15);
