@@ -136,6 +136,23 @@ public class HlpSpdTests
         Assert.True(bytes.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
     }
 
+    /// <summary>IEE (the current exe's rules): the native hlp_data.esf is CA's byte for byte. It guards the port links
+    /// (game type 5 only, so no link from or to a slot hex) and the border search's expansion through non-hlp areas.</summary>
+    [Fact]
+    public void Iee_NativeHlp_ByteIdentical()
+    {
+        var pack = new PackSet([PackFile.Open(TestKits.Pack(TestKits.IeePack))]);
+        byte[] Get(string f) => pack.TryRead($"campaign_maps/{TestKits.Iee}/{f}") ?? throw new FileNotFoundException($"IEE {f}");
+        var bytes = Get("hlp_data.esf");
+        var reference = HlpData.Read(bytes);
+        var regions = MapDataRegions.Read(EsfTree.Read(Get("map_data.esf")));
+        var hlp = HlpBuilder.Build(PathfindingPpd.Read(Get("pathfinding.ppd")), regions, new CampaignPathGrid.Settings(), reference.Timestamp,
+                                   options: new HlpBuilder.Options { WrapLikeGame = true }, spd: SpdData.Read(Get("spd_data.esf")));
+        hlp.Magic = reference.Magic;
+        Assert.Equal(reference.Nodes.Sum(n => n.Areas.Count), IdenticalAreas(hlp, reference));
+        Assert.True(bytes.AsSpan().SequenceEqual(hlp.ToBytes()), "hlp_data.esf differs");
+    }
+
     private static (HlpData Reference, byte[] Bytes, SpdData Spd, MapDataRegions Regions) OldWorldInputs()
     {
         var pack = new PackSet([PackFile.Open(TestKits.Pack(TestKits.OldWorldPack))]);

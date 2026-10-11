@@ -374,11 +374,12 @@ public sealed class AiSearch
                 if (regionOf is not null && (regionOf[nb] & regionMask) != region) continue;
                 Relax(nb, c + costs[e], h);
             }
-            if (types[h] == 5)
+            // port links join hexes of game type 5 only (0x141e3b100 / 0x1424d73e4); slot hexes are retyped 4/7-9 there
+            if (types[h] == 5 && !_g.Slot[h])
                 for (var k = _g.PortLinkStart[h]; k < _g.PortLinkStart[h + 1]; k++)
                 {
                     var nb = _g.PortLinks[k];
-                    if (types[nb] != 5) continue;
+                    if (types[nb] != 5 || _g.Slot[nb]) continue;
                     if (blocked is not null && blocked[nb] && nb != target) continue;
                     if (regionOf is not null && (regionOf[nb] & regionMask) != region) continue;
                     Relax(nb, c + 500, h);

@@ -108,7 +108,9 @@ public static class HlpBuilder
         var po = new ParallelOptions { MaxDegreeOfParallelism = options.MaxThreads > 0 ? options.MaxThreads : Environment.ProcessorCount };
         var searches = new ThreadLocal<AiSearch>(() => new AiSearch(g), true);
 
-        // phase 1: FIND_REGION_BORDER from each centre
+        // phase 1: FIND_REGION_BORDER from each centre (Warhammer3.exe visitor 0x142a03ae8: a hex whose area is no hlp area
+        // is expanded like any other, and only land and sea hexes of other hlp areas are border hexes)
+        var hlpAreas = entries.Select(x => x.Aid).ToHashSet();
         Parallel.ForEach(entries, po, e =>
         {
             var search = searches.Value!;
@@ -121,7 +123,7 @@ public static class HlpBuilder
                 var t = g.Types[h];
                 // settlement slot hexes are slottlement types (4, 7-9) in the game's grid: neither land nor sea here
                 int area = regions.AreaMap[h];
-                if (t > 1 || g.Slot[h]) return AiSearch.Visit.Continue;
+                if (t > 1 || g.Slot[h] || !hlpAreas.Contains(area)) return AiSearch.Visit.Continue;
                 if (area == e.Aid) { if (c > b) b = c; return AiSearch.Visit.Continue; }
                 if (!segIndex.TryGetValue(area, out var seg))
                 {

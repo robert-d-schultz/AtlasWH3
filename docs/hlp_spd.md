@@ -118,6 +118,12 @@ prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and 
     segment's transition vector). A pair that made none is tried again from the other area, whose border clusters
     can find one.
   - Identical areas from these: IEE 944 → 965, Old World 1,419 → 1,491, Classic 801 → 853, combi 1–7 +15 to +17.
+  - **Port links** join hexes of game type 5 only (expansion `0x141e3b100` / `0x1424d73e4`). A port hex inside a
+    settlement's slot area is retyped (5 → 7) and neither starts nor ends a link. IEE's one remaining area,
+    (148,9), followed such a link to (1189,289) in its border search. The extra push reordered a 16-hex tie at
+    cost 1,180 and with it the order of its transitions (`probe.py --popseq 148,9 --relax`, 2026-10-11).
+  - **Border search** (`0x1429f1500`, visitor `0x142a03ae8`): a hex whose area is no hlp area (map_data types
+    other than 0, 3, 4) is expanded like any other; only land and sea hexes of other hlp areas are border hexes.
   - **Centre paths** (`probe.py --centre`, 2026-10-10). The game picks one of four searches by which of the two
     areas has a settlement (its centre is the settlement):
     - Towards a settlement, the first search stops at the first settled hex exactly 3 hexes from it (goal
@@ -198,15 +204,12 @@ are exact on every map checked, so every difference left comes from a differing 
 
 | map | hlp_data.esf | areas | region costs | region hops |
 |---|---|---|---|---|
-| prologue, chaos 1–4, combi 1–5, 7, Old World Classic, Darklands | byte-identical | all | 100 % | 100 % |
-| IEE | 1 area (transition order) | 1,067 / 1,068 | 100 % | 100 % |
-| Old World | 1 matrix value | 1,702 / 1,703 | 100 % | 100 % |
+| prologue, chaos 1–4, combi 1–5, 7, IEE, Old World Classic, Darklands | byte-identical | all | 100 % | 100 % |
+| Old World | 1 matrix value (the exe's stamp-wrap bug, below) | 1,702 / 1,703 | 100 % | 100 % |
 
 Prologue, chaos 1–4, combi 1–4 and Darklands are with `--legacy-centre`; the others with the current rule.
 
 Open on hlp:
-- IEE: (148,9) creates its (779,1) and (779,3) transitions in the other order. Its phase-1 search finds both areas
-  at cost 1,180 in one big tie, and the game's pop order differs from ours.
 - Old World: area (1044,2)'s matrix value from (1632,22) to (1580,23) is 6,800 in CA's file, and the game computes
   6,800 again (its own matrix in memory, `probe.py` 2026-10-11). The optimum, ours, is 6,576.
   - The grid on that route equals the game's (both navigation bits, area records), and `probe.py --matrix 10,2,3`
