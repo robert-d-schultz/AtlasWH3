@@ -10,8 +10,8 @@ public sealed class CampaignBuildPipeline
 {
     public sealed record StepOutcome(string Step, string Status, StepResult? Result, IReadOnlyList<string> Problems);
 
-    /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phases 3 and 6). A
-    /// <see cref="PendingStep"/> is not native yet (none is left).</summary>
+    /// <summary>All WH3 steps, in dependency order (docs/atlaswh3_plan.md §2 and Phases 3 and 6); a build with no
+    /// steps named runs every one.</summary>
     public static IReadOnlyList<ICampaignBuildStep> AllSteps { get; } =
     [
         new HeightmapsStep(),
@@ -30,9 +30,6 @@ public sealed class CampaignBuildPipeline
         new AiPathfinding.AiPathfindingStep(),
     ];
 
-    /// <summary>Steps that run when none are named: every one that is native.</summary>
-    public static IEnumerable<ICampaignBuildStep> NativeSteps => AllSteps.Where(s => s is not PendingStep);
-
     public static ICampaignBuildStep Find(string name) =>
         AllSteps.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
         ?? throw new ArgumentException($"Unknown step '{name}'. Steps: {string.Join(", ", AllSteps.Select(s => s.Name))}");
@@ -46,7 +43,7 @@ public sealed class CampaignBuildPipeline
 
     public IReadOnlyList<StepOutcome> Run(CampaignBuildContext ctx, IEnumerable<string>? stepNames = null)
     {
-        var steps = stepNames is null ? NativeSteps.ToList() : stepNames.Select(Find).Distinct().ToList();
+        var steps = stepNames is null ? AllSteps.ToList() : stepNames.Select(Find).Distinct().ToList();
         var selected = steps.Select(s => s.Name).ToHashSet();
         var outcomes = new ConcurrentDictionary<string, StepOutcome>();
         var tasks = new Dictionary<string, Task>();
@@ -125,7 +122,7 @@ public sealed class CampaignBuildPipeline
         return AllSteps.Where(s => wanted.Contains(s.Name)).Select(s => s.Name).ToList();
     }
 
-    /// <summary>Pre-flight report for every step (what <c>bob_diagnose</c> used to check).</summary>
-    public static IReadOnlyList<(string Step, bool Native, IReadOnlyList<string> Problems)> Diagnose(CampaignBuildContext ctx) =>
-        AllSteps.Select(s => (s.Name, s is not PendingStep, s.CheckInputs(ctx))).ToList();
+    /// <summary>Pre-flight report for every step: its missing inputs.</summary>
+    public static IReadOnlyList<(string Step, IReadOnlyList<string> Problems)> Diagnose(CampaignBuildContext ctx) =>
+        AllSteps.Select(s => (s.Name, s.CheckInputs(ctx))).ToList();
 }

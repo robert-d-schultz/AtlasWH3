@@ -120,16 +120,3 @@ public sealed class LookupStep : ICampaignBuildStep
             .Select(g => g.First())
             .ToList();
 }
-
-/// <summary>A BOB action whose algorithm has not been reverse-engineered yet (Phase 2).</summary>
-/// <param name="preflight">Optional check of the BOB action's own inputs, so <c>diagnose</c> reports them before BOB runs.</param>
-public sealed class PendingStep(string name, string bobAction, string[] dependsOn, string whatIsMissing,
-                                Func<CampaignBuildContext, IEnumerable<string>>? preflight = null) : ICampaignBuildStep
-{
-    public string Name => name;
-    public string ReplacesBobAction => bobAction;
-    public IReadOnlyList<string> DependsOn => dependsOn;
-    public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx) =>
-        [$"not native yet: {whatIsMissing}", .. preflight?.Invoke(ctx) ?? []];
-    public StepResult Run(CampaignBuildContext ctx) => throw new NotSupportedException($"Step '{name}' is not native yet: {whatIsMissing}");
-}

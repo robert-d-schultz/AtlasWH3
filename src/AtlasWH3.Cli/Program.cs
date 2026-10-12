@@ -175,13 +175,13 @@ static int DiagnoseCampaign(ProjectPaths paths, string[] a)
     if (json)
         Console.WriteLine(JsonSerializer.Serialize(report.Select(r => new
         {
-            step = r.Step, native = r.Native, ready = r.Problems.Count == 0, problems = r.Problems,
+            step = r.Step, ready = r.Problems.Count == 0, problems = r.Problems,
             replaces = CampaignBuildPipeline.Find(r.Step).ReplacesBobAction,
         }), new JsonSerializerOptions { WriteIndented = true }));
     else
         foreach (var r in report)
         {
-            Console.WriteLine($"{r.Step,-13} {(r.Native ? "native " : "PENDING")} {(r.Problems.Count == 0 ? "ready" : "")}");
+            Console.WriteLine($"{r.Step,-18} {(r.Problems.Count == 0 ? "ready" : "not ready")}");
             foreach (var p in r.Problems) Console.WriteLine($"    ! {p}");
         }
     return 0;

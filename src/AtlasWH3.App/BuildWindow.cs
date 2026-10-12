@@ -337,12 +337,12 @@ public sealed class BuildWindow : Window
         var p = _project!;
         var profile = p.Build;
         var steps = profile.Steps.Count > 0 ? profile.Steps.ToHashSet(StringComparer.OrdinalIgnoreCase)
-                                            : CampaignBuildPipeline.NativeSteps.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                                            : CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         AddRow(_tree.Items, "validate", BuildSegment.Validate, "Validate", InfoCard.For("build.validate"), true, null);
         AddCustom(CustomStepStage.BeforeCompile);
         var compile = AddRow(_tree.Items, "compile", BuildSegment.Compile, "Compile", InfoCard.For("build.compile"), true, null);
-        foreach (var step in CampaignBuildPipeline.NativeSteps)
+        foreach (var step in CampaignBuildPipeline.AllSteps)
             AddRow(compile.Item.Items, "compile:" + step.Name, BuildSegment.Compile, step.Name,
                    InfoCards.BuildStepKey(step.Name) is { } key ? InfoCard.For(key) : InfoCard.Make(step.Name, $"Replaces BOB {step.ReplacesBobAction}."), steps.Contains(step.Name),
                    on => SetStep(step.Name, on)).Step = step.Name;
@@ -395,7 +395,7 @@ public sealed class BuildWindow : Window
 
     private void SetStep(string step, bool on)
     {
-        var all = CampaignBuildPipeline.NativeSteps.Select(s => s.Name).ToList();
+        var all = CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToList();
         var ticked = _rows.Values.Where(r => r.Step is not null && r.Check.IsChecked == true).Select(r => r.Step!).ToList();
         _project!.Build.Steps = ticked.Count == all.Count ? [] : ticked;
         MarkDirty();
