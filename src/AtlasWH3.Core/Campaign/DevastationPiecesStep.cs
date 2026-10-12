@@ -102,8 +102,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                     var project = TerryProject.Load(TerryFileOf(ctx, devastated));
                     devastatedObjects = Objects(ctx, project, devastated, Packs, devastatedNotes);
                     var log = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, m => ctx.Log($"{devastated}: {m}")) { Cancel = ctx.Cancel };
+                    var pieceNotes = new List<string>();
                     pieceAt = Write(project, rel => Terrain(build!, devastated, rel), Compiled(build!, TreeExporter.PackPath(devastated)),
-                                    outDir!, TileDb, log, devastatedWritten, devastatedNotes, devastatedObjects);
+                                    outDir!, TileDb, log, devastatedWritten, pieceNotes, devastatedObjects);
+                    devastatedNotes.AddRange(pieceNotes.Select(n => $"{devastated}: {n}"));
                 });
         }
         catch (AggregateException e) when (e.InnerExceptions.Count == 1)
@@ -294,7 +296,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             ctx.Log($"{name}...");
             var bytes = File.ReadAllBytes(source);
             var layout = EventPieces.TextureLayout.Of(bytes);
-            if (!source.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"{name} cut from {source}");
+            // the fallback: a file no step of this build wrote (the devastated project's own come from the cache)
+            if (!source.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase) &&
+                source.StartsWith(ctx.Paths.AkWorkingDir, StringComparison.OrdinalIgnoreCase))
+                notes.Add($"{name} cut from {source}");
             Parallel.For(0, pieces.Count, new ParallelOptions { CancellationToken = ctx.Cancel }, i =>
             {
                 var texture = EventPieces.Layout(name, flipped, layout, maskW, maskH, pieces[i].Box);

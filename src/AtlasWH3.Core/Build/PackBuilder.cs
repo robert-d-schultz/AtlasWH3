@@ -55,7 +55,8 @@ public static class PackBuilder
     /// meshes), but only in a folder the overrides put at least one file in, so a build that did not make a folder's
     /// files never empties it. <paramref name="output"/> may be the base pack itself (written to a temp file, then
     /// swapped). Base files under an <paramref name="owned"/> prefix (a step's own files, e.g.
-    /// terrain/campaigns/&lt;map&gt;/models/river_) that the overrides don't have are always dropped.</summary>
+    /// terrain/campaigns/&lt;map&gt;/models/river_) that the overrides don't have are always dropped. The base pack's type
+    /// and dependency list are kept.</summary>
     public static Summary Merge(string basePack, string output, IReadOnlyDictionary<string, (string Rel, string Disk)> overrides,
                                 IEnumerable<string>? replaceDirs = null, IEnumerable<string>? owned = null)
     {
@@ -74,7 +75,7 @@ public static class PackBuilder
         }
         foreach (var (_, f) in overrides) sources.Add(PackWriter.FromDisk(f.Rel, f.Disk));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
-        PackWriter.Write(output, sources);
+        PackWriter.Write(output, sources, PackWriter.Header.Of(pack));
         var check = PackFile.Open(output);
         return new Summary(output, sources.Count, sources.Sum(s => s.Size), kept, replaced, overrides.Count - replaced, dropped,
                            sources.All(s => check.Contains(s.InternalPath)));

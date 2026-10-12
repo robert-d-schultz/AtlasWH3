@@ -210,6 +210,72 @@ public class BuildProjectTests : IDisposable
     }
 
     [Fact]
+    public void CleanOnlyDeletesFoldersInsideTheMapsFolder()
+    {
+        var (project, paths) = CompileProject();
+        var mapOut = Path.Combine(project.OutputDir(paths), "terrain", "campaigns", "m");
+        Write(mapOut, "pieces/event_1/mask", "x");
+        Write(mapOut + "_devastate_1", "keep", "x");
+        project.Build.Clean = [".", "", @"..\m_devastate_1", "pieces"];
+        new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
+        Assert.False(Directory.Exists(Path.Combine(mapOut, "pieces")));
+        Assert.True(Directory.Exists(mapOut));
+        Assert.True(File.Exists(Path.Combine(mapOut + "_devastate_1", "keep")));
+    }
+
+    [Fact]
+    public void BackupNeverDeletesTheProjectOrTheSources()
+    {
+        var (project, paths) = CompileProject();
+        project.Build.Backup = "{project}";
+        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
+        Assert.Equal("failed", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
+        Assert.True(File.Exists(project.FilePath));
+
+        project.Build.Backup = "{project}\\backups";   // its own folder beside the project: fine
+        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
+        Assert.Equal("ok", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
+        Assert.True(File.Exists(Path.Combine(_dir, "project", "backups", "raw_terrain", "m.terry")));
+    }
+
+    /// <summary>A project in its own folder over an empty kit with map m (its .terry only), output beside it.</summary>
+    private (BuildProject Project, ProjectPaths Paths) CompileProject()
+    {
+        var kit = Path.Combine(_dir, "kit");
+        Write(Path.Combine(kit, "raw_data", "terrain", "campaigns", "m"), "m.terry", "");
+        var paths = new ProjectPaths
+        {
+            MapName = "m", AssemblyKitRoot = kit, GameDataDir = Path.Combine(_dir, "game"),
+            OutputRoot = Path.Combine(_dir, "output"), CacheRoot = Path.Combine(_dir, "cache"),
+        };
+        var project = BuildProject.CreateDefault("m");
+        project.Build.Output = "{project}\\out";
+        Directory.CreateDirectory(Path.Combine(_dir, "project"));
+        project.Save(Path.Combine(_dir, "project", "m.atlaswh3"));
+        return (project, paths);
+    }
+
+    [Fact]
+    public void MergeKeepsTheBasePacksTypeAndDependencies()
+    {
+        var basePack = Path.Combine(_dir, "base.pack");
+        PackWriter.Write(basePack, [new PackWriter.Source("db/t/data", 1, s => s.WriteByte(7))],
+                         new PackWriter.Header(4, ["!a_dependency.pack", "other.pack"]));   // a movie pack
+        var update = Path.Combine(_dir, "update");
+        Write(update, "x.bin", "x");
+        var out1 = Path.Combine(_dir, "out.pack");
+        Assert.True(PackBuilder.Merge(basePack, out1, PackBuilder.Collect([(update, "terrain")], m => Assert.Fail(m))).Verified);
+        var pack = PackFile.Open(out1);
+        Assert.Equal(4u, pack.PackType);
+        Assert.Equal(["!a_dependency.pack", "other.pack"], pack.Dependencies);
+        Assert.Equal([(byte)7], pack.TryRead("db/t/data")!);
+        Assert.Equal("x", System.Text.Encoding.UTF8.GetString(pack.TryRead("terrain/x.bin")!));
+        // a new pack is a mod pack without dependencies
+        var fresh = PackFile.Open(PackBuilder.New(Path.Combine(_dir, "new.pack"), PackBuilder.FromFolder(update)).Pack);
+        Assert.Equal((PackWriter.ModPack, 0), (fresh.PackType, fresh.Dependencies.Count));
+    }
+
+    [Fact]
     public void CollectReportsMissingSources()
     {
         var missing = new List<string>();
