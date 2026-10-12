@@ -96,7 +96,32 @@ New IEE campaign (any faction), then:
 - [ ] rivers, including the 266 renumbered models
 - [ ] the camera height: zoom low across mountains and patched props (AtlasWH3's file replaces the hand-made one)
 - [ ] region lookup: hover regions, the minimap, the court and elector counts small maps
-- [ ] devastation: an event area devastates and restores (objects, tiles, trees, VFX), including `event_9ca317` and
-      `event_c14516` (their lava rivers)
+- [ ] devastation: an event area devastates and restores (objects, tiles, trees, VFX)
+- [ ] lava rivers: devastating one of the 12 `_fire` areas (table below) turns its listed rivers to lava, and restoring it
+      turns them back (e.g. `wh3_main_combi_province_southern_badlands_fire`, 3 rivers). The game switches only the
+      rivers a piece's `rivers` file lists; the build lists the devastated project's river splines whose material is
+      `cwb_campaign_river_lava`, by origin. Bloodfire Falls' `wh_campaign_lava` river is listed but, as in vanilla,
+      deleted by the swap (its material is not a water or blood river one). IEE's 7
+      `cr_campaign_water_plane_river_lava` rivers (x 950–1005, z 165–210) are lava all the time.
 - [ ] the AI moves (end several turns: armies by land and sea, ports, bridges)
 - [ ] no new script errors (`script_log_*.txt`)
+
+### The devastated project's rivers (2026-10-12)
+
+CA's devastated combi map holds all 206 rivers, each identical to the main map's (the 127 model files that differ do
+so only in two header padding bytes), 26 of them with `cwb_campaign_river_lava`: 25 whose origin is in one of 12
+`_fire` areas (vanilla's 25 `rivers` records) and `river_17eddb13a82fedf` at (418, 78), outside every area. Other
+rivers in fire areas (32) stay water.
+
+IEE's devastated project had only IEE's own 60 rivers (one, `18f1c9dc0448720`, with the main project's height from
+before 2026-10-03). It now holds all 266 main-project rivers, copied whole (same entity ids and positions; the game
+matches a record to the main map's river by x and z), the 26 above with the lava material, each in the layer of the
+event area its origin is in (IEE's own event mask), or `_global` (20). Backups of every layer touched:
+`projects\AtlasWH3 IEE\backups\*.2026-10-12.bak`. The build writes 25 records in 12 devastated pieces.
+
+| Area | Lava rivers |
+|---|---|
+| `the_abyssal_glacier_fire` | 5 |
+| `southern_badlands_fire`, `the_daemonium_hills_fire` | 3 each |
+| `western_jungles_fire`, `titan_peaks_fire`, `vanaheim_mountains_fire`, `southern_jungles_fire`, `bloodfire_falls_fire` | 2 each |
+| `the_turtle_isles_fire`, `mountains_of_hel_fire`, `the_black_flood_fire`, `the_shard_lands_fire` | 1 each |
