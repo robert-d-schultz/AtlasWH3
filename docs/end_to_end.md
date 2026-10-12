@@ -83,8 +83,7 @@ Undo: copy the backup over `data\!cr_immortal_empires_expanded.pack`.
 
 ## In game
 
-New IEE campaign (any faction), then (2026-10-12, the 13:05 build with the lava rivers: all passed; the devastated
-folder's empty `ENVIRONMENT_DEVASTATIONS`, commit 7b7f6c5, came after that build and has not been in game yet):
+New IEE campaign (any faction), then (2026-10-12, the build with the lava rivers: all passed):
 - [x] the campaign loads, no startpos crash
 - [x] terrain and sea: heights (BC6H `full_height_map`), lf normals, the coast, no seams at tile edges
 - [x] the sea floor under land in the far north (the fitted `patch_mask`; BOB's covered 1,925 of 1,941 rows)

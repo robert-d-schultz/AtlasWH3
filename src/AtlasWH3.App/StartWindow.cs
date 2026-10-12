@@ -91,7 +91,7 @@ public sealed class StartWindow : Window
                                 () => new Scene.SceneWindow(_paths).Show()).Spot("start.scene"));
         tiles.Children.Add(Tile(Theme.Glyph.Tiles, "Tile map (preview)", "Paint the campaign tile map hex by hex, with live validation.",
                                 () => new CampaignTileWindow(_paths).Show()).Spot("start.tiles"));
-        tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles", "Where battles start, settlement battle maps and redirects.",
+        tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles (preview)", "Where battles start, settlement battle maps and redirects.",
                                 () => CampaignBattlesWindow.Open(this, _paths)).Card("start.battles"));
         tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "Folders, linked mod packs, tile map source and game data.",
                                 OpenSettings).Card("start.settings").Spot("start.settingsTile"));
