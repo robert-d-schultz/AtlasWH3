@@ -30,6 +30,16 @@ public sealed class CampaignBuildContext
     /// zero. The devastated map's build only needs the blocks its pieces cut.</summary>
     public Func<int, int, bool>? HeightMapBlocks { get; init; }
 
+    /// <summary>heightmaps step: another project's .terry and its full_height_map.dds, compiled from that project's
+    /// current Height and HeightSea. A block whose 16 land and sea texels equal the other project's is copied from its
+    /// file instead of encoded (the encoder is deterministic per block). The devastated map differs from its main map in
+    /// about 9% of IEE's blocks.</summary>
+    public (string TerryFile, string HeightMap)? HeightMapReference { get; init; }
+
+    /// <summary>The steps of the build this context runs in (set by <see cref="CampaignBuildPipeline"/>; null outside
+    /// one): a step that can do another's work itself does it when that one is not selected.</summary>
+    public IReadOnlySet<string>? SelectedSteps { get; init; }
+
     /// <summary>devastation_pieces step: the devastated project whose pieces go into terrain\campaigns\&lt;it&gt;\pieces
     /// (its raw_data folder next to the map's). Null: &lt;map without _1&gt;_devastate_1 when that project exists;
     /// empty: none.</summary>

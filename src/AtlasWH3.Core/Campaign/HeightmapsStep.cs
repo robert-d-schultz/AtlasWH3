@@ -61,10 +61,12 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         var sea = TerrainComposite.Heights(project, "HeightSea");
         if (sea.Width != land.Width || sea.Height != land.Height)
             throw new InvalidDataException($"HeightSea is {sea.Width}x{sea.Height}, Height is {land.Width}x{land.Height}");
+        var reference = Reference(ctx, land, notes);
         ctx.Log("full_height_map.dds (BC6H)...");
         var heightPath = ctx.OutFile("full_height_map.dds");
-        WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"), ctx.HeightMapBlocks);
+        var copied = WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"), ctx.HeightMapBlocks, reference);
         if (ctx.HeightMapBlocks is not null) notes.Add("full_height_map.dds: only the blocks the build asked for are encoded, the rest are zero");
+        if (reference is not null) notes.Add($"full_height_map.dds: {copied} blocks copied from {ctx.HeightMapReference!.Value.HeightMap}");
         ctx.Cancel.ThrowIfCancellationRequested();
 
         ctx.Log("HeightShroud...");
@@ -92,10 +94,50 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         return (lo, hi);
     }
 
+    /// <summary>The reference land, sea and full_height_map.dds of <see cref="CampaignBuildContext.HeightMapReference"/>,
+    /// or null (with a note) when it does not apply: a file of another size, or older than the reference's sources.</summary>
+    private static HeightMapReference? Reference(CampaignBuildContext ctx, Raster<float> land, List<string> notes)
+    {
+        if (ctx.HeightMapReference is not { } r) return null;
+        var (terry, dds) = r;
+        if (!File.Exists(dds) || !File.Exists(terry)) { notes.Add($"full_height_map.dds: no reference {dds}, all blocks encoded"); return null; }
+        var project = TerryProject.Load(terry);
+        var sources = new[] { "Height", "HeightSea" }
+            .SelectMany(t => project.Find(t) is { } m ? TerrainComposite.Inputs(project, m).Select(i => i.Tif) : [])
+            .Append(terry);
+        if (File.GetLastWriteTimeUtc(dds) <= sources.Max(File.GetLastWriteTimeUtc))
+        {
+            notes.Add($"full_height_map.dds: {dds} is older than its sources, all blocks encoded");
+            return null;
+        }
+        var header = DdsHeader.BuildDx10(land.Width, land.Height, DdsHeader.DxgiBc6hSf16, true, Bc6h.BlockBytes);
+        var bytes = File.ReadAllBytes(dds);
+        if (bytes.Length != header.Length + (land.Width + 3) / 4 * ((land.Height + 3) / 4) * Bc6h.BlockBytes ||
+            !bytes.AsSpan(0, header.Length).SequenceEqual(header))
+        {
+            notes.Add($"full_height_map.dds: {dds} is not a {land.Width}x{land.Height} BC6H map, all blocks encoded");
+            return null;
+        }
+        ctx.Log("reference Height, HeightSea...");
+        Raster<float>? refLand = null, refSea = null;
+        Parallel.Invoke(() => refLand = TerrainComposite.Heights(project, "Height"),
+                        () => refSea = TerrainComposite.Heights(project, "HeightSea"));
+        if (refLand!.Width != land.Width || refLand.Height != land.Height || refSea!.Width != land.Width || refSea.Height != land.Height)
+        {
+            notes.Add($"full_height_map.dds: {terry}'s maps are another size, all blocks encoded");
+            return null;
+        }
+        return new HeightMapReference(refLand, refSea, bytes.AsMemory(header.Length));
+    }
+
+    /// <summary>Another project's composited land and sea maps (the same size) and its full_height_map.dds blocks.</summary>
+    public sealed record HeightMapReference(Raster<float> Land, Raster<float> Sea, ReadOnlyMemory<byte> Blocks);
+
     /// <summary>full_height_map.dds: BC6H_SF16, red = land, green = sea bed, bottom row first. <paramref name="blocks"/>
-    /// (block column, block row in file order) encodes only some blocks.</summary>
-    public static void WriteHeightMap(Raster<float> land, Raster<float> sea, string path, Action<double>? progress = null,
-                                      Func<int, int, bool>? blocks = null)
+    /// (block column, block row in file order) encodes only some blocks. A block whose texels equal
+    /// <paramref name="reference"/>'s is copied from it. Returns the number of blocks copied.</summary>
+    public static long WriteHeightMap(Raster<float> land, Raster<float> sea, string path, Action<double>? progress = null,
+                                      Func<int, int, bool>? blocks = null, HeightMapReference? reference = null)
     {
         int w = land.Width, h = land.Height;
         var red = new float[w * h];
@@ -105,10 +147,51 @@ public sealed class HeightmapsStep : ICampaignBuildStep
             Array.Copy(land.Data, (h - 1 - y) * w, red, y * w, w);
             Array.Copy(sea.Data, (h - 1 - y) * w, green, y * w, w);
         });
-        var data = Bc6h.Encode(red, green, w, h, progress, blocks);
+        int bw = (w + 3) / 4, bh = (h + 3) / 4;
+        var same = reference is null ? null : SameBlocks(land, sea, reference);
+        bool Wanted(int bx, int by) => blocks?.Invoke(bx, by) ?? true;
+        var data = Bc6h.Encode(red, green, w, h, progress, same is null ? blocks : (bx, by) => !same[by * bw + bx] && Wanted(bx, by));
+        long copied = 0;
+        if (same is not null)
+            for (var by = 0; by < bh; by++)
+                for (var bx = 0; bx < bw; bx++)
+                {
+                    var i = by * bw + bx;
+                    if (!same[i] || !Wanted(bx, by)) continue;
+                    reference!.Blocks.Span.Slice(i * Bc6h.BlockBytes, Bc6h.BlockBytes).CopyTo(data.AsSpan(i * Bc6h.BlockBytes));
+                    copied++;
+                }
         using var f = File.Create(path);
         f.Write(DdsHeader.BuildDx10(w, h, DdsHeader.DxgiBc6hSf16, true, Bc6h.BlockBytes));
         f.Write(data);
+        return copied;
+    }
+
+    /// <summary>Per block (file order), whether its 16 texels as <see cref="Bc6h.Encode"/> reads them (edges clamped)
+    /// are bit for bit the reference's, in both maps.</summary>
+    private static bool[] SameBlocks(Raster<float> land, Raster<float> sea, HeightMapReference reference)
+    {
+        int w = land.Width, h = land.Height, bw = (w + 3) / 4, bh = (h + 3) / 4;
+        var same = new bool[bw * bh];
+        Parallel.For(0, bh, by =>
+        {
+            for (var bx = 0; bx < bw; bx++)
+            {
+                var equal = true;
+                for (var j = 0; j < 4 && equal; j++)
+                {
+                    var row = (h - 1 - Math.Min(by * 4 + j, h - 1)) * w;
+                    for (var i = 0; i < 4 && equal; i++)
+                    {
+                        var k = row + Math.Min(bx * 4 + i, w - 1);
+                        equal = BitConverter.SingleToInt32Bits(land.Data[k]) == BitConverter.SingleToInt32Bits(reference.Land.Data[k]) &&
+                                BitConverter.SingleToInt32Bits(sea.Data[k]) == BitConverter.SingleToInt32Bits(reference.Sea.Data[k]);
+                    }
+                }
+                same[by * bw + bx] = equal;
+            }
+        });
+        return same;
     }
 
     /// <summary>shroud_heights.dds: R32_FLOAT, bottom row first.</summary>

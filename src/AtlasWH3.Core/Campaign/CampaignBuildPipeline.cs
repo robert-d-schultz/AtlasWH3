@@ -21,6 +21,8 @@ public sealed class CampaignBuildPipeline
         new MasksStep(),
         new Rivers.RiversStep(),
         new Props.GlobalPropsStep(),
+        new DevastatedTilesStep(),
+        new DevastatedHeightsStep(),
         new DevastationPiecesStep(),
         new LookupStep(),
         new CameraHeightmapStep(),
@@ -82,6 +84,7 @@ public sealed class CampaignBuildPipeline
                 {
                     AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
                     PatchMask = ctx.PatchMask, CampaignMapName = ctx.CampaignMapName, HeightMapBlocks = ctx.HeightMapBlocks,
+                    HeightMapReference = ctx.HeightMapReference, SelectedSteps = selected,
                     DevastatedMap = ctx.DevastatedMap, LookupLastRegions = ctx.LookupLastRegions,
                 };
                 var problems = step.CheckInputs(stepCtx);

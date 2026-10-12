@@ -34,13 +34,15 @@ namespace AtlasWH3.Core.Campaign;
 /// not a second campaign: its heightmaps, tile list, trees, global map and masks are built into the cache (no fake
 /// campaign_maps folder; map_data.esf is the main map's; full_height_map only where the pieces cut it), and its pieces,
 /// event_tiles, event_trees and event_area_mask.dds go into terrain\campaigns\&lt;map&gt;_devastate_1, which is all that
-/// folder ships besides environment_collection.xml (<see cref="EnvironmentStep"/>).
+/// folder ships besides environment_collection.xml (<see cref="EnvironmentStep"/>). The cache is built by the
+/// devastated_tiles and devastated_heights steps (<see cref="DevastatedTilesStep"/>), else here. The main map's pieces
+/// and the devastated project's are written in parallel.
 /// </summary>
 public sealed class DevastationPiecesStep : ICampaignBuildStep
 {
     public string Name => "devastation_pieces";
     public string ReplacesBobAction => "Devastation pieces";
-    public IReadOnlyList<string> DependsOn => ["heightmaps", "tile_list", "trees", "global_map", "masks"];
+    public IReadOnlyList<string> DependsOn => ["heightmaps", "tile_list", "trees", "global_map", "masks", "devastated_tiles", "devastated_heights"];
 
     /// <summary>Tree z is scaled by this before the event mask lookup (hex rows; as the tree heights' logic map lookup).</summary>
     public const float TreeZScale = 1.15476f;
@@ -61,45 +63,61 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         var notes = new List<string>();
         var written = new List<string>();
         var owns = new List<string> { Path.Combine(ctx.TerrainOutDir, "pieces", "event_") };
-        CampaignTileDatabase? db = null;
-        CampaignTileDatabase TileDb() => db ??= TileMapValidator.LoadDatabase(ctx.Paths);
-        PackSet? packs = null;
-        PackSet Packs() => packs ??= GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var db = new Lazy<CampaignTileDatabase>(() => TileMapValidator.LoadDatabase(ctx.Paths));
+        CampaignTileDatabase TileDb() => db.Value;
+        // one pack set per project: the two read their objects in parallel
+        PackSet Packs() => GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
 
         string? Compiled(string root, string relative) =>
             new[] { Path.Combine(root, relative), Path.Combine(ctx.Paths.AkWorkingDir, relative) }.FirstOrDefault(File.Exists);
         string? Terrain(string root, string map, string relative) => Compiled(root, Path.Combine("terrain", "campaigns", map, relative));
 
-        var main = TerryProject.Load(ctx.TerryFile);
-        var mainObjects = Objects(ctx, main, ctx.MapName, Packs, notes);
-        Write(main, rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
-              Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes,
-              mainObjects);
+        var devastated = DevastatedMapName(ctx);
+        var build = devastated is null ? null : DevastatedCache(ctx, devastated);
+        var outDir = devastated is null ? null : Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
+        Wh3GlobalPropsBuilder? mainObjects = null, devastatedObjects = null;
+        Func<float, float, int>? pieceAt = null;
+        var devastatedNotes = new List<string>();
+        var devastatedWritten = new List<string>();
+        try
+        {
+            Parallel.Invoke(
+                () =>
+                {
+                    var main = TerryProject.Load(ctx.TerryFile);
+                    mainObjects = Objects(ctx, main, ctx.MapName, Packs, notes);
+                    Write(main, rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
+                          Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes,
+                          mainObjects);
+                },
+                () =>
+                {
+                    if (devastated is null) return;
+                    // the parts of the devastated project's build that no step of this build did
+                    var left = new List<string>();
+                    if (ctx.SelectedSteps?.Contains("devastated_tiles") != true) left.AddRange(DevastatedTilesStep.Steps);
+                    if (ctx.SelectedSteps?.Contains("devastated_heights") != true) left.AddRange(DevastatedHeightsStep.Steps);
+                    if (left.Count > 0) BuildDevastated(ctx, devastated, left, devastatedNotes);
 
-        if (DevastatedMapName(ctx) is not { } devastated)
+                    var project = TerryProject.Load(TerryFileOf(ctx, devastated));
+                    devastatedObjects = Objects(ctx, project, devastated, Packs, devastatedNotes);
+                    var log = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, m => ctx.Log($"{devastated}: {m}")) { Cancel = ctx.Cancel };
+                    pieceAt = Write(project, rel => Terrain(build!, devastated, rel), Compiled(build!, TreeExporter.PackPath(devastated)),
+                                    outDir!, TileDb, log, devastatedWritten, devastatedNotes, devastatedObjects);
+                });
+        }
+        catch (AggregateException e) when (e.InnerExceptions.Count == 1)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(e.InnerExceptions[0]);
+        }
+
+        if (devastated is null)
             notes.Add($"no devastated project ({TerryFileOf(ctx, DevastatedName(ctx.MapName))}): only the main map's pieces");
         else
         {
-            // the devastated project's rasters, tile list and trees, built where they do not ship (BOB writes them into
-            // the fake campaign's working_data); full_height_map.dds only where the pieces cut it
-            var project = TerryProject.Load(TerryFileOf(ctx, devastated));
-            var build = Path.Combine(ctx.Paths.CacheRoot, "devastated", devastated);
-            var sub = new CampaignBuildContext(ctx.Paths with { MapName = devastated, TileMap = TileMapSource.Kit }, build,
-                                               m => ctx.Log($"{devastated}: {m}"))
-            {
-                Cancel = ctx.Cancel, AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, PatchMask = ctx.PatchMask,
-                CampaignMapName = ctx.MapName, HeightMapBlocks = HeightMapBlocks(project),
-            };
-            ctx.Log($"building {devastated} (cache {build})...");
-            foreach (var o in new CampaignBuildPipeline().Run(sub, ["heightmaps", "tile_list", "trees", "global_map", "masks"]))
-                if (o.Status != "ok") notes.Add($"{devastated} {o.Step}: {o.Status}: {string.Join("; ", o.Problems)}");
-
-            string? Source(string rel) => Terrain(build, devastated, rel);
-            var outDir = Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated);
-            owns.Add(Path.Combine(outDir, "pieces", "event_"));
-            var devastatedObjects = Objects(ctx, project, devastated, Packs, notes);
-            var pieceAt = Write(project, Source, Compiled(build, TreeExporter.PackPath(devastated)), outDir, TileDb, ctx, written, notes,
-                                devastatedObjects);
+            notes.AddRange(devastatedNotes);
+            written.AddRange(devastatedWritten);
+            owns.Add(Path.Combine(outDir!, "pieces", "event_"));
             if (mainObjects is not null && devastatedObjects is not null && pieceAt is not null)
             {
                 var lines = EventVfx(devastatedObjects.PieceVfx(pieceAt), mainObjects.MapWideVfx());
@@ -108,14 +126,39 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                 written.Add(path);
                 notes.Add($"event_vfx: {lines.Count} effects the devastated pieces bring that no map-wide object uses");
             }
-            if (Terrain(build, devastated, "event_area_mask.dds") is { } mask)
+            if (Terrain(build!, devastated, "event_area_mask.dds") is { } mask)
             {
-                var path = Path.Combine(outDir, "event_area_mask.dds");
+                var path = Path.Combine(outDir!, "event_area_mask.dds");
                 File.Copy(mask, path, true);
                 written.Add(path);
             }
         }
         return new StepResult(Name, written, notes, sw.Elapsed, owns);
+    }
+
+    /// <summary>Where the devastated project's rasters, tile list and trees are built: they do not ship (BOB writes them
+    /// into the fake campaign's working_data).</summary>
+    public static string DevastatedCache(CampaignBuildContext ctx, string devastated) =>
+        Path.Combine(ctx.Paths.CacheRoot, "devastated", devastated);
+
+    /// <summary>Builds <paramref name="steps"/> of the devastated project into <see cref="DevastatedCache"/>; a step that
+    /// does not succeed is a note. full_height_map.dds only where the pieces cut it, and most of its blocks are the main
+    /// map's: they are copied from this build's file.</summary>
+    public static void BuildDevastated(CampaignBuildContext ctx, string devastated, IReadOnlyList<string> steps, List<string> notes)
+    {
+        var project = TerryProject.Load(TerryFileOf(ctx, devastated));
+        var build = DevastatedCache(ctx, devastated);
+        var sub = new CampaignBuildContext(ctx.Paths with { MapName = devastated, TileMap = TileMapSource.Kit }, build,
+                                           m => ctx.Log($"{devastated}: {m}"))
+        {
+            Cancel = ctx.Cancel, AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, PatchMask = ctx.PatchMask,
+            CampaignMapName = ctx.MapName,
+            HeightMapBlocks = steps.Contains("heightmaps") ? HeightMapBlocks(project) : null,
+            HeightMapReference = (ctx.TerryFile, ctx.OutFile("full_height_map.dds")),
+        };
+        ctx.Log($"building {devastated}'s {string.Join(", ", steps)} (cache {build})...");
+        foreach (var o in new CampaignBuildPipeline().Run(sub, steps))
+            if (o.Status != "ok") notes.Add($"{devastated} {o.Step}: {o.Status}: {string.Join("; ", o.Problems)}");
     }
 
     /// <summary>A project's layer objects, for the pieces' objects / bmd_objects_sound files (the global_props builder;
@@ -132,11 +175,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), mapName, (0, 0, 0, 0), (_, _) => "");
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{mapName}: objects of {layers.Count} exported layers...");
-        foreach (var layer in layers)
-        {
-            ctx.Cancel.ThrowIfCancellationRequested();
-            builder.AddLayer(layer.FilePath!);
-        }
+        builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);
         notes.AddRange(builder.Notes.Distinct().Select(n => $"{mapName} objects: {n}"));
         return builder;
     }

@@ -1,6 +1,7 @@
 using AtlasWH3.Core.Campaign;
 using AtlasWH3.Formats.Dds;
 using AtlasWH3.Formats.Dds.Bc6hVendor;
+using AtlasWH3.Formats.Maps;
 using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.Tests;
@@ -146,6 +147,35 @@ public sealed class Bc6hTests
     {
         var (red, green) = Synthetic();
         Assert.Equal("BA054E9903E480DCBB77C4A8DEE8528FB06481EE0E37F6EC2256DE0E3E8F324D",Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Bc6h.Encode(red, green, 63, 47))));
+    }
+
+    /// <summary>A block whose texels are the reference's is copied from the reference's file; the result is the full
+    /// encode's.</summary>
+    [Fact]
+    public void WriteHeightMap_CopiesTheReferencesUnchangedBlocks()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            const int w = 63, h = 47;
+            var (red, green) = Synthetic();
+            var land = new Raster<float>(w, h, red);
+            var sea = new Raster<float>(w, h, green);
+            var refPath = Path.Combine(dir.FullName, "ref.dds");
+            HeightmapsStep.WriteHeightMap(land, sea, refPath);
+            var changed = new Raster<float>(w, h, (float[])red.Clone());
+            changed.Data[10 * w + 10] += 1;       // one block
+            changed.Data[46 * w + 62] -= 1;       // the clamped corner block
+            var full = Path.Combine(dir.FullName, "full.dds");
+            HeightmapsStep.WriteHeightMap(changed, sea, full);
+            var bytes = File.ReadAllBytes(refPath);
+            var reference = new HeightmapsStep.HeightMapReference(land, sea, bytes.AsMemory(DdsHeader.Read(bytes).DataOffset));
+            var reused = Path.Combine(dir.FullName, "reused.dds");
+            var copied = HeightmapsStep.WriteHeightMap(changed, sea, reused, reference: reference);
+            Assert.Equal(16 * 12 - 2, copied);
+            Assert.Equal(File.ReadAllBytes(full), File.ReadAllBytes(reused));
+        }
+        finally { dir.Delete(true); }
     }
 
     /// <summary>full_logic_map.compressed_map and shroud_heights.dds are BOB's bytes, on the IEE fixture.</summary>
