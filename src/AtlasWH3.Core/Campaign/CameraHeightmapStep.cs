@@ -43,8 +43,9 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     {
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
-        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && TreesStep.MapDataPath(ctx) is null)
-            missing.Add("the .terry has no world_width and there is no map_data.esf (CAIME's output) to take the width from");
+        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && TreesStep.MapData(ctx) is null)
+            missing.Add("the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf") +
+                        " to take the width from");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }
@@ -61,13 +62,11 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         if (!string.IsNullOrEmpty(settings.OutputTarget)) notes.Add($"cam_hmap_output_target '{settings.OutputTarget}' is ignored");
 
         var project = TerryProject.Load(ctx.TerryFile);
-        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException("no full_logic_map.compressed_map (run step 'heightmaps')");
-        var tileListPath = new[] { ctx.OutFile("tile_list.bin"), Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "tile_list.bin") }
-            .FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("no tile_list.bin (run step 'tile_list')");
-        foreach (var p in new[] { logicPath, tileListPath })
-            if (!p.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"read {p}");
+        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException("no full_logic_map.compressed_map in this build's output (run step 'heightmaps')");
+        var tileListPath = ctx.OutFile("tile_list.bin");
+        if (!File.Exists(tileListPath)) throw new FileNotFoundException("no tile_list.bin in this build's output (run step 'tile_list')");
         var tiles = TileList.Read(tileListPath);
-        var worldWidth = project.WorldWidth ?? MapDataBounds.Read(TreesStep.MapDataPath(ctx)!).Width;
+        var worldWidth = project.WorldWidth ?? MapDataBounds.Read(Formats.Esf.EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
 
         ctx.Log("height patches (packs)...");
         var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);

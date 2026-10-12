@@ -19,7 +19,7 @@ public class GlobalMapTests
         new() { MapName = map, AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData, ModPacks = modPacks };
 
     /// <summary>The whole step on Old World (2026-10-09): global_blend.dds, texture_arrays.xml and tile_list.bin
-    /// byte-identical to BOB's, with the root tile list taken from working_data.</summary>
+    /// byte-identical to BOB's, with BOB's root tile list as this build's.</summary>
     [Fact]
     public void Step_OldWorld_MatchesBob()
     {
@@ -29,6 +29,8 @@ public class GlobalMapTests
         try
         {
             var ctx = new CampaignBuildContext(Paths(OldWorld, OldWorldPack), target);
+            Directory.CreateDirectory(ctx.TerrainOutDir);
+            File.Copy(CompiledFormatTests.Built(OldWorld, "tile_list.bin"), ctx.OutFile("tile_list.bin"), true);
             Assert.Empty(new GlobalMapStep().CheckInputs(ctx));
             var result = new GlobalMapStep().Run(ctx);
             Assert.DoesNotContain(result.Notes, n => n.StartsWith("global_blend:") || n.StartsWith("texture group"));

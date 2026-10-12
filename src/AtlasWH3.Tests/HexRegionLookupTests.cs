@@ -6,12 +6,12 @@ namespace AtlasWH3.Tests;
 
 public class HexRegionLookupTests
 {
-    /// <summary>IEE's lookup (its map.hex over the map_data.esf bounds): every hex centre falls back in its own hex and
-    /// region, and the quadtree root spans the map.</summary>
+    /// <summary>IEE's lookup (its map.hex over the bounds of the map_data.esf its mod pack ships): every hex centre falls
+    /// back in its own hex and region, and the quadtree root spans the map.</summary>
     [Fact]
     public void Lookup_HexCentresMapBackToTheirHexAndRegion()
     {
-        var lookup = HexRegionLookup.ForMap(TestKits.Paths(TestKits.Iee), out var why);
+        var lookup = HexRegionLookup.ForMap(TestKits.Paths(TestKits.Iee, TestKits.IeePack), out var why);
         if (lookup is null) return;
         var hex = lookup.Hex;
         Assert.Equal((1600, 970), (hex.Width, hex.Height));

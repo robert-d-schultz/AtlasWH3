@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Xml.Linq;
 using AtlasWH3.Formats.Maps;
 
 namespace AtlasWH3.Core.Campaign.Props;
@@ -76,33 +74,28 @@ public sealed class HexRegionLookup
     }
 
     /// <summary>The lookup for a map: its map.hex and the map bounds BOB uses, the two vec2 values at the head of the
-    /// working map_data.esf (CAIME writes them from the campaign_map_playable_areas row; its floats can be an ulp off the
-    /// XML's decimal text, main190 986.05096 vs float(986.051), which moved one boundary prop). Without a map_data.esf the
-    /// row in EmpireDesignData is used. Null when neither is there. (WH3: Old World's playable-areas row carries IEE's
-    /// 1068.11 where its map_data.esf has 1367.396, and BOB follows the ESF.)</summary>
+    /// map's map_data.esf, as its mod pack ships it (CAIME writes them from the campaign_map_playable_areas row; its
+    /// floats can be an ulp off the row's decimal text, which moved one boundary prop on 3K's main190). Null, with the
+    /// reason, when either is missing. (Old World's playable-areas row carries IEE's 1068.11 where its map_data.esf has
+    /// 1367.396; BOB and the game follow the ESF.)</summary>
     public static HexRegionLookup? ForMap(ProjectPaths paths, out string reason)
     {
         var hexPath = Path.Combine(paths.AkDesignCampaignMapDir, "map.hex");
         if (!File.Exists(hexPath)) { reason = $"no {hexPath}"; return null; }
+        if (GameSetup.CampaignMapFile(paths, paths.MapName, "map_data.esf") is not { } esf)
+        {
+            reason = GameSetup.CampaignMapFileMissing(paths, paths.MapName, "map_data.esf");
+            return null;
+        }
+        if (EsfHeaderBounds(esf.Data) is not { } b) { reason = $"map_data.esf in {Path.GetFileName(esf.Pack)} has no map bounds"; return null; }
         reason = "";
-        if (EsfHeaderBounds(Path.Combine(paths.AkWorkingCampaignMapDir, "map_data.esf")) is { } esf)
-            return new HexRegionLookup(MapHexFile.Read(hexPath), esf.MinX, esf.MinY, esf.MaxX);
-        var areas = Path.Combine(paths.AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_map_playable_areas.xml");
-        if (!File.Exists(areas)) { reason = $"no map_data.esf and no {areas}"; return null; }
-        var row = XDocument.Load(areas).Descendants("campaign_map_playable_areas")
-            .FirstOrDefault(e => (string?)e.Element("mapname") == paths.MapName);
-        if (row is null) { reason = $"no map_data.esf and no campaign_map_playable_areas row for {paths.MapName}"; return null; }
-        float F(string n) => float.Parse((string?)row.Element(n) ?? "0", CultureInfo.InvariantCulture);
-        return new HexRegionLookup(MapHexFile.Read(hexPath), F("minx"), F("miny"), F("maxx"));
+        return new HexRegionLookup(MapHexFile.Read(hexPath), b.MinX, b.MinY, b.MaxX);
     }
 
     /// <summary>The first two vec2 values (ESF type 0x0c) of map_data.esf: (min x, min y), (max x, max y).</summary>
-    public static (float MinX, float MinY, float MaxX, float MaxY)? EsfHeaderBounds(string path)
+    public static (float MinX, float MinY, float MaxX, float MaxY)? EsfHeaderBounds(byte[] b)
     {
-        if (!File.Exists(path)) return null;
-        var b = new byte[4096];
-        int n;
-        using (var s = File.OpenRead(path)) n = s.Read(b, 0, b.Length);
+        var n = Math.Min(b.Length, 4096);
         for (var i = 0; i + 18 <= n; i++)
         {
             if (b[i] != 0x0c || b[i + 9] != 0x0c) continue;

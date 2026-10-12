@@ -15,8 +15,8 @@ namespace AtlasWH3.Core.Campaign.Trees;
 ///  - placement, ids and rotations by <see cref="CampaignTreeGenerator"/>;
 ///  - heights by <see cref="TreeHeightField"/>: the nearest full_logic_map texel, raised by the height patches of the
 ///    layers' props (read from the packs, not working_data).
-/// Inputs are loose files and packs, so there is no pack round trip: BOB's action read the logic map through the
-/// game's file system, i.e. from the installed pack.
+/// The logic map is this build's own, so there is no pack round trip: BOB's action read it through the game's file
+/// system, i.e. from the installed pack.
 /// </summary>
 public sealed class TreesStep : ICampaignBuildStep
 {
@@ -39,8 +39,7 @@ public sealed class TreesStep : ICampaignBuildStep
                 try { TerrainComposite.Inputs(project, map); }
                 catch (FileNotFoundException e) { missing.Add(e.Message); }
         }
-        if (MapDataPath(ctx) is null)
-            missing.Add($"missing {Path.Combine(ctx.Paths.AkWorkingDir, "campaign_maps", ctx.CampaignMapName, "map_data.esf")} (CAIME's output)");
+        if (MapData(ctx) is null) missing.Add(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf"));
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }
@@ -50,7 +49,7 @@ public sealed class TreesStep : ICampaignBuildStep
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
         var project = TerryProject.Load(ctx.TerryFile);
-        var bounds = MapDataBounds.Read(MapDataPath(ctx)!);
+        var bounds = MapDataBounds.Read(EsfTree.Read(MapData(ctx)!.Value.Data));
         var (map, palette) = TerrainComposite.Indexed(project, "CampaignTree");
         if (palette is null) throw new InvalidDataException("the CampaignTree map has no palette");
         var grid = HexGrid.ForTreeMap(map.Width, map.Height, bounds.Width);
@@ -64,8 +63,7 @@ public sealed class TreesStep : ICampaignBuildStep
         ReportUnknownColours(colours, db, ctx.Paths.ModPacks, notes);
 
         var logicPath = LogicMapPath(ctx);
-        if (logicPath is null) throw new FileNotFoundException("no full_logic_map.compressed_map (run step 'heightmaps')");
-        if (!logicPath.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"logic map from {logicPath}");
+        if (logicPath is null) throw new FileNotFoundException("no full_logic_map.compressed_map in this build's output (run step 'heightmaps')");
         var patches = TreeHeightField.LoadPatches(project, packs, notes);
         ctx.Cancel.ThrowIfCancellationRequested();
         ctx.Log("placing trees...");
@@ -80,18 +78,14 @@ public sealed class TreesStep : ICampaignBuildStep
         return new StepResult(Name, [path], notes, sw.Elapsed);
     }
 
-    /// <summary>map_data.esf: the build output's, else the kit's working_data (CAIME writes it there); of
-    /// <see cref="CampaignBuildContext.CampaignMapName"/>, the main map for a devastated project.</summary>
-    public static string? MapDataPath(CampaignBuildContext ctx) =>
-        new[] { Path.Combine(ctx.TargetRoot, "campaign_maps", ctx.CampaignMapName, "map_data.esf"),
-                Path.Combine(ctx.Paths.AkWorkingDir, "campaign_maps", ctx.CampaignMapName, "map_data.esf") }
-            .FirstOrDefault(File.Exists);
+    /// <summary>map_data.esf (CAIME's), as the map's mod pack ships it; of <see cref="CampaignBuildContext.CampaignMapName"/>,
+    /// the main map for a devastated project.</summary>
+    public static (byte[] Data, string Pack)? MapData(CampaignBuildContext ctx) =>
+        GameSetup.CampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf");
 
-    /// <summary>full_logic_map.compressed_map: this build's (step heightmaps), else the kit's working_data.</summary>
+    /// <summary>full_logic_map.compressed_map of this build (step heightmaps), or null.</summary>
     public static string? LogicMapPath(CampaignBuildContext ctx) =>
-        new[] { ctx.OutFile("full_logic_map.compressed_map"),
-                Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "full_logic_map.compressed_map") }
-            .FirstOrDefault(File.Exists);
+        ctx.OutFile("full_logic_map.compressed_map") is var path && File.Exists(path) ? path : null;
 
     /// <summary>Painted colours that no campaign_tree_ids row has: BOB places no tree there either, usually because the mod
     /// pack that defines them is not linked.</summary>

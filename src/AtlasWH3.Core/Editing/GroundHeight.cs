@@ -77,10 +77,9 @@ public sealed class GroundHeight
         var terry = Path.Combine(mapPaths.AkTerrainDir, mapName + ".terry");
         if (!File.Exists(terry)) { why = $"no {terry}"; return null; }
         var project = TerryProject.Load(terry);
-        var mapData = new[] { Path.Combine(paths.OutputRoot, "compiled", mapName, "campaign_maps", mapName, "map_data.esf"),
-                              Path.Combine(mapPaths.AkWorkingCampaignMapDir, "map_data.esf") }.FirstOrDefault(File.Exists);
-        float? width = project.WorldWidth ?? (mapData is null ? null : MapDataBounds.Read(mapData).Width);
-        if (width is null) { why = "the .terry has no world_width and there is no map_data.esf"; return null; }
+        float? width = project.WorldWidth ?? (GameSetup.CampaignMapFile(paths, mapName, "map_data.esf") is { } mapData
+            ? MapDataBounds.Read(Formats.Esf.EsfTree.Read(mapData.Data)).Width : null);
+        if (width is null) { why = "the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(paths, mapName, "map_data.esf"); return null; }
 
         var packs = Directory.Exists(paths.GameDataDir) ? GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks) : null;
         if (scene && packs is null) { why = "no game data folder for the props' height patches"; return null; }

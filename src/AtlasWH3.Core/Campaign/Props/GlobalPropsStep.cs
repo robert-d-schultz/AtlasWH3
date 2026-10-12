@@ -31,10 +31,10 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var project = TerryProject.Load(ctx.TerryFile);
         // the quadtree covers the map bounds of map_data.esf grown by the playable-areas row's quadtree_margin on every
         // side (CA's vanilla combi file and the user's GUI BOB runs: IEE -10..1078.11 x -10..758.57; 2026-10-10)
-        var bounds = HexRegionLookup.EsfHeaderBounds(Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, "map_data.esf")) is { } b
-            ? (b.MinX, b.MinY, b.MaxX, b.MaxY) : lookup.QuadRoot;
+        // (ForMap has read the same map_data.esf: it is there, with bounds)
+        var b = HexRegionLookup.EsfHeaderBounds(GameSetup.CampaignMapFile(ctx.Paths, ctx.MapName, "map_data.esf")!.Value.Data)!.Value;
         var (margin, marginFrom) = QuadtreeMargin(ctx);
-        var root = (bounds.Item1 - margin, bounds.Item2 - margin, bounds.Item3 + margin, bounds.Item4 + margin);
+        var root = (b.MinX - margin, b.MinY - margin, b.MaxX + margin, b.MaxY + margin);
         var builder = new Wh3GlobalPropsBuilder(packs, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
             Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), ctx.MapName, root,
             (x, z) => lookup.RegionAt(x, z) ?? NoRegion)

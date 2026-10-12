@@ -89,6 +89,7 @@ static void Help()
     Console.WriteLine("                                           pre-flight check of tile_map.png (exit 1 on errors)");
     Console.WriteLine("  hlp-spd [--in <dir>] [--out <dir>] [--compare <dir>] [--only hlp|spd]");
     Console.WriteLine("                                           hlp_data.esf and spd_data.esf from pathfinding.ppd and map_data.esf");
+    Console.WriteLine("                                           (the map's mod pack's, from --pack; --in: a folder of loose ones)");
     Console.WriteLine("  setup [--db <dir>] [--compiled <dir>] [--maps]   first-run data from the game install");
     Console.WriteLine();
     Console.WriteLine("Packs");

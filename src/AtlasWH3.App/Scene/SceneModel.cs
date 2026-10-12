@@ -460,10 +460,14 @@ public sealed class SceneModel
             var width = (double?)Project.WorldWidth;
             if (width is null)
             {
-                var mapData = Path.Combine((_paths with { MapName = Project.MapName }).AkWorkingCampaignMapDir, "map_data.esf");
-                if (File.Exists(mapData)) width = AtlasWH3.Formats.Esf.MapDataBounds.Read(mapData).Width;
+                if (GameSetup.CampaignMapFile(_paths, Project.MapName, "map_data.esf") is { } mapData)
+                    width = AtlasWH3.Formats.Esf.MapDataBounds.Read(AtlasWH3.Formats.Esf.EsfTree.Read(mapData.Data)).Width;
             }
-            if (width is null) { TerrainNote = "the .terry has no world_width and the kit has no map_data.esf"; return; }
+            if (width is null)
+            {
+                TerrainNote = "the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(_paths, Project.MapName, "map_data.esf");
+                return;
+            }
             Terrain = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Load(Project, width.Value);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException) { TerrainNote = "terrain not read: " + ex.Message; }

@@ -37,10 +37,9 @@ public sealed class GlobalMapStep : ICampaignBuildStep
         return missing;
     }
 
-    /// <summary>The root tile_list.bin: this build's, else the kit's working_data copy.</summary>
+    /// <summary>The root tile_list.bin of this build (step tile_list), or null.</summary>
     private static string? RootTileList(CampaignBuildContext ctx) =>
-        new[] { ctx.OutFile("tile_list.bin"), Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "tile_list.bin") }
-            .FirstOrDefault(File.Exists);
+        ctx.OutFile("tile_list.bin") is var path && File.Exists(path) ? path : null;
 
     public StepResult Run(CampaignBuildContext ctx)
     {
@@ -87,7 +86,7 @@ public sealed class GlobalMapStep : ICampaignBuildStep
             written.Add(listPath);
             notes.Add($"tile_list.bin: {subset.Records.Count} records (exclude_from_global_mesh tiles) from {root}");
         }
-        else notes.Add("no root tile_list.bin (this build or working_data); global_map\\tile_list.bin not written");
+        else notes.Add("no tile_list.bin in this build's output (step tile_list);global_map\\tile_list.bin not written");
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 
