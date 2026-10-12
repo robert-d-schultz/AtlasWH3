@@ -29,7 +29,7 @@ public sealed record ClampMove(string Id, double OldY, double NewY, string How)
 /// <summary>
 /// Clamp-to-ground math for props, independent of where the ground comes from (<see cref="GroundHeight"/>).
 /// A prop's model base is at y + scaleY · minY − (1 − share) · ground above the terrain (share = LF-offset part the
-/// shader adds, 0 for ordinary props), as <see cref="AtlasWH3.Core.Audit.MapAudit"/> measures it.
+/// shader adds, 0 for ordinary props).
 /// </summary>
 public static class GroundClamp
 {

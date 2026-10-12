@@ -71,10 +71,6 @@ switch (command)
         return NormalCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when Gp27Commands.Names.Contains(c):
         return Gp27Commands.Run(paths, c, args.Skip(1).ToArray());
-    case var c when LakeCommands.Names.Contains(c):
-        return LakeCommands.Run(paths, c, args.Skip(1).ToArray());
-    case var c when AuditCommands.Names.Contains(c):
-        return AuditCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when AssetCommands.Names.Contains(c):
         return AssetCommands.Run(paths, c, args.Skip(1).ToArray());
     case var c when TerryCommands.Names.Contains(c):
@@ -116,11 +112,6 @@ switch (command)
         Console.WriteLine("          entity-query [--type a,b] [--layer l] [--where ECX.f~v].. [--rect x0,z0,x1,z1] [--full] | entity-edit --ops <json>");
         Console.WriteLine("          entity-undo | entity-checkpoint <label> | entity-rollback <label> | entity-history   (generic Terry editing; --project <.terry>)");
         Console.WriteLine("          prefab-list [--filter s] | prefab-get <key>   the project database's prefab library (place/expand/make via entity-edit ops)");
-        Console.WriteLine("          lake-build [--project .terry] [--assets dir] [--hex map.hex --bounds minx,miny,maxx] [--layer l] [--apply]   raised lakes: one flat water mesh each + shore shaping");
-        Console.WriteLine("          sea-carve --at x,z [--radius r] [--depth d] [--apply]   sea inlet with banks above sea level: carve below 0 so sea water shows, drop its discs");
-        Console.WriteLine("          terrain-scale --at x,z [--radius r] --factor f [--apply]   scale an island/land mass's heights above sea level (props follow)");
-        Console.WriteLine("          river-bed [--min-depth d] [--apply]   lower navigable rivers' sea-map bed to >= d under the water (pale water fix)");
-        Console.WriteLine("          map-audit [--project .terry] [--out dir] [--checks a,b]   campaign map defects (heights, mountains, sea, regions, towns, duplicates, assets) + fix ops; --pack p for mod packs");
         Console.WriteLine("          asset-info <path> | asset-find <filter> [--ext e] | asset-preview <model> [--out png --size --yaw --pitch --lod]");
         Console.WriteLine("          asset-census [--ext .rigid_model_v2|.wsmodel|.material|.dds]   game assets (+ --mod-pack p, --asset-root dir)");
         Console.WriteLine("          terry-schema [--root <dir>].. [--out <json>]   regenerate the component schema from the kit's raw_data");
