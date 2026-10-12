@@ -40,8 +40,10 @@ reprocess about 20, with pack round trips between actions).
 - **Fixes over BOB:** `patch_mask.dds` covers the whole map (BOB's leaves a north band uncovered); the devastated map
   needs no fake second campaign; the camera height map builds; region lookups can move regions past the 1024 palette
   entries the game reads; quadtree cells use the models' real bounds.
-- **Loose files in, loose files out:** every step reads the kit's sources and the game and mod packs directly, so no
-  intermediate pack is installed between actions. Independent steps run in parallel.
+- **No working_data in between:** every step reads the kit's sources and the game and mod packs directly (CAIME's
+  `map_data.esf` and `pathfinding.ppd` from the map's mod pack), and a step's inputs from other steps only from this
+  build's output, never BOB's old files, so no intermediate pack is installed between actions. Independent steps run
+  in parallel.
 
 ### Projects, pack and install
 - A **project** (`.atlaswh3`) holds a map's build profile: Validate → Compile → Pack → Install, with your own commands

@@ -7,8 +7,9 @@
   BOB's output (byte or content parity), not in game.
 - **Start positions are not built.** `startpos.esf` still comes from the game (RPFM's start-position build, for
   example). Add it as a custom step after Pack if you need it.
-- **CAIME's files are inputs.** `map.hex`, `map_data.esf`, `pathfinding.ppd` and the region lookup `.bmp` come from
-  CAIME, as for BOB; the build does not write them.
+- **CAIME's files are inputs.** The build does not write `map.hex`, `map_data.esf`, `pathfinding.ppd` or the region
+  lookup `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (link it), and `map.hex` and the
+  lookup `.bmp` from the kit's EmpireDesignData and working_data folders.
 - **A new project builds into the kit's `working_data`**, as BOB does, and with a linked mod pack its Install replaces
   that pack in the game's `data` folder (keeping one backup copy, unless the project turns it off). Set the project's
   output to its own folder to leave `working_data` alone.
@@ -19,8 +20,8 @@
 - **Lookup textures:** the game reads only the first 1024 colours of a region lookup's palette. On a map with more
   regions than that (Old World), list the regions to move past entry 1024 in the build profile ("Lookup: regions past
   1024", CLI `--lookup-last`); the step names any region still past 1024.
-- **AI pathfinding:** `hlp_data.esf` and `spd_data.esf` are built from the kit's `map_data.esf` and `pathfinding.ppd`.
-  Keep those the same as the pack's. On Old World one hlp value differs from the game's own build, where the game's A*
+- **AI pathfinding:** `hlp_data.esf` and `spd_data.esf` are built from the `map_data.esf` and `pathfinding.ppd` in
+  the map's mod pack. On Old World one hlp value differs from the game's own build, where the game's A*
   has a bug; AtlasWH3 keeps the correct value.
 - **Camera height map:** the `camera_heightmap` step samples the logic heights and the layers' height patches the way
   BOB's action does, but not BOB's tile terrain, and it ignores `cam_hmap_apply_blur`. It is not byte-identical to

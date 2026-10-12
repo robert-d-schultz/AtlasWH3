@@ -50,10 +50,11 @@ own BC6H encoder, with about half the error of BOB's.
 
 - Windows 10 or 11, x64.
 - Total War: WARHAMMER III and its Assembly Kit, with your map's Terry project in `raw_data\terrain\campaigns\<map>`.
-- CAIME's files for the map in the kit's `working_data\campaign_maps\<map>`: `map.hex`, `map_data.esf`,
-  `pathfinding.ppd` and the region lookup `.bmp`, as for BOB.
-- Optional: your mod's `.pack`. Linked, it supplies the mod's DB tables, models and textures, and the build is merged
-  into a copy of it.
+- Your mod's `.pack`, linked. The build reads CAIME's `map_data.esf` and `pathfinding.ppd` from its
+  `campaign_maps\<map>\`, and the mod's DB tables, models and textures; and it merges the build into a copy of it.
+  (A vanilla map needs no mod pack: its files are in the game's packs.)
+- CAIME's `map.hex` in the kit's `raw_data\EmpireDesignData\campaign_maps\<map>`, and the region lookup `.bmp`
+  there or in `working_data\campaign_maps\<map>`.
 - Optional: the map's devastated project, `<map without _1>_devastate_1` beside it (or named in the project), for the
   devastated pieces.
 
