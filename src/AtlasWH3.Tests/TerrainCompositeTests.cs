@@ -48,6 +48,25 @@ public sealed class TerrainCompositeTests : IDisposable
         Assert.Equal([6f, 7, 8, 3, 5, 6], TerrainComposite.Heights(p, "HeightShroud").Data);
     }
 
+    /// <summary>300 rows: the parallel bands start at rows 128 and 256, inside the LZW strips of both layers (81 and 7
+    /// rows), which only decode from their first row.</summary>
+    [Fact]
+    public void Composites_BandsStartInsideLzwStrips()
+    {
+        var p = Project(Map("HeightShroud", "5x300", ("a", "1", "1"), ("b", "1", "0.5")),
+                        Map("EventAreaMask", "5x300", ("c", "1", "1")));
+        var a = new Raster<float>(5, 300, Enumerable.Range(0, 1500).Select(i => (float)i).ToArray());
+        var b = new Raster<float>(5, 300, Enumerable.Range(0, 1500).Select(i => (float)(i % 13)).ToArray());
+        TiffMap.WriteFloat32(Path.Combine(_dir, "t.height_shroud.a.tif"), a, lzw: true, rowsPerStrip: 81);
+        TiffMap.WriteFloat32(Path.Combine(_dir, "t.height_shroud.b.tif"), b, lzw: true, rowsPerStrip: 7);
+        Assert.Equal(a.Data.Select((v, i) => 0f + v + 0.5f * b.Data[i]), TerrainComposite.Heights(p, "HeightShroud").Data);
+
+        var c = new Raster<byte>(5, 300, Enumerable.Range(0, 1500).Select(i => (byte)(i % 251)).ToArray());
+        var palette = new TiffMap.Palette(new ushort[256], new ushort[256], new ushort[256]);
+        TiffMap.WritePalette8(Path.Combine(_dir, "t.event_area_mask.c.tif"), c, palette, lzw: true, rowsPerStrip: 81);
+        Assert.Equal(c.Data, TerrainComposite.Indexed(p, "EventAreaMask").Indices.Data);
+    }
+
     [Fact]
     public void Indexed_UpperLayersReplaceExcept255()
     {

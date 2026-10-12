@@ -12,7 +12,8 @@ namespace AtlasWH3.Formats.Terry;
 ///    above 0; the bottom layer comes out as itself (WH3_visual_map_decompiler docs/colour-overlay-blending.md);
 ///  - masks (CorruptionMask, SnowMask, PatchVisibilityMask) union: out += opacity · layer · (1 − out), in 0..1 floats,
 ///    truncated to 8 bits (BOB's snow_mask.dds of IEE's two layers is byte-identical with truncation, not rounding).
-/// Layers are read row by row, so a composite costs one output raster.
+/// Layers are read row by row, so a composite costs one output raster. Bands of rows are composited in parallel, each
+/// with its own handle on every layer (the LZW strips decode independently); a pixel sees its layers in the same order.
 /// </summary>
 public static class TerrainComposite
 {
@@ -43,24 +44,63 @@ public static class TerrainComposite
     private static TerryProject.TerrainMap Map(TerryProject project, string type) =>
         project.Find(type) ?? throw new InvalidDataException($"{project.Path} has no {type} map");
 
+    /// <summary>Rows per band of a parallel composite.</summary>
+    private const int BandRows = 128;
+
+    /// <summary>Checks every layer TIF (size, sample type), then runs <paramref name="band"/> on bands of rows in
+    /// parallel, each with its own readers of the layers (bottom first) and its rows [y0, y1). Returns the first layer's
+    /// palette that has one.</summary>
+    private static TiffMap.Palette? InBands(IReadOnlyList<string> tifs, int w, int h, int bits, SampleFormat format,
+                                           Action<Rows[], int, int> band)
+    {
+        TiffMap.Palette? palette = null;
+        foreach (var tif in tifs)
+        {
+            using var rows = new Rows(tif, w, h, bits, format);
+            palette ??= rows.Palette;
+        }
+        try
+        {
+            Parallel.For(0, (h + BandRows - 1) / BandRows, b =>
+            {
+                var readers = new Rows[tifs.Count];
+                try
+                {
+                    for (var l = 0; l < tifs.Count; l++) readers[l] = new Rows(tifs[l], w, h, bits, format);
+                    band(readers, b * BandRows, Math.Min(h, (b + 1) * BandRows));
+                }
+                finally { foreach (var r in readers) r?.Dispose(); }
+            });
+        }
+        catch (AggregateException e) when (e.InnerExceptions.Count == 1)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(e.InnerExceptions[0]);
+        }
+        return palette;
+    }
+
     /// <summary>A float height map (Height, HeightSea, HeightShroud): the sum of its layers.</summary>
     public static Raster<float> Heights(TerryProject project, string type)
     {
         var map = Map(project, type);
         var (w, h) = map.Size;
         var result = new Raster<float>(w, h);
-        foreach (var (layer, tif) in Inputs(project, map))
+        var inputs = Inputs(project, map);
+        InBands(inputs.Select(i => i.Tif).ToList(), w, h, 32, SampleFormat.IEEEFP, (readers, y0, y1) =>
         {
-            using var rows = new Rows(tif, w, h, 32, SampleFormat.IEEEFP);
             var line = new float[w];
-            for (var y = 0; y < h; y++)
+            for (var y = y0; y < y1; y++)
             {
-                rows.Read(y, line.AsSpan());
                 var o = result.Data.AsSpan(y * w, w);
-                if (layer.Opacity == 1f) for (var x = 0; x < w; x++) o[x] += line[x];
-                else for (var x = 0; x < w; x++) o[x] += layer.Opacity * line[x];
+                for (var l = 0; l < readers.Length; l++)
+                {
+                    readers[l].Read(y, line.AsSpan());
+                    var opacity = inputs[l].Layer.Opacity;
+                    if (opacity == 1f) for (var x = 0; x < w; x++) o[x] += line[x];
+                    else for (var x = 0; x < w; x++) o[x] += opacity * line[x];
+                }
             }
-        }
+        });
         return result;
     }
 
@@ -72,19 +112,19 @@ public static class TerrainComposite
         var (w, h) = map.Size;
         var result = new Raster<byte>(w, h);
         Array.Fill(result.Data, (byte)255);
-        TiffMap.Palette? palette = null;
-        foreach (var (_, tif) in Inputs(project, map))
+        var palette = InBands(Inputs(project, map).Select(i => i.Tif).ToList(), w, h, 8, SampleFormat.UINT, (readers, y0, y1) =>
         {
-            using var rows = new Rows(tif, w, h, 8, SampleFormat.UINT);
-            palette ??= rows.Palette;
             var line = new byte[w];
-            for (var y = 0; y < h; y++)
+            for (var y = y0; y < y1; y++)
             {
-                rows.Read(y, line.AsSpan());
                 var o = result.Data.AsSpan(y * w, w);
-                for (var x = 0; x < w; x++) if (line[x] != 255) o[x] = line[x];
+                foreach (var rows in readers)
+                {
+                    rows.Read(y, line.AsSpan());
+                    for (var x = 0; x < w; x++) if (line[x] != 255) o[x] = line[x];
+                }
             }
-        }
+        });
         return (result, palette);
     }
 
@@ -96,15 +136,14 @@ public static class TerrainComposite
         var inputs = Inputs(project, map);
         var result = new Raster<byte>(w, h);
         if (inputs.Count == 0) return result;
-        var acc = new float[w];
-        var line = new byte[w];
-        var readers = inputs.Select(i => new Rows(i.Tif, w, h, 8, SampleFormat.UINT)).ToList();
-        try
+        InBands(inputs.Select(i => i.Tif).ToList(), w, h, 8, SampleFormat.UINT, (readers, y0, y1) =>
         {
-            for (var y = 0; y < h; y++)
+            var acc = new float[w];
+            var line = new byte[w];
+            for (var y = y0; y < y1; y++)
             {
                 Array.Clear(acc);
-                for (var l = 0; l < readers.Count; l++)
+                for (var l = 0; l < readers.Length; l++)
                 {
                     readers[l].Read(y, line.AsSpan());
                     var opacity = inputs[l].Layer.Opacity;
@@ -113,8 +152,7 @@ public static class TerrainComposite
                 var o = result.Data.AsSpan(y * w, w);
                 for (var x = 0; x < w; x++) o[x] = (byte)(Math.Clamp(acc[x], 0f, 1f) * 255f);
             }
-        }
-        finally { foreach (var r in readers) r.Dispose(); }
+        });
         return result;
     }
 
@@ -125,36 +163,38 @@ public static class TerrainComposite
         var map = Map(project, type);
         var (w, h) = map.Size;
         var result = new Raster<uint>(w, h);
-        var first = true;
-        foreach (var (layer, tif) in Inputs(project, map))
+        var inputs = Inputs(project, map);
+        InBands(inputs.Select(i => i.Tif).ToList(), w, h, 8, SampleFormat.UINT, (readers, y0, y1) =>
         {
-            using var rows = new Rows(tif, w, h, 8, SampleFormat.UINT);
             var line = new uint[w];
-            for (var y = 0; y < h; y++)
-            {
-                rows.ReadRgba(y, line);
-                var o = result.Data.AsSpan(y * w, w);
-                if (first) { line.CopyTo(o); continue; }
-                for (var x = 0; x < w; x++)
-                {
-                    var top = line[x];
-                    var a = (top >> 24) / 255f * layer.Opacity;
-                    if (a <= 0) continue;
-                    var bottom = o[x];
-                    uint mixed = 0;
-                    for (var c = 0; c < 24; c += 8)
-                    {
-                        int t = (int)(top >> c) & 0xFF, b = (int)(bottom >> c) & 0xFF;
-                        var hl = HardLight(t, b);
-                        var v = a >= 1f ? hl : (int)MathF.Round(b + (hl - b) * a);
-                        mixed |= (uint)v << c;
-                    }
-                    o[x] = mixed | (Math.Max(top >> 24, bottom >> 24) << 24);
-                }
-            }
-            first = false;
-        }
+            for (var y = y0; y < y1; y++)
+                for (var l = 0; l < readers.Length; l++)
+                    Blend(readers[l], inputs[l].Layer.Opacity, l == 0, y, line, result.Data.AsSpan(y * w, w));
+        });
         return result;
+    }
+
+    /// <summary>One overlay row of a layer onto the ones below (the bottom layer is copied).</summary>
+    private static void Blend(Rows rows, float opacity, bool first, int y, uint[] line, Span<uint> o)
+    {
+        rows.ReadRgba(y, line);
+        if (first) { line.CopyTo(o); return; }
+        for (var x = 0; x < line.Length; x++)
+        {
+            var top = line[x];
+            var a = (top >> 24) / 255f * opacity;
+            if (a <= 0) continue;
+            var bottom = o[x];
+            uint mixed = 0;
+            for (var c = 0; c < 24; c += 8)
+            {
+                int t = (int)(top >> c) & 0xFF, b = (int)(bottom >> c) & 0xFF;
+                var hl = HardLight(t, b);
+                var v = a >= 1f ? hl : (int)MathF.Round(b + (hl - b) * a);
+                mixed |= (uint)v << c;
+            }
+            o[x] = mixed | (Math.Max(top >> 24, bottom >> 24) << 24);
+        }
     }
 
     /// <summary>Hard light of one 0..255 channel: top &lt; 128 multiplies, else screens.</summary>
@@ -166,7 +206,8 @@ public static class TerrainComposite
     {
         private readonly Tiff _tif;
         private readonly byte[] _row;
-        private readonly int _width, _samples;
+        private readonly int _width, _samples, _rowsPerStrip;
+        private int _next;
         public TiffMap.Palette? Palette { get; }
 
         public Rows(string path, int width, int height, int bits, SampleFormat format)
@@ -182,6 +223,7 @@ public static class TerrainComposite
             if (b != bits || f != format) throw new InvalidDataException($"{Path.GetFileName(path)} has {b}-bit {f} samples, expected {bits}-bit {format}");
             _samples = _tif.GetField(TiffTag.SAMPLESPERPIXEL)?[0].ToInt() ?? 1;
             _width = w;
+            _rowsPerStrip = Math.Clamp(_tif.GetField(TiffTag.ROWSPERSTRIP)?[0].ToInt() ?? h, 1, h);
             _row = new byte[_tif.ScanlineSize()];
             if (_tif.GetField(TiffTag.COLORMAP) is { } map)
                 Palette = new TiffMap.Palette(map[0].ToUShortArray(), map[1].ToUShortArray(), map[2].ToUShortArray());
@@ -190,7 +232,7 @@ public static class TerrainComposite
         public void Read<T>(int y, Span<T> line) where T : unmanaged
         {
             if (_samples != 1) throw new InvalidDataException($"{_tif.FileName()} has {_samples} samples per pixel, expected 1");
-            _tif.ReadScanline(_row, y);
+            Scanline(y);
             System.Runtime.InteropServices.MemoryMarshal.Cast<byte, T>(_row.AsSpan(0, line.Length * System.Runtime.CompilerServices.Unsafe.SizeOf<T>())).CopyTo(line);
         }
 
@@ -198,9 +240,24 @@ public static class TerrainComposite
         public void ReadRgba(int y, uint[] line)
         {
             if (_samples is not (3 or 4)) throw new InvalidDataException($"{_tif.FileName()} has {_samples} samples per pixel, expected RGB(A)");
-            _tif.ReadScanline(_row, y);
+            Scanline(y);
             for (int x = 0, i = 0; x < _width; x++, i += _samples)
                 line[x] = _row[i] | (uint)_row[i + 1] << 8 | (uint)_row[i + 2] << 16 | (_samples == 4 ? (uint)_row[i + 3] << 24 : 0xFF000000u);
+        }
+
+        /// <summary>Row <paramref name="y"/> into _row. LZW strips only decode from their first row, so a reader that
+        /// starts inside a strip (a band of a parallel composite) decodes the strip's rows before it first.</summary>
+        private void Scanline(int y)
+        {
+            if (y != _next)
+                for (var r = y - y % _rowsPerStrip; r < y; r++) ReadRow(r);
+            ReadRow(y);
+            _next = y + 1;
+
+            void ReadRow(int row)
+            {
+                if (!_tif.ReadScanline(_row, row)) throw new IOException($"{_tif.FileName()}: cannot read row {row}");
+            }
         }
 
         public void Dispose() => _tif.Dispose();
