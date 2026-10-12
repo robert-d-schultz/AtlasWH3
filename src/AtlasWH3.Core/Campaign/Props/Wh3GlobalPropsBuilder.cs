@@ -18,7 +18,8 @@ namespace AtlasWH3.Core.Campaign.Props;
 ///  - buckets are 16 × prefab_types value + 15 (props and VFX) or + 0 (everything else): an object goes to the bucket
 ///    of every culture in its culture_mask (BASE, value 1, when it has none; NONE, value 0, for a culture with no
 ///    prefab_types row), and the cell's reference to a bucket carries that culture's bit;
-///  - props whose model draws with an add_terrain_height material (the mountains) get a body each: buckets 640 + n;
+///  - props whose model draws with an add_terrain_height material (the mountains) get a body each: buckets 640 + n
+///    (<see cref="MountainBucket"/>);
 ///  - sound emitters go to global_props_sound.bin instead (bucket 16 bodies only, no cell or root bodies), with the
 ///    culture mask in the record.
 /// </summary>
@@ -93,6 +94,7 @@ public sealed class Wh3GlobalPropsBuilder
     private readonly PackSet _packs;
     private readonly PrefabLibrary _prefabs;
     private readonly IReadOnlyDictionary<string, int> _cultures;
+    private readonly int _mountainBucket;
     private readonly string _mapName;
     private readonly (float X0, float Z0, float X1, float Z1) _root;
     private readonly Func<float, float, string> _regionAt;
@@ -118,22 +120,29 @@ public sealed class Wh3GlobalPropsBuilder
         _packs = packs;
         _prefabs = prefabs;
         _cultures = cultures;
+        _mountainBucket = MountainBucket(cultures);
         _mapName = mapName;
         _root = root;
         _regionAt = regionAt;
     }
 
-    /// <summary>prefab_types (culture → value) from the kit's raw_data DB export.</summary>
-    public static Dictionary<string, int> ReadCultures(string akRoot)
+    /// <summary>prefab_types (culture → value) as the game reads it: prefab_types_tables of the map's mod packs and the
+    /// vanilla db, a higher-priority pack winning (IEE adds 23 cultures, values 39-61, to vanilla's 0-38).</summary>
+    public static Dictionary<string, int> ReadCultures(PackSet packs)
     {
-        var file = new[] { Path.Combine(akRoot, "raw_data", "db", "prefab_types.xml"), Path.Combine(akRoot, "raw_data", "EmpireDesignData", "prefab_types.xml") }
-            .FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("prefab_types.xml not found in the kit's raw_data");
         var result = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var row in XDocument.Load(file).Descendants("prefab_types"))
-            if ((string?)row.Element("culture") is { Length: > 0 } c && c != "*" && int.TryParse((string?)row.Element("value"), out var v))
-                result.TryAdd(c, v);
+        foreach (var (t, row) in Formats.Db.DbBinaryTable.PackRows(packs, "prefab_types_tables"))
+            if (t.Get(row, "culture") is string { Length: > 0 } c && c != "*" && t.Get(row, "value") is { } v)
+                result.TryAdd(c, Convert.ToInt32(v, CultureInfo.InvariantCulture));
+        if (result.Count == 0) throw new InvalidDataException("no prefab_types_tables rows in the game or mod packs");
         return result;
     }
+
+    /// <summary>The first mountain body's bucket: 640 in every BOB run (vanilla's prefab_types, values 0-38), past the
+    /// highest culture's buckets when a mod adds values (IEE's reach 16 × 61 + 15). The game finds a body by its name in
+    /// the cell body, so the number only has to be unique.</summary>
+    public static int MountainBucket(IReadOnlyDictionary<string, int> cultures) =>
+        Math.Max(640, 16 * ((cultures.Count == 0 ? 0 : cultures.Values.Max()) + 1));
 
     public void AddLayer(string layerPath) => AddLayer(XDocument.Load(layerPath).Root!);
 
@@ -711,7 +720,7 @@ public sealed class Wh3GlobalPropsBuilder
                     .Select(g => (g.Key, g.Select(p => p.O).ToList())).ToList();
                 var n = 0;
                 foreach (var o in items.Where(p => p.Bucket < 0).Select(p => p.O).OrderBy(o => o.Id).ThenBy(o => o.Sub))
-                    buckets.Add((640 + n++, [o]));
+                    buckets.Add((_mountainBucket + n++, [o]));
                 var cellBody = new Bmd27Body();
                 foreach (var (bucket, objs) in buckets)
                 {
@@ -719,7 +728,7 @@ public sealed class Wh3GlobalPropsBuilder
                     foreach (var o in objs.OrderBy(o => KindRank(o.Kind)).ThenBy(o => o.Id).ThenBy(o => o.Sub)) o.Add(body);
                     var name = $"{prefix}.{region}.{cellGroup.Key}.{bucket}.bin";
                     entries.Add((name, body.ToBytes()));
-                    cellBody.Nested.Add(new Bmd27Nested { Name = name, CultureMask = bucket >= 640 ? 1 : Bit(bucket / 16), Region = region });
+                    cellBody.Nested.Add(new Bmd27Nested { Name = name, CultureMask = bucket >= _mountainBucket ? 1 : Bit(bucket / 16), Region = region });
                 }
                 var cellName = $"{prefix}.{region}.{cellGroup.Key}.bin";
                 entries.Add((cellName, cellBody.ToBytes()));

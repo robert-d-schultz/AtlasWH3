@@ -172,8 +172,9 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             notes.Add($"{mapName}: no game data folder {ctx.Paths.GameDataDir}: no objects in the pieces");
             return null;
         }
-        var builder = new Wh3GlobalPropsBuilder(packs(), PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), mapName, (0, 0, 0, 0), (_, _) => "");
+        var packSet = packs();
+        var builder = new Wh3GlobalPropsBuilder(packSet, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
+            Wh3GlobalPropsBuilder.ReadCultures(packSet), mapName, (0, 0, 0, 0), (_, _) => "");
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{mapName}: objects of {layers.Count} exported layers...");
         builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);

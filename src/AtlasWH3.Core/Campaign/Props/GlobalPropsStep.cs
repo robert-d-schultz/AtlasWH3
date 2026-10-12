@@ -19,7 +19,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir} (models and materials)");
-        if (HexRegionLookup.ForMap(ctx.Paths, out var why) is null) missing.Add($"no map.hex region lookup: {why}");
+        if (HexRegionLookup.ForMap(ctx.Paths, out var why) is null) missing.Add($"no region lookup: {why}");
         return missing;
     }
 
@@ -36,7 +36,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var (margin, marginFrom) = QuadtreeMargin(ctx);
         var root = (b.MinX - margin, b.MinY - margin, b.MaxX + margin, b.MaxY + margin);
         var builder = new Wh3GlobalPropsBuilder(packs, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), ctx.MapName, root,
+            Wh3GlobalPropsBuilder.ReadCultures(packs), ctx.MapName, root,
             (x, z) => lookup.RegionAt(x, z) ?? NoRegion)
         {
             Trace = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
