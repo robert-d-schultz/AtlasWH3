@@ -238,9 +238,9 @@ public sealed class SceneModel
     private RegionMap? BuildRegions()
     {
         if (Terrain is not var (_, worldW, worldH)) { RegionsNote = "no terrain"; return null; }
-        var lookup = AtlasWH3.Core.Campaign.Props.HexRegionLookup.ForMap(_paths with { MapName = Project.MapName }, out var why);
+        var lookup = AtlasWH3.Core.Campaign.Props.HexRegionLookup.ForMapHex(_paths with { MapName = Project.MapName }, out var why);
         if (lookup is null) { RegionsNote = why; return null; }
-        var hex = lookup.Hex;
+        var hex = lookup.Hex!;
         int w = Math.Min(4096, hex.Width * 3), h = Math.Max(1, (int)Math.Round(w * worldH / worldW));
         var index = new int[w * h];
         Parallel.For(0, h, y =>
