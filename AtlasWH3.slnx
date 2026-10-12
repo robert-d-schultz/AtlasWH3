@@ -6,6 +6,5 @@
     <Project Path="src/AtlasWH3.Db/AtlasWH3.Db.csproj" />
     <Project Path="src/AtlasWH3.Formats/AtlasWH3.Formats.csproj" />
     <Project Path="src/AtlasWH3.Tests/AtlasWH3.Tests.csproj" />
-    <Project Path="src/AtlasWH3.Web/AtlasWH3.Web.csproj" />
   </Folder>
 </Solution>
