@@ -106,6 +106,41 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
         finally { dir.Delete(true); }
     }
 
+    /// <summary>AddLayers (layers parsed ahead on other threads) adds them as AddLayer one by one does, in order.</summary>
+    [Fact]
+    public void Builder_AddLayers_IsAddLayerInOrder()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var layers = Enumerable.Range(0, 12).Select(i =>
+            {
+                var path = Path.Combine(dir.FullName, $"l{i}.layer");
+                File.WriteAllText(path, $"""
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <layer version="41">
+                      <entities>
+                        <entity id="1000000000000{i:x2}">
+                          <ECPropMesh/><ECMesh model_path="rigidmodels/m{i % 3}.rigid_model_v2" opacity="1"/>
+                          <ECTransform position="{5 + i * 7} 0 {90 - i * 6}" rotation="0 {i * 30} 0" scale="1 1 1" pivot="0 0 0"/>
+                        </entity>
+                      </entities>
+                    </layer>
+                    """);
+                return path;
+            }).ToList();
+            Wh3GlobalPropsBuilder Builder() => new(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new Dictionary<string, int>(), "m", (0, 0, 100, 100), (_, _) => "r");
+            var one = Builder();
+            foreach (var l in layers) one.AddLayer(l);
+            var ahead = Builder();
+            ahead.AddLayers(layers);
+            Assert.Equal(12, ahead.ObjectCount);
+            Assert.Equal(one.BuildProps().Select(e => (e.Name, Convert.ToHexString(e.Body))),
+                         ahead.BuildProps().Select(e => (e.Name, Convert.ToHexString(e.Body))));
+        }
+        finally { dir.Delete(true); }
+    }
+
     /// <summary>Devastation pieces' objects files on a small layer: one flat body per bmd_export_type (a typed group's
     /// nested "sound" group included), .culture masks (0 for no culture, bit 63 for one without a prefab_types row),
     /// light probes and rivers left out, an entity turned about its pivot, a hole's (triangle count, mask) run, and the

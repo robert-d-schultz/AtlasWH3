@@ -43,11 +43,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         };
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{layers.Count} exported layers...");
-        foreach (var layer in layers)
-        {
-            ctx.Cancel.ThrowIfCancellationRequested();
-            builder.AddLayer(layer.FilePath!);
-        }
+        builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);
         ctx.Log($"{builder.ObjectCount:N0} objects, {builder.SoundCount:N0} sound emitters; writing...");
         var props = builder.BuildProps();
         var sound = builder.BuildSound();

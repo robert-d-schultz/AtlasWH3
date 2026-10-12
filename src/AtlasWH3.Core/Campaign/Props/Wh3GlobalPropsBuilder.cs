@@ -135,9 +135,27 @@ public sealed class Wh3GlobalPropsBuilder
         return result;
     }
 
-    public void AddLayer(string layerPath)
+    public void AddLayer(string layerPath) => AddLayer(XDocument.Load(layerPath).Root!);
+
+    /// <summary>Adds layer files in order; the next few are parsed on other threads meanwhile (parsing is most of a
+    /// layer's time, adding stays in order).</summary>
+    public void AddLayers(IReadOnlyList<string> layerPaths, CancellationToken cancel = default)
     {
-        var root = XDocument.Load(layerPath).Root!;
+        const int ahead = 8;
+        var loads = new Task<XDocument>?[layerPaths.Count];
+        Task<XDocument> Load(int i) => loads[i] ??= Task.Run(() => XDocument.Load(layerPaths[i]), cancel);
+        for (var i = 0; i < layerPaths.Count; i++)
+        {
+            for (var j = i; j < Math.Min(layerPaths.Count, i + ahead); j++) Load(j);
+            var doc = Load(i).GetAwaiter().GetResult();
+            loads[i] = null;
+            cancel.ThrowIfCancellationRequested();
+            AddLayer(doc.Root!);
+        }
+    }
+
+    private void AddLayer(XElement root)
+    {
         var entities = root.Element("entities")?.Elements("entity").ToList() ?? [];
         var hidden = HiddenMembers(root, entities);
         var types = TypedMembers(root, entities);
