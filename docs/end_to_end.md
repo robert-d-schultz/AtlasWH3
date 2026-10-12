@@ -40,6 +40,25 @@ Fixed after the user's second look: the main map's `environment_collection.xml` 
 layer `a_iee_environments` was corrected in the kit (backup in the project's `backups\`), and the devastated folder's
 file is now a copy of the main map's. Rebuilt with environment and pack only.
 
+## Dry run (2026-10-12, build speed)
+
+The same build, timed (4-core i5-6600K): 517 s before the changes below, 280-297 s after (runs vary by about 10 s).
+CPU work went from 1,371 to about 820 core-seconds. Every file in `out\` and the devastated cache is byte-identical
+to the 517 s run's, except `hlp_data.esf` / `spd_data.esf`, whose timestamp differs (their content was checked equal
+with the timestamp fixed).
+
+| Change | Effect |
+|---|---|
+| devastated full_height_map.dds copies the blocks whose texels are the main map's from its file | 8.6% of IEE's blocks differ; the devastated encode went from ~126 s to ~12 s |
+| BC6H: the error search stops at the error to beat; no arrays per line fit; the nearest palette entry 8 at a time (AVX) | encoder −34% |
+| layer TIFs composited in parallel bands (strip-aware readers) | Height 4.8 → 1.8 s, overlays 1.9 → 0.7 s |
+| devastated_tiles (from the start) and devastated_heights (after heightmaps) steps build the devastated project's cache; devastation_pieces writes both maps' pieces in parallel | devastation_pieces 231 → ~50 s |
+| .layer files parsed ahead on other threads (global_props, devastation objects) | |
+| hlp search: open-list positions instead of IndexOf | small |
+
+Left as they are: hlp's region tables (40 s solo, already parallel, parity-exact A*) and the tile matcher (sequential
+by design). The build is now bound by BC6H (~105 s of 4 cores solo) and contention while ten steps start at once.
+
 Checked before the run:
 - the kit's `map_data.esf` and `pathfinding.ppd` (hlp/spd's inputs) are byte-identical to today's pack's;
 - `!cr_immortal_empires_expanded_start_pos.pack` holds only `startpos.esf` and DB tables, nothing under
@@ -55,9 +74,9 @@ Checked before the run:
 
 1. Back up `data\!cr_immortal_empires_expanded.pack` (the user).
 2. Close Warhammer3.exe (Install refuses while it runs), and close the pack in RPFM.
-3. `AtlasWH3.Cli build --project "C:\Users\rob\Desktop\tw modding\projects\AtlasWH3 IEE\iee.atlaswh3"` (about 8.5
+3. `AtlasWH3.Cli build --project "C:\Users\rob\Desktop\tw modding\projects\AtlasWH3 IEE\iee.atlaswh3"` (about 5
    min), or the Build window with the project open. To install the dry run's pack as it is instead, use
-   `--segments install`. Only do that if the data folder's pack has not changed since the dry run (10:45 on 2026-10-11).
+   `--segments install`. Only do that if the data folder's pack has not changed since the dry run (01:42 on 2026-10-12).
 4. Install writes `data\!cr_immortal_empires_expanded.pack.tmp`, then swaps it in (3 GB free needed on D:).
 
 Undo: copy the backup over `data\!cr_immortal_empires_expanded.pack`.
