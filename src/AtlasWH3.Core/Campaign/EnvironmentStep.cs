@@ -9,7 +9,8 @@ namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
 /// environment_collection.xml (BOB "Terry file") for the map and, when there is one, its devastated project's folder,
-/// which gets the same file (BOB compiled the devastated project's own). It is the map's project compiled
+/// which gets the same file with an empty ENVIRONMENT_DEVASTATIONS, as vanilla's (BOB compiled the devastated project's
+/// own). It is the map's project compiled
 /// (WH3_visual_map_decompiler's EnvironmentVolumeWriter reads it back): <see cref="GlobalLighting"/>; a SPHERE or
 /// CYLINDER per ECEnvironmentVolume entity of the exported layers (ECDoubleSphere / ECDoubleCylinder radii, the entity
 /// position; a cylinder's height is dropped), in layer and entity order; and a DEVASTATION per name=path pair of the .terry's devastation_light_environments. Numbers are %f, lines CRLF, an empty
@@ -35,28 +36,30 @@ public sealed class EnvironmentStep : ICampaignBuildStep
         var written = new List<string>();
         var notes = new List<string>();
         var project = TerryProject.Load(ctx.TerryFile);
-        var (text, spheres, cylinders) = Build(project);
-        void Write(string outDir)
+        var (text, devastatedText, spheres, cylinders) = Build(project);
+        void Write(string outDir, string contents)
         {
             Directory.CreateDirectory(outDir);
             var path = Path.Combine(outDir, "environment_collection.xml");
-            File.WriteAllText(path, text, new UTF8Encoding(false));
+            File.WriteAllText(path, contents, new UTF8Encoding(false));
             written.Add(path);
         }
-        Write(ctx.TerrainOutDir);
+        Write(ctx.TerrainOutDir, text);
         notes.Add($"{project.MapName}: {spheres} spheres, {cylinders} cylinders");
-        // the devastated folder's file is the map's own, byte for byte (the user, 2026-10-11): an area keeps the map's
-        // lighting volumes when it devastates. BOB compiled it from the devastated project, whose volumes lag the map's.
+        // the devastated folder's file is the map's own (the user, 2026-10-11): an area keeps the map's lighting volumes
+        // when it devastates. BOB compiled it from the devastated project, whose volumes lag the map's. Its devastation
+        // lighting is left empty, as in vanilla's wh3_main_combi_map_devastate_1 (the user, 2026-10-12).
         if (DevastationPiecesStep.DevastatedMapName(ctx) is { } devastated)
         {
-            Write(Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated));
-            notes.Add($"{devastated}: a copy of {project.MapName}'s");
+            Write(Path.Combine(ctx.TargetRoot, "terrain", "campaigns", devastated), devastatedText);
+            notes.Add($"{devastated}: {project.MapName}'s without the devastation lighting");
         }
         return new StepResult(Name, written, notes, sw.Elapsed);
     }
 
-    /// <summary>The file's text and its volume counts.</summary>
-    public static (string Text, int Spheres, int Cylinders) Build(TerryProject project)
+    /// <summary>The map's file, the devastated folder's (the same but an empty ENVIRONMENT_DEVASTATIONS) and the volume
+    /// counts.</summary>
+    public static (string Text, string DevastatedText, int Spheres, int Cylinders) Build(TerryProject project)
     {
         var spheres = new List<string>();
         var cylinders = new List<string>();
@@ -83,13 +86,17 @@ public sealed class EnvironmentStep : ICampaignBuildStep
             .Select(kv => $"\t\t<DEVASTATION serialise_version='1' name='{Escape(kv[0].Trim())}' lighting='{Escape(kv[1].Trim())}'/>")
             .ToList();
 
-        var sb = new StringBuilder();
-        sb.Append($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{GlobalLighting}'>\r\n");
-        Section(sb, "ENVIRONMENT_SPHERES", spheres);
-        Section(sb, "ENVIRONMENT_CYLINDERS", cylinders);
-        Section(sb, "ENVIRONMENT_DEVASTATIONS", devastations);
-        sb.Append("</ENVIRONMENT_COLLECTION>\r\n");
-        return (sb.ToString(), spheres.Count, cylinders.Count);
+        string Text(List<string> devastationLines)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{GlobalLighting}'>\r\n");
+            Section(sb, "ENVIRONMENT_SPHERES", spheres);
+            Section(sb, "ENVIRONMENT_CYLINDERS", cylinders);
+            Section(sb, "ENVIRONMENT_DEVASTATIONS", devastationLines);
+            sb.Append("</ENVIRONMENT_COLLECTION>\r\n");
+            return sb.ToString();
+        }
+        return (Text(devastations), Text([]), spheres.Count, cylinders.Count);
     }
 
     private static void Section(StringBuilder sb, string name, List<string> lines)

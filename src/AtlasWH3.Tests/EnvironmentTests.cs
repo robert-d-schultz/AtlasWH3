@@ -17,11 +17,28 @@ public class EnvironmentTests
         var bob = Path.Combine(TestKits.Kit(map), "working_data", "terrain", "campaigns", map, "environment_collection.xml");
         if (!File.Exists(terry) || !File.Exists(bob)) return;
         var project = TerryProject.Load(terry);
-        var (text, spheres, cylinders) = EnvironmentStep.Build(project);
+        var (text, _, spheres, cylinders) = EnvironmentStep.Build(project);
         Assert.Equal((1, 65), (spheres, cylinders));
         Assert.StartsWith($"<ENVIRONMENT_COLLECTION serialise_version='4' global_lighting='{EnvironmentStep.GlobalLighting}'>\r\n", text);
         Assert.Equal(File.ReadAllText(bob).Replace($"global_lighting='{project.Setting("global_lighting")}'",
             $"global_lighting='{EnvironmentStep.GlobalLighting}'"), text);
+    }
+
+    /// <summary>The devastated folder's file is the map's but for an empty ENVIRONMENT_DEVASTATIONS, as vanilla's
+    /// wh3_main_combi_map_devastate_1; the map's lists every name=path pair of the .terry, IEE's devastation_beast too.</summary>
+    [Fact]
+    public void Build_IeeMap_DevastatedTextEmptiesOnlyTheDevastations()
+    {
+        const string map = "cr_combi_expanded_map_1";
+        var terry = Path.Combine(TestKits.Kit(map), "raw_data", "terrain", "campaigns", map, map + ".terry");
+        if (!File.Exists(terry)) return;
+        var (text, devastated, _, _) = EnvironmentStep.Build(TerryProject.Load(terry));
+        var start = text.IndexOf("\t<ENVIRONMENT_DEVASTATIONS>\r\n", StringComparison.Ordinal);
+        const string end = "\t</ENVIRONMENT_DEVASTATIONS>\r\n";
+        var stop = text.IndexOf(end, StringComparison.Ordinal) + end.Length;
+        Assert.True(start >= 0 && stop > start);
+        Assert.Contains("name='devastation_beast' lighting='Weather/et_beast_waagh.environment'", text[start..stop]);
+        Assert.Equal(text[..start] + "\t<ENVIRONMENT_DEVASTATIONS/>\r\n" + text[stop..], devastated);
     }
 
     /// <summary>Per type (the untyped files last), the effects no map-wide object uses, each once.</summary>
