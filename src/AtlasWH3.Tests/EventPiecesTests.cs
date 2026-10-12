@@ -120,4 +120,58 @@ public class EventPiecesTests
         }
         finally { if (Directory.Exists(ctx.TargetRoot)) Directory.Delete(ctx.TargetRoot, true); }
     }
+
+    private const string OldWorldDevastatePack = "!cr_oldworld_campaign_devastate.pack";
+
+    [Theory]
+    [InlineData("wh3_main_combi_map_1", "wh3_main_combi_map_devastate_1")]
+    [InlineData("wh3_main_combi_map_7", null)]   // wh3_main_combi's map_name, not its terrain_location
+    [InlineData("wh3_main_prologue_map", null)]
+    public void DevastatedFromDb_ReadsVanillaCampaigns(string map, string? devastated)
+    {
+        if (!Directory.Exists(TestKits.Wh3GameData)) return;
+        Assert.Equal(devastated, DevastationPiecesStep.DevastatedFromDb(new ProjectPaths { MapName = map, GameDataDir = TestKits.Wh3GameData }));
+    }
+
+    [Fact]
+    public void DevastatedFromDb_ReadsTheModPacks()
+    {
+        if (!File.Exists(TestKits.Pack(TestKits.IeePack)) || !File.Exists(TestKits.Pack(TestKits.OldWorldPack))
+            || !File.Exists(TestKits.Pack(OldWorldDevastatePack))) return;
+        Assert.Equal("cr_combi_expanded_map_devastate_1", DevastationPiecesStep.DevastatedFromDb(TestKits.Paths(TestKits.Iee, TestKits.IeePack)));
+        // the main pack's campaigns row leaves it empty; the devastate pack's row names it
+        Assert.Null(DevastationPiecesStep.DevastatedFromDb(TestKits.Paths(TestKits.OldWorld, TestKits.OldWorldPack)));
+        Assert.Equal("cr_oldworld_map_devastate_1",
+            DevastationPiecesStep.DevastatedFromDb(TestKits.Paths(TestKits.OldWorld, TestKits.OldWorldPack, OldWorldDevastatePack)));
+    }
+
+    [Fact]
+    public void DevastatedFromDb_UsesTheFirstOfSeveralAndReportsThem()
+    {
+        var iee = TestKits.Pack(TestKits.IeePack);
+        if (!File.Exists(iee)) return;
+        var pack = AtlasWH3.Formats.Packs.PackFile.Open(iee);
+        var table = pack.Entries.Keys.First(k => k.StartsWith(@"db\campaigns_tables\", StringComparison.Ordinal));
+        // the same row naming another devastated map (same length, so the string's length prefix still holds)
+        var bytes = pack.TryRead(table)!;
+        var from = System.Text.Encoding.UTF8.GetBytes("cr_combi_expanded_map_devastate_1");
+        var at = bytes.AsSpan().IndexOf(from);
+        Assert.True(at >= 0);
+        System.Text.Encoding.UTF8.GetBytes("cr_combi_expanded_map_devastate_2").CopyTo(bytes, at);
+        var dir = Path.Combine(Path.GetTempPath(), "atlaswh3_devastated_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var other = Path.Combine(dir, "!other.pack");
+            AtlasWH3.Formats.Packs.PackWriter.Write(other, [new AtlasWH3.Formats.Packs.PackWriter.Source(
+                @"db\campaigns_tables\other", bytes.Length, s => s.Write(bytes))]);
+            var paths = TestKits.Paths(TestKits.Iee, TestKits.IeePack);
+            paths = paths with { ModPacks = [other, .. paths.ModPacks] };
+            var errors = new List<string>();
+            Assert.Equal("cr_combi_expanded_map_devastate_2", DevastationPiecesStep.DevastatedFromDb(paths, errors));
+            var error = Assert.Single(errors);
+            Assert.Contains("cr_combi_expanded_map_devastate_1", error);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

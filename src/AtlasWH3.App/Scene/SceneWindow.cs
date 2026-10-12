@@ -39,6 +39,10 @@ public sealed partial class SceneWindow : Window
     private readonly TextBlock _resultInfo = new() { Foreground = Theme.Brush("DimText"), FontSize = 11, Visibility = Visibility.Collapsed };
     private List<string> _resultIds = [];
     private bool _loadedOnce;
+    private readonly System.Windows.Controls.Primitives.ToggleButton _devastated = new()
+    {
+        Content = "Devastated", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(6, 2, 2, 2), Visibility = Visibility.Collapsed,
+    };
 
     public SceneWindow(ProjectPaths paths, string? terryPath = null)
     {
@@ -64,7 +68,8 @@ public sealed partial class SceneWindow : Window
         var menu = new Menu().Spot("scene.menu");
         menu.Items.Add(MenuOf("_File",
             ("_Open Terry project…", (Action)OpenProject, "Ctrl+O"),
-            ("Open _campaign map", () => _ = Switch(null), ""),
+            ("Open _campaign map", () => _ = OpenCampaignMap(devastated: false), ""),
+            ("Open _devastated map", () => _ = OpenCampaignMap(devastated: true), ""),
             ("_Save terrain and tree edits", SaveAll, "Ctrl+S"),
             ("_Reload from disk", () => _ = LoadAsync(), "F5"),
             (null, null, null),
@@ -166,6 +171,8 @@ public sealed partial class SceneWindow : Window
     private UIElement SharedBar()
     {
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Background = Theme.Brush("Panel") };
+        _devastated.Click += (_, _) => _ = OpenCampaignMap(_devastated.IsChecked == true);
+        bar.Children.Add(_devastated.Card("scene.devastated"));
         var showHidden = new CheckBox
         {
             Content = "Show hidden layers", Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 2, 0),
@@ -375,6 +382,7 @@ public sealed partial class SceneWindow : Window
 
     private async Task LoadAsync()
     {
+        _ = SyncDevastated();
         _status.Text = "Loading " + Path.GetFileName(_model.TerryPath) + " …";
         try
         {
@@ -403,11 +411,62 @@ public sealed partial class SceneWindow : Window
 
     private async Task Switch(string? terryPath)
     {
-        if (!TerrainTools.ConfirmDiscard(this)) return;
+        if (!TerrainTools.ConfirmDiscard(this)) { await SyncDevastated(); return; }
         _model.Changed -= ModelChanged;
         _model = new SceneModel(_paths, terryPath);
         _selection.Clear();
         await LoadAsync();
+    }
+
+    /// <summary>The campaign map's devastated map as the db names it (<see cref="DevastationPiecesStep.DevastatedFromDb"/>),
+    /// read once per window.</summary>
+    private Task<(string? Map, string? Error)>? _devastatedLookup;
+
+    private Task<(string? Map, string? Error)> DevastatedLookup() => _devastatedLookup ??= Task.Run(() =>
+    {
+        try
+        {
+            var errors = new List<string>();
+            var map = DevastationPiecesStep.DevastatedFromDb(_paths, errors);
+            var error = errors.Count > 0 ? string.Join("; ", errors) : null;
+            if (error is not null) ErrorDialog.Log("Devastated map: " + error, null);
+            return (map, error);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or KeyNotFoundException or UnauthorizedAccessException)
+        {
+            ErrorDialog.Log("Could not read the devastated map from the db", e);
+            return ((string?)null, $"could not read the db: {e.Message}");
+        }
+    });
+
+    /// <summary>The devastated map's .terry in the kit (raw_data\terrain\campaigns\&lt;it&gt;), whose event-area pieces
+    /// devastation_pieces cuts. It has its own heights, blend, map.hex and tile_list.bin.</summary>
+    private string TerryOf(string map) => Path.GetFullPath(EntityEditor.CampaignTerryPath(_paths with { MapName = map }));
+
+    /// <summary>Switches to the campaign map or its devastated map.</summary>
+    private async Task OpenCampaignMap(bool devastated)
+    {
+        if (!devastated) { await Switch(null); return; }
+        var (map, error) = await DevastatedLookup();
+        if (map is null || !File.Exists(TerryOf(map)))
+        {
+            await SyncDevastated();
+            Status(map is null ? $"Devastated map: {error ?? $"no campaigns row with terrain_location {_paths.MapName} names a terrain_location_devastate"}."
+                : $"The db names {map} as {_paths.MapName}'s devastated map, but the kit has no {TerryOf(map)}", error: true);
+            return;
+        }
+        await Switch(TerryOf(map));
+        if (error is not null) Status($"Devastated map: {error}.", error: true);
+    }
+
+    /// <summary>The Devastated toggle: shown when the db names a devastated map the kit has, pressed while it is open.</summary>
+    private async Task SyncDevastated()
+    {
+        var (map, _) = await DevastatedLookup();
+        var path = map is null ? null : TerryOf(map);
+        _devastated.Visibility = path is not null && File.Exists(path) ? Visibility.Visible : Visibility.Collapsed;
+        _devastated.IsChecked = path is not null && _model.TerryPath.Equals(path, StringComparison.OrdinalIgnoreCase);
+        _devastated.Content = map is null ? "Devastated" : $"Devastated ({map})";
     }
 
     private void OpenProject()

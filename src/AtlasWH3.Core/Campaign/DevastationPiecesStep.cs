@@ -208,6 +208,24 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
 
     public static string DevastatedName(string map) => (map.EndsWith("_1", StringComparison.Ordinal) ? map[..^2] : map) + "_devastate_1";
 
+    /// <summary>The map's devastated terrain folder as the db names it (the linked mod packs, then the vanilla db packs):
+    /// campaigns.terrain_location_devastate of the campaigns whose terrain_location is the map. The first row that names
+    /// one wins, so an empty one (Old World's main pack, beside its devastate pack's row) does not hide it. Rows naming
+    /// different ones are an error in <paramref name="errors"/>, and the first is used. Null when no row names one.</summary>
+    public static string? DevastatedFromDb(ProjectPaths paths, List<string>? errors = null)
+    {
+        if (!Directory.Exists(paths.GameDataDir)) return null;
+        var packs = GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var named = Formats.Db.DbBinaryTable.PackRows(packs, "campaigns_tables")
+            .Where(r => string.Equals(r.Table.Get(r.Row, "terrain_location") as string, paths.MapName, StringComparison.OrdinalIgnoreCase))
+            .Select(r => (r.Table.Get(r.Row, "terrain_location_devastate") as string)?.Trim()).OfType<string>().Where(d => d.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (named.Count > 1)
+            errors?.Add($"campaigns rows with terrain_location {paths.MapName} name {named.Count} devastated maps " +
+                        $"({string.Join(", ", named)}); using {named[0]}");
+        return named.FirstOrDefault();
+    }
+
     public static string TerryFileOf(CampaignBuildContext ctx, string map) =>
         Path.Combine(ctx.Paths.AssemblyKitRoot, "raw_data", "terrain", "campaigns", map, map + ".terry");
 

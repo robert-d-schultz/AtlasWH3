@@ -5,6 +5,9 @@ public static partial class InfoCards
 {
     private static readonly Entry[] SceneCards =
     [
+        new("scene.devastated", "Devastated map",
+            "Switch to the map's devastated version and back. The db names it: campaigns.terrain_location_devastate of the campaign whose terrain_location is this map, from the linked packs and the game's db packs (if rows name several, the first is used and the error logged). It is its own Terry project with its own terrain, layers and undo history; the build cuts the event-area pieces from it. Also in File > Open devastated map."),
+
         // ---- add props
         new("scene.props.add", "Add props",
             "Pick a model from the game packs and linked mod packs, then click in the 2D or 3D view to place it as a new Prop in the active layer. Each placement is one undoable edit."),
