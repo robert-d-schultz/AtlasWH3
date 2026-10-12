@@ -83,28 +83,29 @@ Undo: copy the backup over `data\!cr_immortal_empires_expanded.pack`.
 
 ## In game
 
-New IEE campaign (any faction), then:
-- [ ] the campaign loads, no startpos crash
-- [ ] terrain and sea: heights (BC6H `full_height_map`), lf normals, the coast, no seams at tile edges
-- [ ] the sea floor under land in the far north (the fitted `patch_mask`; BOB's covered 1,925 of 1,941 rows)
-- [ ] shroud heights, colour overlay, sea colour, snow, corruption
-- [ ] tiles and roads; the global (zoomed-out) map's blend
-- [ ] trees in place, on the ground, under mountains' height patches
-- [ ] props in place; culture swaps (take a settlement with another culture); sounds
-- [ ] the pivoted props: `def_mountain_volcano_01`, the `ogr_large_mountain_01/02` group near (760, 310),
+New IEE campaign (any faction), then (2026-10-12, the 13:05 build with the lava rivers: all passed; the devastated
+folder's empty `ENVIRONMENT_DEVASTATIONS`, commit 7b7f6c5, came after that build and has not been in game yet):
+- [x] the campaign loads, no startpos crash
+- [x] terrain and sea: heights (BC6H `full_height_map`), lf normals, the coast, no seams at tile edges
+- [x] the sea floor under land in the far north (the fitted `patch_mask`; BOB's covered 1,925 of 1,941 rows)
+- [x] shroud heights, colour overlay, sea colour, snow, corruption
+- [x] tiles and roads; the global (zoomed-out) map's blend
+- [x] trees in place, on the ground, under mountains' height patches
+- [x] props in place; culture swaps (take a settlement with another culture); sounds
+- [x] the pivoted props: `def_mountain_volcano_01`, the `ogr_large_mountain_01/02` group near (760, 310),
       `campaign_vortex_tear`
-- [ ] rivers, including the 266 renumbered models
-- [ ] the camera height: zoom low across mountains and patched props (AtlasWH3's file replaces the hand-made one)
-- [ ] region lookup: hover regions, the minimap, the court and elector counts small maps
-- [ ] devastation: an event area devastates and restores (objects, tiles, trees, VFX)
-- [ ] lava rivers: devastating one of the 12 `_fire` areas (table below) turns its listed rivers to lava, and restoring it
+- [x] rivers, including the 266 renumbered models
+- [x] the camera height: zoom low across mountains and patched props (AtlasWH3's file replaces the hand-made one)
+- [x] region lookup: hover regions, the minimap, the court and elector counts small maps
+- [x] devastation: an event area devastates and restores (objects, tiles, trees, VFX)
+- [x] lava rivers: devastating one of the 12 `_fire` areas (table below) turns its listed rivers to lava, and restoring it
       turns them back (e.g. `wh3_main_combi_province_southern_badlands_fire`, 3 rivers). The game switches only the
       rivers a piece's `rivers` file lists; the build lists the devastated project's river splines whose material is
       `cwb_campaign_river_lava`, by origin. Bloodfire Falls' `wh_campaign_lava` river is listed but, as in vanilla,
       deleted by the swap (its material is not a water or blood river one). IEE's 7
       `cr_campaign_water_plane_river_lava` rivers (x 950–1005, z 165–210) are lava all the time.
-- [ ] the AI moves (end several turns: armies by land and sea, ports, bridges)
-- [ ] no new script errors (`script_log_*.txt`)
+- [x] the AI moves (end several turns: armies by land and sea, ports, bridges)
+- [x] no new script errors (`script_log_*.txt`)
 
 ### The devastated project's rivers (2026-10-12)
 

@@ -5,6 +5,11 @@ THREE KINGDOMS to Total War: WARHAMMER III. This document is the plan. Progress 
 
 Written 2026-10-06, at fork point `fork-point` (= Atlas3K `cdd0a08`, 0.1.0-alpha.2).
 
+**Status (2026-10-12, 1.0):** Phases 0–4 and 6 are done. Every step is native, and the IEE build went into the game
+on 2026-10-12 and passed every check of [`end_to_end.md`](end_to_end.md), which closes each "Left: the in-game check"
+below (the status notes are kept as written). Phase 5, the editors, is a long-term goal; they ship as a preview. §3 is
+the state at the fork.
+
 ## 1. Decisions so far
 
 | Question | Decision |
@@ -693,7 +698,8 @@ build comes first. The open items below stay as they are.
     - a bridge's whole deck run counts 500;
     - the region tables sum in wrapping u32 (Old World's unreachable matrix pairs are steps of −1);
     - the hop table's lower triangle is the land-only hop count.
-- [ ] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash).
+- [x] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash). Done 2026-10-12 in the IEE
+  pass ([`end_to_end.md`](end_to_end.md)).
   - `hlp_spd` is a pipeline step now (runs by default; inputs from the build output, else the kit's working_data).
   - IEE: 17 s through `build-campaign`.
   - Old World: 46 s and 3.8 GB peak (on the pack's inputs: the kit has no Old World `pathfinding.ppd`). The peak was
