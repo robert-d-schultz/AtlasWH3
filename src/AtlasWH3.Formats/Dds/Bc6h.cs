@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Runtime.Intrinsics;
 using AtlasWH3.Formats.Dds.Bc6hVendor;
 
 namespace AtlasWH3.Formats.Dds;
@@ -332,14 +334,15 @@ public static class Bc6h
             var bits = mode.EndpointBits();
             for (var s = 0; s < subsets; s++)
             {
-                LineEndpoints(partition, s, out var a, out var b);
-                for (var c = 0; c < 3; c++)
-                {
-                    _q[s * 6 + c] = Quantize(a[c], bits);
-                    _q[s * 6 + 3 + c] = Quantize(b[c], bits);
-                }
+                LineEndpoints(partition, s, out var ar, out var ag, out var br, out var bg);
+                _q[s * 6] = Quantize(ar, bits);
+                _q[s * 6 + 1] = Quantize(ag, bits);
+                _q[s * 6 + 2] = 0; // blue stays 0
+                _q[s * 6 + 3] = Quantize(br, bits);
+                _q[s * 6 + 4] = Quantize(bg, bits);
+                _q[s * 6 + 5] = 0;
             }
-            var err = Evaluate(mode, partition, _q, _idx);
+            var err = Evaluate(mode, partition, _q, _idx, double.MaxValue);
             if (err == double.MaxValue) return err;     // the line's endpoints do not fit this mode at all
             // least squares on the chosen indices, twice; Refit writes _q, so a refit that is no better (or does not fit
             // the mode) is undone
@@ -348,7 +351,7 @@ public static class Bc6h
             {
                 Array.Copy(_q, trial, 12);
                 Refit(mode, partition, _idx);
-                var e = Evaluate(mode, partition, _q, _trialIdx);
+                var e = Evaluate(mode, partition, _q, _trialIdx, err);
                 if (e < err) { err = e; Array.Copy(_trialIdx, _idx, 16); }
                 else { Array.Copy(trial, _q, 12); break; }
             }
@@ -363,7 +366,7 @@ public static class Bc6h
                     {
                         Array.Copy(_q, trial, 12);
                         trial[k] += step;
-                        var e = Evaluate(mode, partition, trial, _trialIdx);
+                        var e = Evaluate(mode, partition, trial, _trialIdx, err);
                         if (e < err) { err = e; Array.Copy(trial, _q, 12); Array.Copy(_trialIdx, _idx, 16); improved = true; }
                     }
                 }
@@ -373,7 +376,7 @@ public static class Bc6h
         }
 
         /// <summary>Endpoints of the principal axis through one subset, in the interpolation domain.</summary>
-        private void LineEndpoints(int partition, int subset, out double[] a, out double[] b)
+        private void LineEndpoints(int partition, int subset, out double ar, out double ag, out double br, out double bg)
         {
             double n = 0, mr = 0, mg = 0;
             for (var p = 0; p < 16; p++)
@@ -400,8 +403,8 @@ public static class Bc6h
                     var t = (_u[p * 3] - mr) * vx + (_u[p * 3 + 1] - mg) * vy;
                     tmin = Math.Min(tmin, t); tmax = Math.Max(tmax, t);
                 }
-            a = [mr + tmin * vx, mg + tmin * vy, 0];
-            b = [mr + tmax * vx, mg + tmax * vy, 0];
+            (ar, ag) = (mr + tmin * vx, mg + tmin * vy);
+            (br, bg) = (mr + tmax * vx, mg + tmax * vy);
         }
 
         /// <summary>Least-squares endpoints for fixed indices, written to _q.</summary>
@@ -452,8 +455,10 @@ public static class Bc6h
         }
 
         /// <summary>Picks the indices for quantized endpoints <paramref name="q"/> and returns the squared float error,
-        /// or MaxValue if the mode cannot store them (endpoint range, delta range).</summary>
-        private double Evaluate(Bc6Mode mode, int partition, int[] q, int[] idx)
+        /// or MaxValue if the mode cannot store them (endpoint range, delta range). Stops early with an error of at least
+        /// <paramref name="bound"/> once the sum reaches it (the terms are not negative, so the caller, which keeps only
+        /// an error below the bound, decides the same; idx is then incomplete).</summary>
+        private double Evaluate(Bc6Mode mode, int partition, int[] q, int[] idx, double bound)
         {
             var two = partition >= 0;
             var bits = mode.EndpointBits();
@@ -465,34 +470,64 @@ public static class Bc6h
             var levels = w.Length;
             Span<int> ep = stackalloc int[12];
             for (var k = 0; k < 12; k++) ep[k] = Unquantize(q[k], bits);
-            Span<float> palette = stackalloc float[16 * 2];
+            Span<float> red = stackalloc float[16], green = stackalloc float[16];
             var total = 0.0;
             for (var s = 0; s < (two ? 2 : 1); s++)
             {
                 for (var i = 0; i < levels; i++)
                 {
-                    palette[i * 2] = Finish(Interpolate(ep[s * 6], ep[s * 6 + 3], w[i]));
-                    palette[i * 2 + 1] = Finish(Interpolate(ep[s * 6 + 1], ep[s * 6 + 4], w[i]));
+                    red[i] = Finish(Interpolate(ep[s * 6], ep[s * 6 + 3], w[i]));
+                    green[i] = Finish(Interpolate(ep[s * 6 + 1], ep[s * 6 + 4], w[i]));
                 }
                 for (var p = 0; p < 16; p++)
                 {
                     if (two && Partitions[partition][p] != s) continue;
-                    float tr = _target[p * 3], tg = _target[p * 3 + 1];
-                    var bestE = double.MaxValue;
-                    var bestI = 0;
-                    for (var i = 0; i < levels; i++)
-                    {
-                        double dr = palette[i * 2] - tr, dg = palette[i * 2 + 1] - tg;
-                        var e = dr * dr + dg * dg;
-                        if (e < bestE) { bestE = e; bestI = i; }
-                    }
-                    idx[p] = bestI;
-                    total += bestE;
+                    total += Nearest(red, green, levels, _target[p * 3], _target[p * 3 + 1], out idx[p]);
+                    if (total >= bound) return total;
                 }
             }
             // Pack swaps subset 0's endpoints when pixel 0's index has its top bit set: the base is then endpoint 1
             if (mode.HasTransformedEndpoints() && !DeltasFit(mode, q, two, (idx[0] & (two ? 4 : 8)) != 0 ? 1 : 0)) return double.MaxValue;
             return total;
+        }
+
+        /// <summary>The palette entry (of 8 or 16) nearest to (<paramref name="tr"/>, <paramref name="tg"/>), the first of
+        /// equals, and its squared distance: per channel the float difference, squared and summed in double. With AVX,
+        /// 8 entries at a time, the same arithmetic.</summary>
+        private static double Nearest(ReadOnlySpan<float> red, ReadOnlySpan<float> green, int levels, float tr, float tg, out int index)
+        {
+            if (!Vector256.IsHardwareAccelerated)
+            {
+                var bestE = double.MaxValue;
+                index = 0;
+                for (var i = 0; i < levels; i++)
+                {
+                    double dr = red[i] - tr, dg = green[i] - tg;
+                    var e = dr * dr + dg * dg;
+                    if (e < bestE) { bestE = e; index = i; }
+                }
+                return bestE;
+            }
+            Span<double> e8 = stackalloc double[16];
+            var r = Vector256.Create(tr);
+            var g = Vector256.Create(tg);
+            for (var i = 0; i < levels; i += 8)
+            {
+                var (rl, rh) = Vector256.Widen(Vector256.Create(red[i..]) - r);
+                var (gl, gh) = Vector256.Widen(Vector256.Create(green[i..]) - g);
+                (rl * rl + gl * gl).CopyTo(e8[i..]);
+                (rh * rh + gh * gh).CopyTo(e8[(i + 4)..]);
+            }
+            var min = Vector256.Min(Vector256.Create(e8), Vector256.Create(e8[4..]));
+            if (levels == 16) min = Vector256.Min(min, Vector256.Min(Vector256.Create(e8[8..]), Vector256.Create(e8[12..])));
+            var best = Math.Min(Math.Min(min[0], min[1]), Math.Min(min[2], min[3]));
+            var at = Vector256.Create(best);
+            for (var i = 0; ; i += 4)
+                if (Vector256.Equals(Vector256.Create(e8[i..]), at).ExtractMostSignificantBits() is var hit and not 0)
+                {
+                    index = i + BitOperations.TrailingZeroCount(hit);
+                    return best;
+                }
         }
 
         /// <summary>Transformed modes store the other endpoints as deltas from endpoint 0 (after the anchor swap that

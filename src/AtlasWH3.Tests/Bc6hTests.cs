@@ -123,6 +123,31 @@ public sealed class Bc6hTests
         }
     }
 
+    /// <summary>A 63 × 47 land and sea map with slopes, a cliff, a sign change and ripples (both region counts, edges
+    /// clamped).</summary>
+    internal static (float[] Red, float[] Green) Synthetic(int w = 63, int h = 47)
+    {
+        var red = new float[w * h];
+        var green = new float[w * h];
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                red[y * w + x] = 20 * MathF.Sin(x * 0.05f) * MathF.Cos(y * 0.07f) + ((x * 7 + y * 13) % 17 - 8) * 0.01f +
+                                 (x > 40 && y < 20 ? 5 : 0);
+                green[y * w + x] = -3 + 0.02f * x;
+            }
+        return (red, green);
+    }
+
+    /// <summary>The speed-ups (the error search stopping at the error to beat, the nearest palette entry 8 at a time) keep
+    /// the encoder's output byte for byte: the hash is the encoder's before them.</summary>
+    [Fact]
+    public void Encode_OutputUnchanged()
+    {
+        var (red, green) = Synthetic();
+        Assert.Equal("BA054E9903E480DCBB77C4A8DEE8528FB06481EE0E37F6EC2256DE0E3E8F324D",Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Bc6h.Encode(red, green, 63, 47))));
+    }
+
     /// <summary>full_logic_map.compressed_map and shroud_heights.dds are BOB's bytes, on the IEE fixture.</summary>
     [Fact]
     public void Heightmaps_LogicMapAndShroudMatchBob()
