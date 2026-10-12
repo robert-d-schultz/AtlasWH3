@@ -1,4 +1,4 @@
-# Builds the AtlasWH3 alpha download: AtlasWH3.exe (editor) + AtlasWH3.Cli.exe (headless builder), self-contained
+# Builds the AtlasWH3 download: AtlasWH3.exe (the app) + AtlasWH3.Cli.exe (headless builder), self-contained
 # win-x64 (no .NET install needed), plus the read-me files, in dist\AtlasWH3-<version>\ and a zip of it.
 #   powershell -ExecutionPolicy Bypass -File tools\publish.ps1 [-NoZip]
 param([switch]$NoZip)
@@ -10,7 +10,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path "$env:P
 }
 [xml]$props = Get-Content (Join-Path $root "Directory.Build.props")
 $group = $props.Project.PropertyGroup | Select-Object -First 1
-$version = "$($group.VersionPrefix)-$($group.VersionSuffix)"
+$version = if ("$($group.VersionSuffix)".Trim()) { "$($group.VersionPrefix)-$($group.VersionSuffix)" } else { "$($group.VersionPrefix)" }
 $out = Join-Path $root "dist\AtlasWH3-$version"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 
