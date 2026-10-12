@@ -216,7 +216,9 @@ public sealed class AiSearch
     private readonly int[] _parent;
     private readonly int[] _stamp;
     private readonly byte[] _state; // 1 open, 2 closed
-    private readonly List<int> _heap = new(1 << 12);
+    private readonly int[] _heap;
+    private readonly int[] _pos;    // an open hex's index in _heap
+    private int _count;
     private int _gen;
     private bool _hasLine;
     private float _ax, _ay, _bx, _by;
@@ -230,6 +232,8 @@ public sealed class AiSearch
         _parent = new int[n];
         _stamp = new int[n];
         _state = new byte[n];
+        _heap = new int[n];
+        _pos = new int[n];
     }
 
     public uint Cost(int h) => _stamp[h] == _gen ? _cost[h] : uint.MaxValue;
@@ -260,27 +264,31 @@ public sealed class AiSearch
     // comparator "a is worse than b" (FUN_1805316e0): cost, then tiebreaker
     private bool Greater(int a, int b) => _cost[a] != _cost[b] ? _cost[a] > _cost[b] : _tb[a] > _tb[b];
 
+    private void Place(int index, int h)
+    {
+        _heap[index] = h;
+        _pos[h] = index;
+    }
+
     private void SiftUp(int hole, int value)
     {
         while (hole > 0)
         {
             var parent = (hole - 1) >> 1;
             if (!Greater(_heap[parent], value)) break;
-            _heap[hole] = _heap[parent];
+            Place(hole, _heap[parent]);
             hole = parent;
         }
-        _heap[hole] = value;
+        Place(hole, value);
     }
 
     private int Pop()
     {
-        var count = _heap.Count;
         var top = _heap[0];
-        if (count > 1)
+        if (_count > 1)
         {
-            var bottom = count - 1;
+            var bottom = _count - 1;
             var value = _heap[bottom];
-            _heap[bottom] = top;
             var len = bottom;
             var hole = 0;
             var maxNonLeaf = (len - 1) >> 1;
@@ -288,18 +296,24 @@ public sealed class AiSearch
             {
                 var child = 2 * hole + 2;
                 if (Greater(_heap[child], _heap[child - 1])) child--;
-                _heap[hole] = _heap[child];
+                Place(hole, _heap[child]);
                 hole = child;
             }
             if (hole == maxNonLeaf && (len & 1) == 0)
             {
-                _heap[hole] = _heap[len - 1];
+                Place(hole, _heap[len - 1]);
                 hole = len - 1;
             }
             SiftUp(hole, value);
         }
-        _heap.RemoveAt(count - 1);
+        _count--;
         return top;
+    }
+
+    private void Push(int h)
+    {
+        _count++;
+        SiftUp(_count - 1, h);
     }
 
     private void Relax(int nb, uint nc, int from)
@@ -309,16 +323,11 @@ public sealed class AiSearch
             if (nc >= _cost[nb]) return;
             _cost[nb] = nc;
             _parent[nb] = from;
-            if (_state[nb] == 1)
-            {
-                var pos = _heap.IndexOf(nb);
-                SiftUp(pos, nb);
-            }
+            if (_state[nb] == 1) SiftUp(_pos[nb], nb);
             else
             {
                 _state[nb] = 1;
-                _heap.Add(nb);
-                SiftUp(_heap.Count - 1, nb);
+                Push(nb);
             }
             return;
         }
@@ -327,8 +336,7 @@ public sealed class AiSearch
         _tb[nb] = Tiebreak(nb);
         _parent[nb] = from;
         _state[nb] = 1;
-        _heap.Add(nb);
-        SiftUp(_heap.Count - 1, nb);
+        Push(nb);
     }
 
     /// <summary>Runs a search from <paramref name="source"/>. <paramref name="visit"/> sees each settled hex and its
@@ -339,7 +347,7 @@ public sealed class AiSearch
                     (float X, float Y)? lineFrom = null, (float X, float Y)? lineTo = null, int[]? regionOf = null, int region = -1, int regionMask = MapDataRegions.RegionMask)
     {
         _gen++;
-        _heap.Clear();
+        _count = 0;
         if (lineFrom is { } a && lineTo is { } b && !(a.X == b.X && a.Y == b.Y))
         {
             _hasLine = true;
@@ -351,10 +359,10 @@ public sealed class AiSearch
         _tb[source] = 0f;
         _parent[source] = -1;
         _state[source] = 1;
-        _heap.Add(source);
+        Push(source);
         var types = _g.Types;
         var costs = _g.CostTable;
-        while (_heap.Count > 0)
+        while (_count > 0)
         {
             var h = Pop();
             _state[h] = 2;
