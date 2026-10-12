@@ -24,11 +24,17 @@ reprocess about 20, with pack round trips between actions).
   | `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map (fails in BOB) |
   | `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation during a startpos build |
 
-- **Parity** with BOB on the two test maps, IEE and The Old World: the logic map, shroud heights, tile list, masks,
-  piece textures and river models (but for two bytes BOB leaves uninitialised) are byte-identical; the trees, global map and lookups are byte-identical on one map
-  and close on the other; global_props is compared by content, since BOB's own record order changes from run to run.
-  `hlp_data.esf` and `spd_data.esf` are byte-identical to the game's own on IEE (apart from the timestamp). Every
-  difference is recorded per step in [`docs/native_campaign_build.md`](docs/native_campaign_build.md).
+- **Parity** with BOB on the two test maps, IEE and The Old World:
+  - byte-identical: the logic map, shroud heights, tile list, masks, piece textures and river models (but for two
+    bytes BOB leaves uninitialised); on Old World also the trees, the global map and the lookups;
+  - IEE's trees: every tree's id, position and rotation identical, and all but 23 of 253,903 heights within 1e-3
+    (float rounding under the props' height patches);
+  - global_props: the same objects in the same bodies as BOB. BOB's record order changes from run to run, so it is
+    compared by content; the cells differ only where AtlasWH3 boxes a model by its real bounds, where BOB uses a
+    2 × 2 × 2 cube for any model not loose in the kit;
+  - `hlp_data.esf` and `spd_data.esf`: byte-identical to the game's own on IEE (apart from the timestamp).
+
+  The remaining differences, and why, are recorded per step in [`docs/native_campaign_build.md`](docs/native_campaign_build.md).
 - **Checked in game** on IEE: terrain, tiles, trees, props, rivers (lava rivers included), devastation, the camera,
   the region lookups and the AI ([`docs/end_to_end.md`](docs/end_to_end.md)).
 - **Fixes over BOB:** `patch_mask.dds` covers the whole map (BOB's leaves a north band uncovered); the devastated map
