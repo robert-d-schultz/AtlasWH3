@@ -65,7 +65,7 @@ That is two pack round trips:
 - the heightmap, before Tilemap and Trees
 - the main tile list, before Global Tilemap
 
-3K had the same trap (`docs/bob_campaign_build.md` §3: BOB's `.dds` and `global_map` steps decode what is in the game
+3K had the same trap (`docs/atlas3k/bob_campaign_build.md` §3: BOB's `.dds` and `global_map` steps decode what is in the game
 packs, not the new loose file). Native steps read loose files, so these round trips go away **once Heightmap, Tilemap,
 Trees and Global Tilemap are all native**. Phase 3 does those four first.
 

@@ -1,6 +1,6 @@
 # Terry battle components: fields from the decompile
 
-This is the prerequisite for the Phase 2 battle map editor (`docs/battle_editor_plan.md`): what each Terry battle
+This is the prerequisite for the Phase 2 battle map editor (`docs/atlas3k/battle_editor_plan.md`): what each Terry battle
 entity component stores, so Atlas3K can write deployment zones, capture points and playable areas the way Terry
 does.
 

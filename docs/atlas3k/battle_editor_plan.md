@@ -1,7 +1,7 @@
 # Battle map editor: plan (draft, 2026-10-05)
 
 Source survey: `Z:\Claude\BattleMaps` (docs, BOB decompiles, `bobsrc` scripts, the `BattleLocationsMap` tool, 190E outputs)
-and Atlas3K's existing experimental battle window (`docs/battle_map_editor.md`).
+and Atlas3K's existing experimental battle window (`docs/atlas3k/battle_map_editor.md`).
 
 ## Where we are
 

@@ -3,7 +3,7 @@
 This is the complete process for building a **new** Three Kingdoms campaign map and startpos: a cropped, 2.25× upscaled north China map (198 CE, Cao Cao only). It covers everything from the vanilla `map.hex` to a startpos that RPFM builds without crashing. It was worked out on 2026-09-28. Everything here was hit for real, and each gotcha has the failure it caused.
 
 Companion documents:
-- `docs\bob_campaign_build.md`: BOB terrain build order and vanilla parity. Read it first; the terrain steps here follow it.
+- `docs\atlas3k\bob_campaign_build.md`: BOB terrain build order and vanilla parity. Read it first; the terrain steps here follow it.
 - `research\guandu\caime_3k_tilemap_issue.md`: how 3K uses tile-map colours (bug report for CAIME).
 
 **Paths:**

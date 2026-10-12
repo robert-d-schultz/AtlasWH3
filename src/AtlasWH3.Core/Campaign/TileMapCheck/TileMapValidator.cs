@@ -46,7 +46,7 @@ public sealed record TileMapCheckOptions
 /// Pre-flight checks of a campaign tile map before BOB's Terrain / Tilemap action (or the native tile_list step):
 /// file and layout, palette, climate map, the sizes and DB extents BOB reads alongside it, and the hex-level
 /// line / coast / river / crossing rules CA's own map follows. Rule sources: research/guandu/caime_3k_tilemap_issue.md,
-/// research/main190/tile_repair.py, docs/bob_campaign_build.md, docs/guandu_campaign_build.md.
+/// research/main190/tile_repair.py, docs/atlas3k/bob_campaign_build.md, docs/atlas3k/guandu_campaign_build.md.
 /// </summary>
 public static class TileMapValidator
 {

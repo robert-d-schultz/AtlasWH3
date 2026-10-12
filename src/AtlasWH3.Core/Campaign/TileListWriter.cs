@@ -16,7 +16,7 @@ public sealed record HeightField(float[] Data, int Width, int Height)
 
 /// <summary>
 /// Turns BOB's placed tiles into terrain\campaigns\&lt;map&gt;\tile_list.bin, the way WH3's Tilemap action finishes
-/// (warscape.modder.x64.dll; Atlas3K's 3K notes in docs/bob_re_tile_placement.md):
+/// (warscape.modder.x64.dll; Atlas3K's 3K notes in docs/atlas3k/bob_re_tile_placement.md):
 ///  - WARSCAPE::TILE_MAP::calculate_flow: breadth-first from every river_mouth tile along river links. Each newly
 ///    reached river tile gets flow = is_entry of its link pointing back into the previous tile; river junctions
 ///    (3+ river links) whose back link is an entry are swapped for the first same-layout tile whose back link is an
