@@ -77,7 +77,7 @@ public sealed class BuildRunner
         {
             Write("", $"AtlasWH3 build: {_project.FilePath ?? _project.Name}  map {_project.Map}  output {_project.OutputDir(_paths)}");
             var ok = true;
-            if (ok && Want(BuildSegment.Validate)) ok = Validate();
+            if (ok && Want(BuildSegment.Validate)) ok = Validate(request.Steps);
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.BeforeCompile, request);
             if (ok && Want(BuildSegment.Compile)) ok = Compile(request.Steps);
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.AfterCompile, request);
@@ -94,12 +94,13 @@ public sealed class BuildRunner
 
     // ------------------------------------------------------------------ segments
 
-    private bool Validate() => Item("validate", notes =>
+    /// <summary>The input checks of the steps Compile will run (<paramref name="steps"/>, else the profile's).</summary>
+    private bool Validate(IReadOnlyList<string>? steps) => Item("validate", notes =>
     {
         var problems = new List<string>();
         var ctx = Context();
         // Steps that read another selected step's output are checked when they run (their inputs don't exist yet).
-        var selected = SelectedSteps(null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = SelectedSteps(steps).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var name in selected)
         {
             var step = CampaignBuildPipeline.Find(name);
