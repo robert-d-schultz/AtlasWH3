@@ -43,8 +43,10 @@ where the game's pathfinder has a bug). Each step's record, with every remaining
 
 **Where it differs on purpose:** `patch_mask.dds` covers the whole map (BOB's misses a band in the north). Props go
 into quadtree cells by their models' real bounds (BOB uses a 2 × 2 × 2 cube for any model not loose in the kit).
-Region lookups can move regions past the 1024 palette entries the game reads. `full_height_map.dds` uses AtlasWH3's
-own BC6H encoder, with about half the error of BOB's.
+Region lookups can move regions past the 1024 palette entries the game reads. Cultures come from the packs'
+`prefab_types`, so a mod's own cultures get their own buckets (BOB read the kit's vanilla table). Props get their
+regions from `map_data.esf`, the file the game reads. `full_height_map.dds` uses AtlasWH3's own BC6H encoder, with
+about half the error of BOB's.
 
 ## What you need
 
@@ -53,8 +55,8 @@ own BC6H encoder, with about half the error of BOB's.
 - Your mod's `.pack`, linked. The build reads CAIME's `map_data.esf` and `pathfinding.ppd` from its
   `campaign_maps\<map>\`, and the mod's DB tables, models and textures; and it merges the build into a copy of it.
   (A vanilla map needs no mod pack: its files are in the game's packs.)
-- CAIME's `map.hex` in the kit's `raw_data\EmpireDesignData\campaign_maps\<map>`, and the region lookup `.bmp`
-  there or in `working_data\campaign_maps\<map>`.
+- CAIME's region lookup `.bmp`, in the kit's `working_data\campaign_maps\<map>` or
+  `raw_data\EmpireDesignData\campaign_maps\<map>`.
 - Optional: the map's devastated project, `<map without _1>_devastate_1` beside it (or named in the project), for the
   devastated pieces.
 

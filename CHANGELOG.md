@@ -39,7 +39,9 @@ reprocess about 20, with pack round trips between actions).
   the region lookups and the AI ([`docs/end_to_end.md`](docs/end_to_end.md)).
 - **Fixes over BOB:** `patch_mask.dds` covers the whole map (BOB's leaves a north band uncovered); the devastated map
   needs no fake second campaign; the camera height map builds; region lookups can move regions past the 1024 palette
-  entries the game reads; quadtree cells use the models' real bounds.
+  entries the game reads; quadtree cells use the models' real bounds; global_props takes its cultures from the packs'
+  prefab_types (a mod's own cultures get their own buckets; BOB read the kit's vanilla table) and its regions from
+  map_data.esf, the file the game reads (BOB read map.hex).
 - **No working_data in between:** every step reads the kit's sources and the game and mod packs directly (CAIME's
   `map_data.esf` and `pathfinding.ppd` from the map's mod pack), and a step's inputs from other steps only from this
   build's output, never BOB's old files, so no intermediate pack is installed between actions. Independent steps run

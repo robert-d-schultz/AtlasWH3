@@ -7,9 +7,9 @@
   BOB's output (byte or content parity), not in game.
 - **Start positions are not built.** `startpos.esf` still comes from the game (RPFM's start-position build, for
   example). Add it as a custom step after Pack if you need it.
-- **CAIME's files are inputs.** The build does not write `map.hex`, `map_data.esf`, `pathfinding.ppd` or the region
-  lookup `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (link it), and `map.hex` and the
-  lookup `.bmp` from the kit's EmpireDesignData and working_data folders.
+- **CAIME's files are inputs.** The build does not write `map_data.esf`, `pathfinding.ppd` or the region lookup
+  `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (link it), and the lookup `.bmp` from
+  the kit's working_data or EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
 - **A new project builds into the kit's `working_data`**, as BOB does, and with a linked mod pack its Install replaces
   that pack in the game's `data` folder (keeping one backup copy, unless the project turns it off). Set the project's
   output to its own folder to leave `working_data` alone.
@@ -24,12 +24,16 @@
   the map's mod pack. On Old World one hlp value differs from the game's own build, where the game's A*
   has a bug; AtlasWH3 keeps the correct value.
 - **Camera height map:** the `camera_heightmap` step samples the logic heights and the layers' height patches the way
-  BOB's action does, but not BOB's tile terrain, and it ignores `cam_hmap_apply_blur`. It is not byte-identical to
-  anything (BOB's own action fails without the `cam_hmap_*` rules).
+  BOB's action does, but not BOB's tile terrain, at CA's resolution (0.25 cells per tile-map pixel). It is not
+  byte-identical to anything: BOB's own action fails on WH3's kit.
 - **Global props:** `global_props.bin` matches BOB's content, not its bytes: BOB's own runs differ in record order
-  and in the numbering of the mountain bodies. One difference remains, on purpose: props are put in quadtree cells by
-  their models' real bounds. BOB treats any model whose `.wsmodel` isn't loose in the kit as a 2 × 2 × 2 cube, so a
-  big prop can land in a cell smaller than itself.
+  and in the numbering of the mountain bodies. Differences on purpose:
+  - props are put in quadtree cells by their models' real bounds. BOB treats any model whose `.wsmodel` isn't loose
+    in the kit as a 2 × 2 × 2 cube, so a big prop can land in a cell smaller than itself;
+  - cultures come from the packs' `prefab_types`. IEE's 23 own cultures (values 39-61) get their own buckets, where
+    BOB, reading the kit's vanilla table, put those objects in the NONE bucket; the mountain bodies then start at 992,
+    not 640. Not yet checked in game;
+  - regions come from `map_data.esf`. They are `map.hex`'s wherever both come from one CAIME export.
 - **Devastation pieces:** `event_tiles` lists the same road tiles as BOB's, in path-table order; BOB's order comes
   from a hash map and is not reproducible.
 - The build runs while editors stay open. Saving an edit during a build can make the output mix old and new data;

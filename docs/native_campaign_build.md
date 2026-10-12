@@ -340,13 +340,17 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
 - **Container:** 3K's. Cells ascending; in a cell, regions in CA hash-map order; per (cell, region) its bucket bodies
   ascending, then the cell body; the root last. Sounds have their own file of bucket-16 bodies only (no cell or root
   bodies), and each sound's (region, cell) also gets an empty bucket-16 body in global_props.bin.
-- **Buckets:** 16 × prefab_types value + 15 for props and VFX, + 0 for everything else (decals, lights, scenes, holes,
+- **Buckets:** 16 × prefab_types value (prefab_types_tables of the mod packs and vanilla db) + 15 for props and VFX, + 0 for everything else (decals, lights, scenes, holes,
   polygons). An object goes to one bucket per culture name in its culture_mask, duplicates kept (Kislev and Kislev
   Prologue share 24, so 384 twice); no mask is BASE (1); a culture without a prefab_types row is NONE (0). The cell's
   reference to a bucket carries bit value − 1. Props whose .wsmodel has an `add_terrain_height` material (the
   campaign mountain shaders) get a body each, buckets 640 + n (n in BOB's address order: not reproducible), with
-  uses_terrain_vertex_offset set.
-- **Regions and cells:** the map.hex region under the object (`HexRegionLookup`, bounds from map_data.esf: Old World's
+  uses_terrain_vertex_offset set. 640 is past vanilla's culture values (0-38); a mod that adds values (IEE: up to 61)
+  moves the mountain bodies past its culture buckets (992 on IEE), since BOB, reading the kit's vanilla prefab_types,
+  never saw them.
+- **Regions and cells:** the region of the hex under the object, from map_data.esf's MASKED_REGIONS_DATA
+  (`HexRegionLookup`; 2026-10-12, BOB reads map.hex: the two agree on all of IEE's hexes, and on Old World but for 12
+  hexes repainted in map.hex after its last export), bounds from map_data.esf: Old World's
   playable-areas row carries IEE's 1068.11, its ESF 1367.396). The quadtree covers the ESF bounds grown by the
   campaign_map_playable_areas row's `quadtree_margin` on every side (10 on every row; IEE −10..1078.11 ×
   −10..758.57, Old World −10..1377.396 × −10..1378.743), read from the map's mod packs and vanilla db: fitted to CA's
