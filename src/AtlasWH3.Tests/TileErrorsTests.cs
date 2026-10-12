@@ -133,7 +133,7 @@ public class TileErrorsTests
     [Fact]
     public void WholeMapCodesHaveAdvice()
     {
-        foreach (var code in new[] { "layout.mesh_columns", "climate.size", "inputs.extents", "pattern.unseen", TileErrors.HoleCode })
+        foreach (var code in new[] { "layout.mesh_columns", "climate.size", "inputs.sizes", "pattern.unseen", TileErrors.HoleCode })
             Assert.False(string.IsNullOrEmpty(TileErrors.AdviceFor(code)));
     }
 }

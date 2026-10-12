@@ -173,12 +173,12 @@ def validate_tilemap(map_name: str | None = None, tile_map: str | None = None, c
 
     Checks: real PNG (not TGA), 2W x (2H+1) layout and black filler, hex width a multiple of 4, every colour a 3K
     tile set / tile / variation colour (CAIME's Attila colours flagged), tile sets CA never paints, climate map size and
-    colours, .terry / lf TIF sizes, stale working_data lf maps, EmpireDesignData extents, rules.bob, one-hex-wide
+    colours, the .terry's map sizes, one-hex-wide
     lines, coast ring, cliff ends, river starts / mouths, crossing layouts and 7-hex neighbourhoods CA's map never uses.
     tile_map: check a candidate file instead of <kit>/raw_data/terrain/campaigns/<map>/tile_map.png.
     simulate: also run the BOB tile-matching simulation and list the points that would get no tile.
     overlay: write a PNG of the tile map with error hexes red, warnings yellow, info cyan (look at it).
-    tilemap_only: skip the kit checks (rules.bob, sizes, extents, lf maps).
+    tilemap_only: skip the .terry map size check.
     Findings carry severity (error / warning / info), a count and up to 200 [col, row] hexes (row 0 = south).
     exit_code 1 = errors.
     """
