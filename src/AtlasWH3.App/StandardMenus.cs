@@ -38,13 +38,13 @@ public static class StandardMenus
         window.Items.Add(Item("_Start page", () => StartWindow.ShowSingle(paths)));
         window.Items.Add(Item("Campaign _scene editor", () => new Scene.SceneWindow(paths).Show()));
         window.Items.Add(Item("Campaign _tile map", () => new CampaignTileWindow(paths).Show()));
-        window.Items.Add(Item("Terrain _painter", () => new MainWindow(paths).Show()));
         window.Items.Add(Item("Bu_ild", () => BuildWindow.Show(owner, paths)));
         window.Items.Add(Item("Se_ttings…", () => OpenSettings(owner), tooltip: SettingsTip));
+        var fixedItems = window.Items.Count;
         window.SubmenuOpened += (_, _) =>
         {
             // the open windows, to switch between them
-            while (window.Items.Count > 7) window.Items.RemoveAt(7);
+            while (window.Items.Count > fixedItems) window.Items.RemoveAt(fixedItems);
             var open = Application.Current.Windows.OfType<Window>().Where(w => w.IsVisible && w.Owner is null && !string.IsNullOrEmpty(w.Title)).ToList();
             if (open.Count < 2) return;
             window.Items.Add(new Separator());

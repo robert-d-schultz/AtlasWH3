@@ -85,14 +85,12 @@ public sealed class StartWindow : Window
         left.Children.Add(MapSelector());
 
         var tiles = new WrapPanel();
-        tiles.Children.Add(Tile(Theme.Glyph.Scene, "Scene editor", "Props, entities, prefabs and layers, in 2D and 3D.",
-                                () => new Scene.SceneWindow(_paths).Show()).Spot("start.scene"));
-        tiles.Children.Add(Tile(Theme.Glyph.Tiles, "Tile map", "Paint the campaign tile map hex by hex, with live validation.",
-                                () => new CampaignTileWindow(_paths).Show()).Spot("start.tiles"));
-        tiles.Children.Add(Tile(Theme.Glyph.Terrain, "Terrain painter", "Heights, ground textures and trees on the compiled map.",
-                                () => new MainWindow(_paths).Show()).Spot("start.painter"));
         tiles.Children.Add(Tile(Theme.Glyph.Build, "Build", "Compile the map natively, run custom steps, pack and install.",
                                 () => BuildWindow.Show(this, _paths)).Spot("start.build"));
+        tiles.Children.Add(Tile(Theme.Glyph.Scene, "Scene editor (preview)", "Props, entities, prefabs and layers, in 2D and 3D.",
+                                () => new Scene.SceneWindow(_paths).Show()).Spot("start.scene"));
+        tiles.Children.Add(Tile(Theme.Glyph.Tiles, "Tile map (preview)", "Paint the campaign tile map hex by hex, with live validation.",
+                                () => new CampaignTileWindow(_paths).Show()).Spot("start.tiles"));
         tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles", "Where battles start, settlement battle maps and redirects.",
                                 () => CampaignBattlesWindow.Open(this, _paths)).Card("start.battles"));
         tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "Folders, linked mod packs, tile map source and game data.",
@@ -141,9 +139,10 @@ public sealed class StartWindow : Window
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
             Text = "1. Check your game and assembly kit folders in File > Settings.\n" +
-                   "2. Edit the map in the Scene editor or Tile map.\n" +
+                   "2. Edit the map in Terry, as for BOB.\n" +
                    "3. Open Build (Ctrl+B), create a project for the map and press Build all.\n" +
-                   "Back up your assembly kit before building over it: this is alpha software.",
+                   "Back up your mod pack and the kit's working_data before the first build: a new project builds into " +
+                   "working_data, as BOB does, and Install replaces the pack in the game's data folder.",
         });
         Grid.SetColumn(right, 2);
         grid.Children.Add(right);
