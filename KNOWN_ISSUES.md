@@ -31,8 +31,9 @@
   - props are put in quadtree cells by their models' real bounds. BOB treats any model whose `.wsmodel` isn't loose
     in the kit as a 2 × 2 × 2 cube, so a big prop can land in a cell smaller than itself;
   - cultures come from the packs' `prefab_types`. IEE's 23 own cultures (values 39-61) get their own buckets, where
-    BOB, reading the kit's vanilla table, put those objects in the NONE bucket; the mountain bodies then start at 992,
-    not 640. Not yet checked in game;
+    BOB, reading the kit's vanilla table, put those objects in the NONE bucket; the mountain bodies then start at 1008
+    (16 × prefab_types' 63 rows), not 640. The game reads that number only as a body's file name (CA's own maps start
+    theirs at 576, 592 and 640). Not yet checked in game;
   - regions come from `map_data.esf`. They are `map.hex`'s wherever both come from one CAIME export.
 - **Devastation pieces:** `event_tiles` lists the same road tiles as BOB's, in path-table order; BOB's order comes
   from a hash map and is not reproducible.

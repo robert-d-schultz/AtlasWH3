@@ -15,11 +15,14 @@ namespace AtlasWH3.Core.Campaign.Props;
 /// records, cell bodies bmd_objects.&lt;region&gt;.&lt;cell&gt;.bin reference their buckets, and the root
 /// bmd_objects.bin references every cell body. What WH3 changes (read off BOB's IEE and Old World output, 2026-10-09):
 ///  - bodies are BMD v27 (<see cref="Bmd27Body"/>), with no per-body preamble;
-///  - buckets are 16 × prefab_types value + 15 (props and VFX) or + 0 (everything else): an object goes to the bucket
-///    of every culture in its culture_mask (BASE, value 1, when it has none; NONE, value 0, for a culture with no
-///    prefab_types row), and the cell's reference to a bucket carries that culture's bit;
-///  - props whose model draws with an add_terrain_height material (the mountains) get a body each: buckets 640 + n
-///    (<see cref="MountainBucket"/>);
+///  - buckets are 16 × prefab_types value + the season mask (bob_terrain 0x7b1a0: no seasons is all four, 15; WH3's
+///    props and VFX have none) or + 0 (everything else): an object goes to the bucket of every culture in its
+///    culture_mask (BASE, value 1, when it has none; NONE, value 0, for a culture with no prefab_types row), and the
+///    cell's reference to a bucket carries that culture's bit, 1 &lt;&lt; (bucket / 16 − 1);
+///  - props whose model draws with an add_terrain_height material (the mountains, the "terrain vertex offset" shader)
+///    get a body each, appended past the culture buckets (<see cref="MountainBucket"/>) and referenced with mask 1
+///    (BASE). bob_terrain 0x25967: such a prop may have no culture mask ("due to how they are rendered in the game",
+///    BOB's warning), and each one grows the cell's bucket list by one;
 ///  - sound emitters go to global_props_sound.bin instead (bucket 16 bodies only, no cell or root bodies), with the
 ///    culture mask in the record.
 /// </summary>
@@ -114,35 +117,42 @@ public sealed class Wh3GlobalPropsBuilder
 
     /// <param name="cultures">prefab_types: culture key → value.</param>
     /// <param name="root">The quadtree's root rectangle (<see cref="HexRegionLookup.QuadRoot"/>).</param>
+    /// <param name="prefabTypeRows">prefab_types' row count (<see cref="PrefabTypes.Rows"/>), for <see cref="MountainBucket"/>.</param>
     public Wh3GlobalPropsBuilder(PackSet packs, PrefabLibrary prefabs, IReadOnlyDictionary<string, int> cultures, string mapName,
-                                 (float X0, float Z0, float X1, float Z1) root, Func<float, float, string> regionAt)
+                                 (float X0, float Z0, float X1, float Z1) root, Func<float, float, string> regionAt, int prefabTypeRows = 0)
     {
         _packs = packs;
         _prefabs = prefabs;
         _cultures = cultures;
-        _mountainBucket = MountainBucket(cultures);
+        _mountainBucket = MountainBucket(cultures, prefabTypeRows);
         _mapName = mapName;
         _root = root;
         _regionAt = regionAt;
     }
 
-    /// <summary>prefab_types (culture → value) as the game reads it: prefab_types_tables of the map's mod packs and the
-    /// vanilla db, a higher-priority pack winning (IEE adds 23 cultures, values 39-61, to vanilla's 0-38).</summary>
-    public static Dictionary<string, int> ReadCultures(PackSet packs)
+    /// <summary>prefab_types as the game reads it: culture → value, and the table's row count.</summary>
+    public sealed record PrefabTypes(Dictionary<string, int> Cultures, int Rows);
+
+    /// <summary>prefab_types_tables of the map's mod packs and the vanilla db, a higher-priority pack winning a key
+    /// (vanilla: 40 rows, values 0-38; IEE adds 23 rows and cultures, values 39-61).</summary>
+    public static PrefabTypes ReadCultures(PackSet packs)
     {
-        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        var cultures = new Dictionary<string, int>(StringComparer.Ordinal);
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (t, row) in Formats.Db.DbBinaryTable.PackRows(packs, "prefab_types_tables"))
+        {
+            if (t.Get(row, "prefab_type") is not string key || !keys.Add(key)) continue;
             if (t.Get(row, "culture") is string { Length: > 0 } c && c != "*" && t.Get(row, "value") is { } v)
-                result.TryAdd(c, Convert.ToInt32(v, CultureInfo.InvariantCulture));
-        if (result.Count == 0) throw new InvalidDataException("no prefab_types_tables rows in the game or mod packs");
-        return result;
+                cultures.TryAdd(c, Convert.ToInt32(v, CultureInfo.InvariantCulture));
+        }
+        if (keys.Count == 0) throw new InvalidDataException("no prefab_types_tables rows in the game or mod packs");
+        return new PrefabTypes(cultures, keys.Count);
     }
 
-    /// <summary>The first mountain body's bucket: 640 in every BOB run (vanilla's prefab_types, values 0-38), past the
-    /// highest culture's buckets when a mod adds values (IEE's reach 16 × 61 + 15). The game finds a body by its name in
-    /// the cell body, so the number only has to be unique.</summary>
-    public static int MountainBucket(IReadOnlyDictionary<string, int> cultures) =>
-        Math.Max(640, 16 * ((cultures.Count == 0 ? 0 : cultures.Values.Max()) + 1));
+    /// <summary>The first mountain body's bucket: 16 × prefab_types' row count (bob_terrain 0x2320e; vanilla's 40 rows
+    /// give BOB's 640, IEE's 63 give 1008), at least past the highest culture's buckets.</summary>
+    public static int MountainBucket(IReadOnlyDictionary<string, int> cultures, int prefabTypeRows) =>
+        16 * Math.Max(prefabTypeRows, (cultures.Count == 0 ? 0 : cultures.Values.Max()) + 1);
 
     public void AddLayer(string layerPath) => AddLayer(XDocument.Load(layerPath).Root!);
 

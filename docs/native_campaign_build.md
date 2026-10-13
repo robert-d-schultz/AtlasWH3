@@ -340,14 +340,33 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
 - **Container:** 3K's. Cells ascending; in a cell, regions in CA hash-map order; per (cell, region) its bucket bodies
   ascending, then the cell body; the root last. Sounds have their own file of bucket-16 bodies only (no cell or root
   bodies), and each sound's (region, cell) also gets an empty bucket-16 body in global_props.bin.
-- **Buckets:** 16 × prefab_types value (prefab_types_tables of the mod packs and vanilla db) + 15 for props and VFX, + 0 for everything else (decals, lights, scenes, holes,
-  polygons). An object goes to one bucket per culture name in its culture_mask, duplicates kept (Kislev and Kislev
-  Prologue share 24, so 384 twice); no mask is BASE (1); a culture without a prefab_types row is NONE (0). The cell's
-  reference to a bucket carries bit value − 1. Props whose .wsmodel has an `add_terrain_height` material (the
-  campaign mountain shaders) get a body each, buckets 640 + n (n in BOB's address order: not reproducible), with
-  uses_terrain_vertex_offset set. 640 is past vanilla's culture values (0-38); a mod that adds values (IEE: up to 61)
-  moves the mountain bodies past its culture buckets (992 on IEE), since BOB, reading the kit's vanilla prefab_types,
-  never saw them.
+- **Buckets** (read off bob_terrain's Terry file export, 0x180022570, 2026-10-12): every (region, cell) has a list of
+  bucket bodies, each referenced from the cell body by a PREFAB_INSTANCE whose campaign mask is the bucket's culture
+  bit.
+  - A culture bucket is 16 × prefab_types value + the object's season mask (0x18007b1a0: an empty season list is all
+    four seasons, 15; WH3's props and VFX have none) for props and VFX, + 0 for everything else (decals, lights,
+    scenes, holes, polygons). Values from prefab_types_tables of the mod packs and vanilla db (BOB: the kit's).
+  - An object goes to one bucket per culture name in its culture_mask, duplicates kept (Kislev and Kislev Prologue
+    share 24, so 384 twice); no mask is BASE (1); a culture without a prefab_types row is NONE (0).
+  - The reference's mask is 1 << (bucket / 16 − 1) below 16 × prefab_types' row count, else 1 (BASE). The list starts
+    that long (vanilla's 40 rows: 640 buckets).
+  - Mountains: a prop whose .wsmodel has an `add_terrain_height` material (QTU::ws_model_material_add_terrain_height_flag,
+    the "terrain vertex offset" shader) gets uses_terrain_vertex_offset set and is appended as a bucket of its own: the
+    list grows to max(16 × rows, its length) + 1, so they are 640, 641, … (n in BOB's address order: not
+    reproducible), each referenced with mask 1. Such a prop may not have a culture mask: BOB logs "All props using
+    this shader must have no culture mask due to how they are rendered in the game" and stops the export (0x28a3c →
+    status 4, its file-error exit). AtlasWH3 gives such a prop its own body with mask 1, ignoring its cultures. Why
+    each needs a body of its own is not in bob_terrain: nothing per body differs (the flag is set on the prop record),
+    so it is the game's renderer's requirement, not yet found in Warhammer3.exe.
+  - The game (Warhammer3.exe, 2026-10-13): a culture's bit is (1 << value) >> 1 (0x141707480), so value v is bit v − 1,
+    value 0 (NONE) has none, and 63 is the last value with a bit (62); BOB's NONE references (bit 63) carry a bit no
+    culture has. The cell body names each bucket body by its path (0x142725348 looks it up by name), so the bucket
+    number is only a file name; the mountains' bit is BASE's. No 640 in the exe's global-props code, and CA's shipped
+    maps start their mountain bodies at 16 × the row count of their build: the Prologue at 576 (36 rows), Realm of
+    Chaos at 592 (37), Immortal Empires at 640 (40). Today's 40 rows put UNDEAD_LEGIONS (36) and BUILDING_DEVASTATED
+    (37) on 576-607, so the Prologue's and RoC's mountains share those cultures' bucket numbers, still with mask 1.
+  - IEE's prefab_types has 63 rows (vanilla's 40 and its 23 cultures, values 39-61), so its mountains start at 1008;
+    BOB, reading the kit's vanilla table, used 640 and put IEE's own cultures' objects in NONE.
 - **Regions and cells:** the region of the hex under the object, from map_data.esf's MASKED_REGIONS_DATA
   (`HexRegionLookup`; 2026-10-12, BOB reads map.hex: the two agree on all of IEE's hexes, and on Old World but for 12
   hexes repainted in map.hex after its last export), bounds from map_data.esf: Old World's

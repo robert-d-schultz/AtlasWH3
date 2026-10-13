@@ -47,6 +47,33 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal([0x3f4e50fb, 0, 0xc04df01c, 0, 0x3ecccccd, 0, 0x4058381f, 0, 0x3f589dd5, 0x4300d162, 0x416ffffd, 0x4146cdd7], Bits(record));
     }
 
+    /// <summary>The mountain bodies start at 16 × prefab_types' row count, as BOB: vanilla's 40 rows (values 0-38, Kislev
+    /// and Kislev Prologue sharing 24) give 640, IEE's 63 (values up to 61) 1008; never inside a culture's buckets.</summary>
+    [Fact]
+    public void MountainBucket_IsPastEveryPrefabTypeRow()
+    {
+        var vanilla = Enumerable.Range(0, 39).ToDictionary(v => $"c{v}", v => v);
+        Assert.Equal(640, Wh3GlobalPropsBuilder.MountainBucket(vanilla, 40));
+        var iee = Enumerable.Range(0, 62).ToDictionary(v => $"c{v}", v => v);
+        Assert.Equal(1008, Wh3GlobalPropsBuilder.MountainBucket(iee, 63));
+        Assert.Equal(16 * 62, Wh3GlobalPropsBuilder.MountainBucket(iee, 0));
+    }
+
+    /// <summary>prefab_types from the packs: vanilla's 40 rows (KISLEV and KISLEV_PROLOGUE both 24), and IEE's 23 more.</summary>
+    [Fact]
+    public void ReadCultures_CountsRowsNotValues()
+    {
+        if (!Directory.Exists(TestKits.Wh3GameData)) return;
+        var vanilla = PackSet.OpenVanilla(TestKits.Wh3GameData);
+        var v = Wh3GlobalPropsBuilder.ReadCultures(vanilla);
+        Assert.Equal(40, v.Rows);
+        Assert.Equal(24, v.Cultures["wh3_main_pro_ksl_kislev"]);
+        if (!File.Exists(TestKits.Pack(TestKits.IeePack))) return;
+        var iee = Wh3GlobalPropsBuilder.ReadCultures(new PackSet([PackFile.Open(TestKits.Pack(TestKits.IeePack)), .. vanilla.Packs]));
+        Assert.Equal(63, iee.Rows);
+        Assert.Equal(61, iee.Cultures.Values.Max());
+    }
+
     /// <summary>Culture buckets, the sound file and hidden groups, on a small layer (no game data needed).</summary>
     [Fact]
     public void Builder_SplitsByCultureAndSendsSoundsToTheirOwnFile()
