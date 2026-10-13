@@ -7,8 +7,10 @@ namespace AtlasWH3.Core.Campaign.Props;
 /// <summary>
 /// Content parity of two WH3 global_props(_sound).bin files: the measure two BOB runs of the same input agree on. Two
 /// Old World runs (2026-10-09) differ in record order inside 20,912 bodies, in entry order and in the numbering of the
-/// one-prop buckets 640 + n (address-ordered in BOB), so files are compared as: every bucket body's records as a multiset,
-/// the one-prop buckets as one multiset per (region, cell), every cell body's references as a multiset, and the root's.
+/// one-prop (mountain) buckets (address-ordered in BOB), so files are compared as: every bucket body's records as a
+/// multiset, the one-prop buckets as one multiset per (region, cell), every cell body's references as a multiset, and
+/// the root's. Each file's one-prop buckets start at 16 × the prefab_types rows it was built with: the packs' for the
+/// native file (IEE 1008), the kit's vanilla table for BOB's (640; <see cref="BobMountainBucket"/>).
 /// </summary>
 public static class GlobalPropsParity
 {
@@ -17,10 +19,14 @@ public static class GlobalPropsParity
         public double Share => Same + Differ == 0 ? 1 : (double)Same / (Same + Differ);
     }
 
-    public static Result Compare(IReadOnlyDictionary<string, byte[]> native, IReadOnlyDictionary<string, byte[]> bob, int examples = 5)
+    /// <param name="nativeMountainBucket">The native file's first one-prop bucket
+    /// (<see cref="Wh3GlobalPropsBuilder.PrefabTypes.FirstMountainBucket"/> of the packs it was built from).</param>
+    /// <param name="bobMountainBucket">BOB's file's (<see cref="BobMountainBucket"/>).</param>
+    public static Result Compare(IReadOnlyDictionary<string, byte[]> native, int nativeMountainBucket,
+                                 IReadOnlyDictionary<string, byte[]> bob, int bobMountainBucket, int examples = 5)
     {
-        var n = Group(native);
-        var b = Group(bob);
+        var n = Group(native, nativeMountainBucket);
+        var b = Group(bob, bobMountainBucket);
         int same = 0, differ = 0;
         var ex = new List<string>();
         foreach (var key in n.Keys.Union(b.Keys))
@@ -38,6 +44,12 @@ public static class GlobalPropsParity
         return new Result(same, differ, ex);
     }
 
+    /// <summary>BOB's first one-prop bucket: BOB reads the kit's prefab_types, vanilla's rows whatever the map's mod packs
+    /// add (docs/native_campaign_build.md), so 16 × the vanilla db's row count (40 rows: 640).</summary>
+    public static int BobMountainBucket(string gameDataDir) =>
+        Wh3GlobalPropsBuilder.ReadCultures(Formats.Packs.PackSet.OpenVanilla(gameDataDir, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase)))
+            .FirstMountainBucket;
+
     /// <summary>(region, cell, bucket) of an entry name; bucket -1 for a cell body, cell -1 for the root.</summary>
     public static (string Region, int Cell, int Bucket) Parts(string name)
     {
@@ -50,22 +62,22 @@ public static class GlobalPropsParity
         };
     }
 
-    private static string Key(string name)
+    private static string Key(string name, int mountainBucket)
     {
         var (region, cell, bucket) = Parts(name);
-        return bucket >= 640 ? $"{region}.{cell}.one" : name;
+        return bucket >= mountainBucket ? $"{region}.{cell}.one" : name;
     }
 
-    private static Dictionary<string, List<string>> Group(IReadOnlyDictionary<string, byte[]> entries)
+    private static Dictionary<string, List<string>> Group(IReadOnlyDictionary<string, byte[]> entries, int mountainBucket)
     {
         var d = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var (name, data) in entries)
         {
             var body = Bmd27Body.Parse(data);
-            var key = Key(name);
+            var key = Key(name, mountainBucket);
             if (!d.TryGetValue(key, out var list)) d[key] = list = [];
             if (Parts(name).Bucket < 0)
-                list.AddRange(body.Nested.Select(x => $"{Key(x.Name)}|{x.CultureMask}|{x.Region}"));
+                list.AddRange(body.Nested.Select(x => $"{Key(x.Name, mountainBucket)}|{x.CultureMask}|{x.Region}"));
             else
                 list.AddRange(Records(body).Select(r => RecordText(body, r)));
         }

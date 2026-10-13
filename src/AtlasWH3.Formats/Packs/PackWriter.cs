@@ -3,14 +3,22 @@ using System.Text;
 namespace AtlasWH3.Formats.Packs;
 
 /// <summary>
-/// Writes a PFH5 mod pack (WH3, as RPFM saves a mod pack without compression): "PFH5", u32 flags (3 = mod), u32
-/// dependency count (0), u32 dependency index size (0), u32 file count, u32 file index size, u32 timestamp, then per file
-/// (u32 stored size, u8 compressed, backslash path + \0), then the file data in index order. New files are stored
-/// uncompressed; a file copied from another pack keeps its stored bytes. Same layout <see cref="PackFile"/> reads.
+/// Writes a PFH5 pack (WH3, as RPFM saves a pack without compression): "PFH5", u32 flags (the pack type, 3 = mod), u32
+/// dependency count, u32 dependency index size, u32 file count, u32 file index size, u32 timestamp, the dependencies
+/// (pack name + \0 each), then per file (u32 stored size, u8 compressed, backslash path + \0), then the file data in
+/// index order. New files are stored uncompressed; a file copied from another pack keeps its stored bytes. Same layout
+/// <see cref="PackFile"/> reads.
 /// </summary>
 public static class PackWriter
 {
     public const uint ModPack = 3;
+
+    /// <summary>The header fields a pack keeps through a merge: its type and the packs it depends on.</summary>
+    public sealed record Header(uint PackType, IReadOnlyList<string> Dependencies)
+    {
+        public static readonly Header Mod = new(ModPack, []);
+        public static Header Of(PackFile pack) => new(pack.PackType, pack.Dependencies);
+    }
 
     /// <summary>One file to pack: its path inside the pack (/ or \), stored size, a callback that copies its stored bytes,
     /// and whether those bytes are a compressed entry (u32 size + zstd / LZ4 frame).</summary>
@@ -39,10 +47,12 @@ public static class PackWriter
     public static void Write(string packPath, IEnumerable<(string InternalPath, string DiskPath)> files) =>
         Write(packPath, files.Select(f => FromDisk(f.InternalPath, f.DiskPath)));
 
-    public static void Write(string packPath, IEnumerable<Source> sources)
+    public static void Write(string packPath, IEnumerable<Source> sources, Header? header = null)
     {
+        header ??= Header.Mod;
         var list = sources.Select(f => (Name: f.InternalPath.Replace('/', '\\').TrimStart('\\'), Source: f))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var dependencies = header.Dependencies.SelectMany(d => Encoding.UTF8.GetBytes(d).Append((byte)0)).ToArray();
         var index = new MemoryStream();
         using (var w = new BinaryWriter(index, Encoding.UTF8, leaveOpen: true))
             foreach (var (name, source) in list)
@@ -58,12 +68,13 @@ public static class PackWriter
         using (var w = new BinaryWriter(fs))
         {
             w.Write("PFH5"u8);
-            w.Write(ModPack);
-            w.Write(0u);
-            w.Write(0u);
+            w.Write(header.PackType & 0xF);
+            w.Write((uint)header.Dependencies.Count);
+            w.Write((uint)dependencies.Length);
             w.Write((uint)list.Count);
             w.Write((uint)index.Length);
             w.Write((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            w.Write(dependencies);
             w.Write(index.ToArray());
             w.Flush();
             foreach (var (_, source) in list)

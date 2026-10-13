@@ -18,8 +18,13 @@ public sealed class PackFile
 {
     public string SourcePath { get; }
     public IReadOnlyDictionary<string, PackEntry> Entries => _entries;
+    /// <summary>The pack type, the byte mask's low 4 bits (0 boot, 1 release, 2 patch, 3 mod, 4 movie).</summary>
+    public uint PackType { get; private set; }
+    /// <summary>The packs this one names as its dependencies, in header order.</summary>
+    public IReadOnlyList<string> Dependencies => _dependencies;
 
     private readonly Dictionary<string, PackEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _dependencies = [];
 
     private PackFile(string sourcePath) => SourcePath = sourcePath;
 
@@ -41,10 +46,11 @@ public sealed class PackFile
         if ((byteMask & 0x80) != 0)
             throw new NotSupportedException("Encrypted-index packs are not supported.");
 
+        pack.PackType = byteMask & 0xF;
         var bufferLen = (byteMask & 0x100) != 0 ? 24 : 4;
         reader.ReadBytes(bufferLen);
         for (var i = 0; i < dependantCount; i++)
-            ReadZeroTerminated(reader);
+            pack._dependencies.Add(ReadZeroTerminated(reader));
 
         var hasTimestamps = (byteMask & 0x40) != 0;
         var isPfh5 = magic == "PFH5";

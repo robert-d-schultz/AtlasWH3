@@ -10,10 +10,10 @@ namespace AtlasWH3.Core.Campaign;
 /// <summary>
 /// campaign_maps\&lt;map&gt;\camera_heightmap.png, BOB's "Generate Camera Height Map" (TOOLDATABUILDER::
 /// generate_camera_height_map, tooldatabuilderdll 0x19de90; read off the WH3 kit, 2026-10-09). The generator is 3K's:
-///  - settings from rules.bob [Terrain] cam_hmap_* (bob_terrain 0x33180). WH3's kit sets none, and BOB has no defaults,
-///    so the resolution is 0 and the action fails on an empty grid; the defaults here are CA's resolution 0.25 (every
+///  - BOB takes its settings from rules.bob [Terrain] cam_hmap_* (bob_terrain 0x33180). WH3's kit sets none, and BOB
+///    has no defaults, so its action fails on an empty grid. This step has its own: CA's resolution 0.25 (every
 ///    shipped vanilla combi map is 2880 × 1941 tiles × 0.25 = 720 × 486) and 8 samples per unit (the best fit to CA's
-///    file);
+///    file), no blur;
 ///  - a ceil(tile map W · res) × ceil(tile map H · res) grid over the terrain bounds; cell (u, j) is centred at
 ///    (u · step x, j · step z) and keeps the max of the scene height over n × n points from its min corner (n = ceil(extent
 ///    · samples per unit), both loops run the z count) and its centre, starting from −1 (0x19fd40);
@@ -26,26 +26,28 @@ namespace AtlasWH3.Core.Campaign;
 /// </summary>
 public sealed class CameraHeightmapStep : ICampaignBuildStep
 {
-    /// <summary>Used when rules.bob has no cam_hmap_resolution_scale / cam_hmap_samples_per_wu.</summary>
-    public const float DefaultResolutionScale = 0.25f;
-    public const int DefaultSamplesPerUnit = 8;
+    /// <summary>Cells per tile-map pixel, on each axis (CA's).</summary>
+    public const float ResolutionScale = 0.25f;
+    /// <summary>Height samples per world unit along each side of a cell.</summary>
+    public const int SamplesPerUnit = 8;
 
     public string Name => "camera_heightmap";
     public string ReplacesBobAction => "Generate Camera Height Map";
     public IReadOnlyList<string> DependsOn => ["heightmaps", "tile_list"];
 
-    /// <summary>BOB's CAMERA_HEIGHT_MAP_SETTINGS (rules.bob [Terrain] cam_hmap_*); <paramref name="FromRules"/> when
-    /// both the resolution and the sample count were set.</summary>
-    public sealed record Settings(float ResolutionScale, int SamplesPerUnit, bool ApplyBlur, int BlurKernel, float StandardDeviation,
-                                  string? OutputTarget, bool FromRules);
+    private const string NoTileList = "no tile_list.bin in this build's output (run step 'tile_list')";
 
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)
     {
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
-        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && TreesStep.MapDataPath(ctx) is null)
-            missing.Add("the .terry has no world_width and there is no map_data.esf (CAIME's output) to take the width from");
+        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && !GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf"))
+            missing.Add("the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf") +
+                        " to take the width from");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
+        // this build's own (the steps it depends on; checked once those have run, or up front when they are not selected)
+        if (TreesStep.LogicMapPath(ctx) is null) missing.Add(TreesStep.NoLogicMap);
+        if (!File.Exists(ctx.OutFile("tile_list.bin"))) missing.Add(NoTileList);
         return missing;
     }
 
@@ -53,21 +55,12 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
-        var settings = ReadSettings(Path.Combine(ctx.Paths.AkTerrainDir, "..", "rules.bob"), Path.Combine(ctx.Paths.AkTerrainDir, "rules.bob"));
-        if (!settings.FromRules)
-            notes.Add($"rules.bob sets no cam_hmap_resolution_scale / cam_hmap_samples_per_wu (BOB then fails): using {settings.ResolutionScale} " +
-                      $"and {settings.SamplesPerUnit}");
-        if (settings.ApplyBlur) notes.Add("cam_hmap_apply_blur is on: BOB's blur is not ported, the map is written unblurred");
-        if (!string.IsNullOrEmpty(settings.OutputTarget)) notes.Add($"cam_hmap_output_target '{settings.OutputTarget}' is ignored");
-
         var project = TerryProject.Load(ctx.TerryFile);
-        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException("no full_logic_map.compressed_map (run step 'heightmaps')");
-        var tileListPath = new[] { ctx.OutFile("tile_list.bin"), Path.Combine(ctx.Paths.AkWorkingDir, "terrain", "campaigns", ctx.MapName, "tile_list.bin") }
-            .FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("no tile_list.bin (run step 'tile_list')");
-        foreach (var p in new[] { logicPath, tileListPath })
-            if (!p.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"read {p}");
+        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException(TreesStep.NoLogicMap);
+        var tileListPath = ctx.OutFile("tile_list.bin");
+        if (!File.Exists(tileListPath)) throw new FileNotFoundException(NoTileList);
         var tiles = TileList.Read(tileListPath);
-        var worldWidth = project.WorldWidth ?? MapDataBounds.Read(TreesStep.MapDataPath(ctx)!).Width;
+        var worldWidth = project.WorldWidth ?? MapDataBounds.Read(Formats.Esf.EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
 
         ctx.Log("height patches (packs)...");
         var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
@@ -75,15 +68,15 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         var field = new TreeHeightField(CompressedMap.Read(logicPath), worldWidth, patches);
         ctx.Cancel.ThrowIfCancellationRequested();
 
-        var (w, h) = GridSize(tiles.Ints[1], tiles.Ints[2], settings.ResolutionScale);
+        var (w, h) = GridSize(tiles.Ints[1], tiles.Ints[2], ResolutionScale);
         ctx.Log($"sampling {w}x{h}...");
-        var cells = Sample((x, z) => field.Height(x, z), w, h, field.WorldWidth, field.WorldDepth, settings.SamplesPerUnit);
+        var cells = Sample((x, z) => field.Height(x, z), w, h, field.WorldWidth, field.WorldDepth, SamplesPerUnit);
         var highest = cells.Max();
         var (raster, scale) = Encode(cells, w, h, highest);
         Directory.CreateDirectory(ctx.CampaignMapOutDir);
         var outPath = Path.Combine(ctx.CampaignMapOutDir, "camera_heightmap.png");
         File.WriteAllBytes(outPath, PngLib.Encode16(raster, new Dictionary<string, string> { ["height_scale"] = scale }));
-        notes.Add($"{w}x{h} from the {tiles.Ints[1]}x{tiles.Ints[2]} tile map, {settings.SamplesPerUnit} samples per unit; " +
+        notes.Add($"{w}x{h} from the {tiles.Ints[1]}x{tiles.Ints[2]} tile map, {SamplesPerUnit} samples per unit; " +
                   $"highest sampled height {highest:F6} (height_scale {scale})");
         return new StepResult(Name, [outPath], notes, sw.Elapsed);
     }
@@ -91,22 +84,6 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     /// <summary>The cell grid: ceil(terrain size in tiles · resolution scale), in float as BOB computes it.</summary>
     public static (int W, int H) GridSize(int tilesW, int tilesH, float resolutionScale) =>
         ((int)MathF.Ceiling(tilesW * resolutionScale), (int)MathF.Ceiling(tilesH * resolutionScale));
-
-    /// <summary>The settings of the rules.bob files in order (later files win), as bob_terrain reads them.</summary>
-    public static Settings ReadSettings(params string[] rulesBobs)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rulesBob in rulesBobs.Where(File.Exists))
-            foreach (var line in File.ReadAllLines(rulesBob))
-                if (line.Split('=', 2) is [var k, var v] && k.Trim().StartsWith("cam_hmap_", StringComparison.OrdinalIgnoreCase))
-                    values[k.Trim()] = v.Trim();
-        float F(string k, float d) => values.TryGetValue(k, out var v) && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var f) ? f : d;
-        bool B(string k) => values.TryGetValue(k, out var v) && (v.Equals("true", StringComparison.OrdinalIgnoreCase) || v == "1");
-        var fromRules = values.ContainsKey("cam_hmap_resolution_scale") && values.ContainsKey("cam_hmap_samples_per_wu");
-        return new Settings(F("cam_hmap_resolution_scale", DefaultResolutionScale), (int)F("cam_hmap_samples_per_wu", DefaultSamplesPerUnit),
-            B("cam_hmap_apply_blur"), (int)F("cam_hmap_blur_kernel", 0f), F("cam_hmap_standard_drv", 0f),
-            values.GetValueOrDefault("cam_hmap_output_target"), fromRules);
-    }
 
     /// <summary>The per-cell maxima in BOB's order (row j = z index, south first).</summary>
     public static float[] Sample(Func<float, float, float> height, int w, int h, float sceneW, float sceneD, int samplesPerUnit)

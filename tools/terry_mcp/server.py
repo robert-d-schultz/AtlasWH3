@@ -3,10 +3,10 @@
 Every tool shells out to the AtlasWH3 CLI (src/AtlasWH3.Cli), which rebuilds BOB's campaign outputs straight
 from the assembly-kit sources, reading intermediate files from disk -- no BOB, no pack import between steps.
 
-Steps (in BOB's order): rasters, tile_list, global_map, global_mesh, rivers, global_props, camera_heightmap, trees, lookup.
-Steps whose algorithm is not reverse-engineered yet report status "blocked" with "not native yet"; run
-`diagnose` to see which. Run `validate_tilemap` before any Tilemap run (BOB or native) to catch tile-map problems
-up front; diagnose also lists its errors under tile_list. The bob MCP server is still available to produce reference output for those.
+Steps: heightmaps, tile_list, trees, global_map, masks, rivers, global_props, devastated_tiles, devastated_heights,
+devastation_pieces, lookup, camera_heightmap, environment, hlp_spd (every one native). A step whose inputs are missing
+reports status "blocked"; run `diagnose` to see why. Run `validate_tilemap` before a tile_list run to catch tile-map
+problems up front; diagnose also lists its errors under tile_list.
 
 Prop editing (the *_prop* tools) works on the assembly kit's Terry layers, raw_data/terrain/campaigns/<map>/
 <map>.<id>.layer, one layer per region. Edits change only the touched entities (the rest of each layer stays
@@ -25,7 +25,7 @@ Tile-map editing (the *_tiles* / tile_* tools) paints the kit's campaign tile_ma
 changed hexes: an edit that introduces a blocking issue is NOT written (allow_warnings / force override).
 - Recommended order: tile_checkpoint -> paint/erase/draw/fill (dry_run first if unsure) -> preview_tiles ->
   simulate_tiles (BOB tile matching, ~2 min: holes in the edits?) -> build_step tile_list ->
-  check_tile_holes -> build_step global_map, global_mesh.
+  check_tile_holes -> build_step global_map.
 - Recorded edits can be replayed with replay_tiles after a builder (caime_tilemap.py) regenerates the tile map.
 
 Entity editing (the *entit* / *_layer* tools) is generic Terry editing: any entity type (Prop, Decal, VFX, PointLight,
@@ -61,7 +61,9 @@ from mcp.server.fastmcp import FastMCP, Image
 PROJECT = os.environ.get("ATLASWH3_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CLI_PROJECT = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "AtlasWH3.Cli.csproj")
 CLI_EXE = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "bin", "Release", "net10.0", "AtlasWH3.Cli.exe")
-KIT = r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III\assembly_kit"
+KIT = os.environ.get("ATLASWH3_AK") or r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III\assembly_kit"
+# the CLI's map when --map is not given (MapCatalog.DefaultMap), for the tools that read the disk themselves
+DEFAULT_MAP = "wh3_main_combi_map_1"
 
 mcp = FastMCP("terry")
 
@@ -104,12 +106,12 @@ def _target(out_dir: str | None, to_working_data: bool) -> list[str]:
 
 
 @mcp.tool()
-def build_campaign(map_name: str = "3k_dlc07_main_map", steps: list[str] | None = None, out_dir: str | None = None,
+def build_campaign(map_name: str | None = None, steps: list[str] | None = None, out_dir: str | None = None,
                    to_working_data: bool = False, ak_root: str | None = None) -> dict:
     """Build a campaign map's compiled terrain natively (replaces BOB's campaign actions).
 
     map_name: assembly-kit map folder (raw_data/terrain/campaigns/<map>).
-    steps: subset to run, e.g. ["rasters", "global_map"]; default = every native step. Selected steps run in
+    steps: subset to run, e.g. ["heightmaps", "global_map"]; default = every step. Selected steps run in
            dependency order, independent ones in parallel.
     out_dir: target root laid out like working_data (terrain/campaigns/<map>, campaign_maps/<map>);
              default output/compiled/<map>.
@@ -123,9 +125,10 @@ def build_campaign(map_name: str = "3k_dlc07_main_map", steps: list[str] | None 
 
 
 @mcp.tool()
-def build_step(step: str, map_name: str = "3k_dlc07_main_map", out_dir: str | None = None,
+def build_step(step: str, map_name: str | None = None, out_dir: str | None = None,
                to_working_data: bool = False, ak_root: str | None = None) -> dict:
-    """Run one native build step (rasters, tile_list, global_map, global_mesh, rivers, global_props, camera_heightmap, trees, lookup)."""
+    """Run one native build step (heightmaps, tile_list, trees, global_map, masks, rivers, global_props, devastated_tiles,
+    devastated_heights, devastation_pieces, lookup, camera_heightmap, environment, hlp_spd)."""
     return build_campaign(map_name, [step], out_dir, to_working_data, ak_root)
 
 
@@ -158,26 +161,26 @@ def build_project(project: str, segments: list[str] | None = None, steps: list[s
 
 
 @mcp.tool()
-def diagnose(map_name: str = "3k_dlc07_main_map", out_dir: str | None = None, to_working_data: bool = False,
+def diagnose(map_name: str | None = None, out_dir: str | None = None, to_working_data: bool = False,
              ak_root: str | None = None) -> dict:
     """Per-step readiness: which BOB action each step replaces, whether it is native yet, and missing inputs."""
     return _run(["diagnose-campaign", "--json", *_common(map_name, ak_root), *_target(out_dir, to_working_data)])
 
 
 @mcp.tool()
-def validate_tilemap(map_name: str = "3k_dlc07_main_map", tile_map: str | None = None, climate_dir: str | None = None,
+def validate_tilemap(map_name: str | None = None, tile_map: str | None = None, climate_dir: str | None = None,
                      simulate: bool = False, overlay: str | None = None, tilemap_only: bool = False,
                      ak_root: str | None = None) -> dict:
     """Pre-flight check of a campaign tile map BEFORE BOB's Terrain / Tilemap (or the native tile_list step).
 
     Checks: real PNG (not TGA), 2W x (2H+1) layout and black filler, hex width a multiple of 4, every colour a 3K
     tile set / tile / variation colour (CAIME's Attila colours flagged), tile sets CA never paints, climate map size and
-    colours, .terry / lf TIF sizes, stale working_data lf maps, EmpireDesignData extents, rules.bob, one-hex-wide
+    colours, the .terry's map sizes, one-hex-wide
     lines, coast ring, cliff ends, river starts / mouths, crossing layouts and 7-hex neighbourhoods CA's map never uses.
     tile_map: check a candidate file instead of <kit>/raw_data/terrain/campaigns/<map>/tile_map.png.
     simulate: also run the BOB tile-matching simulation and list the points that would get no tile.
     overlay: write a PNG of the tile map with error hexes red, warnings yellow, info cyan (look at it).
-    tilemap_only: skip the kit checks (rules.bob, sizes, extents, lf maps).
+    tilemap_only: skip the .terry map size check.
     Findings carry severity (error / warning / info), a count and up to 200 [col, row] hexes (row 0 = south).
     exit_code 1 = errors.
     """
@@ -217,8 +220,9 @@ def parity_check(built_dir: str, reference_dir: str, mask_junk: bool = True, onl
 
 
 @mcp.tool()
-def list_outputs(map_name: str = "3k_dlc07_main_map", out_dir: str | None = None, to_working_data: bool = False) -> dict:
+def list_outputs(map_name: str | None = None, out_dir: str | None = None, to_working_data: bool = False) -> dict:
     """List the files currently in a build target for a map, with sizes and modification times."""
+    map_name = map_name or DEFAULT_MAP
     root = os.path.join(KIT, "working_data") if to_working_data else (
         out_dir or os.path.join(PROJECT, "output", "compiled", map_name))
     files = []
@@ -254,7 +258,7 @@ def _csv(values) -> str:
 
 
 @mcp.tool()
-def list_prop_layers(name_filter: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def list_prop_layers(name_filter: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """List the map's region layers, with object counts per kind and the objects' world bounds [x0, z0, x1, z1].
 
     name_filter keeps only layers whose name contains it (e.g. "luoyang").
@@ -268,7 +272,7 @@ def list_prop_layers(name_filter: str | None = None, map_name: str = "3k_dlc07_m
 @mcp.tool()
 def list_props(layer: str | None = None, kinds: list[str] | None = None, asset: str | None = None, tag: str | None = None,
                rect: list[float] | None = None, near: list[float] | None = None, limit: int = 200,
-               map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+               map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Find objects in the layers. Returns id, layer, kind, asset, position, rotation, scale, tags and seasons.
 
     layer: a region/layer name or id (default: every layer).
@@ -288,14 +292,14 @@ def list_props(layer: str | None = None, kinds: list[str] | None = None, asset: 
 
 
 @mcp.tool()
-def get_prop(id: str, layer: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def get_prop(id: str, layer: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """One object in full: its parsed fields, the terrain height under it (ground_y), and its raw layer XML."""
     return _props("props-get", map_name, ak_root, id, *(["--layer", layer] if layer else []))
 
 
 @mcp.tool()
 def list_prop_models(filter: str | None = None, kinds: list[str] | None = None, limit: int = 100,
-                     map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                     map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Assets already used on the map (model paths, VFX, composite scenes...), most used first, each with its use
     count, mean scale and an example layer. The source of valid paths for add_props / set_prop_properties."""
     args = ["--limit", str(limit)]
@@ -305,14 +309,14 @@ def list_prop_models(filter: str | None = None, kinds: list[str] | None = None, 
 
 
 @mcp.tool()
-def ground_height(points: list[list[float]], map_name: str = "3k_dlc07_main_map", ak_root: str | None = None):
+def ground_height(points: list[list[float]], map_name: str | None = None, ak_root: str | None = None):
     """Terrain height (world y) at [x, z] points, from the kit's height map. For a single point it also names the
     region layer an added prop there would go to."""
     return _props("props-ground", map_name, ak_root, "--at", _csv(v for p in points for v in p[:2]))
 
 
 @mcp.tool()
-def edit_props(ops: list[dict], label: str | None = None, map_name: str = "3k_dlc07_main_map",
+def edit_props(ops: list[dict], label: str | None = None, map_name: str | None = None,
                ak_root: str | None = None) -> dict:
     """Apply a batch of prop edits as one undo step. Nothing is written if any op fails.
 
@@ -347,7 +351,7 @@ def _ids_op(op: str, ids: list[str], group: bool, layer: str | None, **fields) -
 
 
 @mcp.tool()
-def add_props(props: list[dict], map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def add_props(props: list[dict], map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Add props: each {"model", "position":[x, y|null, z], optional "rotation", "scale", "layer", "tags", "seasons",
     "decal"}. Model paths must come from list_prop_models. y null = terrain height."""
     return edit_props([{"op": "add", **p} for p in props], None, map_name, ak_root)
@@ -355,7 +359,7 @@ def add_props(props: list[dict], map_name: str = "3k_dlc07_main_map", ak_root: s
 
 @mcp.tool()
 def move_props(ids: list[str], position: list | None = None, by: list[float] | None = None, snap: str | None = None,
-               group: bool = False, layer: str | None = None, map_name: str = "3k_dlc07_main_map",
+               group: bool = False, layer: str | None = None, map_name: str | None = None,
                ak_root: str | None = None) -> dict:
     """Move objects to an absolute position [x, y|null, z] (null = keep) or by an offset [dx, dy, dz].
     snap: "terrain" (onto the ground) or "relative" (keep the height above ground). group: also move co-located variants."""
@@ -365,7 +369,7 @@ def move_props(ids: list[str], position: list | None = None, by: list[float] | N
 @mcp.tool()
 def transform_props(ids: list[str], rotation: list | None = None, rotate_by: list[float] | None = None,
                     scale: list | None = None, scale_factor: float | None = None, group: bool = False,
-                    layer: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                    layer: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Rotate (absolute [rx, ry, rz] degrees, null = keep, or rotate_by) and/or scale ([sx, sy, sz] or scale_factor)."""
     ops = []
     if rotation is not None or rotate_by is not None:
@@ -380,7 +384,7 @@ def transform_props(ids: list[str], rotation: list | None = None, rotate_by: lis
 @mcp.tool()
 def set_prop_properties(ids: list[str], model: str | None = None, seasons: str | None = None, tags: str | None = None,
                         attributes: dict[str, str] | None = None, group: bool = False, layer: str | None = None,
-                        map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                        map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Swap the model, set the season mask ("" = all seasons), set the export tags ("" = untagged), or set raw component
     attributes such as {"ECCampaignProperties.visible_in_unseen_shroud": "true", "ECMeshRenderSettings.cast_shadow": "false"}."""
     ops = []
@@ -395,39 +399,39 @@ def set_prop_properties(ids: list[str], model: str | None = None, seasons: str |
 
 @mcp.tool()
 def duplicate_props(ids: list[str], by: list[float], snap: str | None = None, group: bool = False,
-                    layer: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                    layer: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Copy objects (with their tags) offset by [dx, dy, dz]; returns the new ids."""
     return edit_props([_ids_op("duplicate", ids, group, layer, by=by, snap=snap)], None, map_name, ak_root)
 
 
 @mcp.tool()
-def delete_props(ids: list[str], group: bool = False, layer: str | None = None, map_name: str = "3k_dlc07_main_map",
+def delete_props(ids: list[str], group: bool = False, layer: str | None = None, map_name: str | None = None,
                  ak_root: str | None = None) -> dict:
     """Delete objects; tag layers left empty are removed too."""
     return edit_props([_ids_op("delete", ids, group, layer)], None, map_name, ak_root)
 
 
 @mcp.tool()
-def prop_checkpoint(label: str, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def prop_checkpoint(label: str, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Name the current edit state so prop_rollback(label) can return to it."""
     return _props("props-checkpoint", map_name, ak_root, label)
 
 
 @mcp.tool()
-def prop_rollback(label: str, force: bool = False, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def prop_rollback(label: str, force: bool = False, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Undo every prop edit made since checkpoint `label`. It refuses if a layer was changed outside these tools since;
     force=True overwrites anyway."""
     return _props("props-rollback", map_name, ak_root, label, *(["--force"] if force else []))
 
 
 @mcp.tool()
-def prop_undo(steps: int = 1, force: bool = False, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def prop_undo(steps: int = 1, force: bool = False, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Undo the last `steps` edit batches."""
     return _props("props-undo", map_name, ak_root, "--steps", str(steps), *(["--force"] if force else []))
 
 
 @mcp.tool()
-def prop_history(map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def prop_history(map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Edit batches so far (seq, time, label, files) and the named checkpoints."""
     return _props("props-history", map_name, ak_root)
 
@@ -435,7 +439,7 @@ def prop_history(map_name: str = "3k_dlc07_main_map", ak_root: str | None = None
 @mcp.tool()
 def preview_props(rect: list[float] | None = None, center: list[float] | None = None, size: float = 20,
                   width: int = 1024, highlight: list[str] | None = None, layer: str | None = None,
-                  map_name: str = "3k_dlc07_main_map", ak_root: str | None = None):
+                  map_name: str | None = None, ak_root: str | None = None):
     """Top-down PNG of a world area: hillshaded terrain, a labelled x/z grid, and objects as dots coloured by kind.
     Highlighted ids get a red ring and their id. Pass rect [x0, z0, x1, z1], or center [x, z] with size.
     Returns the image and its file path (give users the path)."""
@@ -452,15 +456,11 @@ def preview_props(rect: list[float] | None = None, center: list[float] | None = 
 
 
 @mcp.tool()
-def rebuild_props(map_name: str = "3k_dlc07_main_map", out_dir: str | None = None, to_working_data: bool = False,
+def rebuild_props(map_name: str | None = None, out_dir: str | None = None, to_working_data: bool = False,
                   camera_heightmap: bool = True, ak_root: str | None = None) -> dict:
     """Recompile global_props.bin from the edited layers. camera_heightmap also redoes the camera height map, which
-    includes props. Runs the rasters step first if the target has no lf_height_map yet."""
-    root = os.path.join(KIT, "working_data") if to_working_data else (
-        out_dir or os.path.join(PROJECT, "output", "compiled", map_name))
+    includes props' height patches."""
     steps = ["global_props"] + (["camera_heightmap"] if camera_heightmap else [])
-    if not os.path.exists(os.path.join(root, "terrain", "campaigns", map_name, "lf_height_map.compressed_map")):
-        steps.insert(0, "rasters")
     return build_campaign(map_name, steps, out_dir, to_working_data, ak_root)
 
 
@@ -490,7 +490,7 @@ def _area(hexes, circle, rect, polygon) -> dict:
 
 
 @mcp.tool()
-def list_tile_sets(map_name: str = "3k_dlc07_main_map", tile_map: str | None = None, ak_root: str | None = None) -> dict:
+def list_tile_sets(map_name: str | None = None, tile_map: str | None = None, ak_root: str | None = None) -> dict:
     """The tile sets you can paint (name, colour, area or line/coast kind, hexes on the map, tiles in the database),
     the hex grid size, and any colours on the map that are no tile set. tile_map: a copy instead of the kit's file."""
     return _tiles("tiles-info", map_name, ak_root, tile_map)
@@ -498,7 +498,7 @@ def list_tile_sets(map_name: str = "3k_dlc07_main_map", tile_map: str | None = N
 
 @mcp.tool()
 def get_tiles(hexes: list[list[int]] | None = None, world: list[list[float]] | None = None, rect: list[int] | None = None,
-              limit: int = 400, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+              limit: int = 400, map_name: str | None = None, tile_map: str | None = None,
               ak_root: str | None = None) -> dict:
     """Tile set, colour and world [x, z] of hexes: hexes [[col, row], ...], world [[x, z], ...] (campaign world units,
     converted to the hex under them) or rect [c0, r0, c1, r1]."""
@@ -511,7 +511,7 @@ def get_tiles(hexes: list[list[int]] | None = None, world: list[list[float]] | N
 
 @mcp.tool()
 def edit_tiles(ops: list[dict], label: str | None = None, dry_run: bool = False, allow_warnings: bool = False,
-               force: bool = False, preview: bool = True, map_name: str = "3k_dlc07_main_map",
+               force: bool = False, preview: bool = True, map_name: str | None = None,
                tile_map: str | None = None, ak_root: str | None = None):
     """Apply a batch of tile-map edits as one undo step, validated first. Nothing is written if any op fails or the
     edit introduces a blocking issue (new errors, and new rule warnings such as thick lines, unseen coast/river
@@ -546,7 +546,7 @@ def edit_tiles(ops: list[dict], label: str | None = None, dry_run: bool = False,
 @mcp.tool()
 def paint_tiles(set: str, hexes: list[list[int]] | None = None, circle: list[int] | None = None,
                 rect: list[int] | None = None, polygon: list[list[int]] | None = None, dry_run: bool = False,
-                allow_warnings: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+                allow_warnings: bool = False, map_name: str | None = None, tile_map: str | None = None,
                 ak_root: str | None = None):
     """Add tiles: paint a tile set over hexes / a circle [c, r, radius] / a rect [c0, r0, c1, r1] / a polygon."""
     op = {"op": "paint", "set": set, **_area(hexes, circle, rect, polygon)}
@@ -556,7 +556,7 @@ def paint_tiles(set: str, hexes: list[list[int]] | None = None, circle: list[int
 @mcp.tool()
 def erase_tiles(hexes: list[list[int]] | None = None, circle: list[int] | None = None, rect: list[int] | None = None,
                 polygon: list[list[int]] | None = None, to: str | None = None, dry_run: bool = False,
-                allow_warnings: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+                allow_warnings: bool = False, map_name: str | None = None, tile_map: str | None = None,
                 ak_root: str | None = None):
     """Remove tiles (a road, river, mountain patch...): the hexes take the most common surrounding area set (land,
     mountains...), or sea if they only touch sea. to: force one set instead."""
@@ -566,7 +566,7 @@ def erase_tiles(hexes: list[list[int]] | None = None, circle: list[int] | None =
 
 @mcp.tool()
 def draw_tile_line(set: str, points: list[list[int]], width: int = 1, dry_run: bool = False,
-                   allow_warnings: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+                   allow_warnings: bool = False, map_name: str | None = None, tile_map: str | None = None,
                    ak_root: str | None = None):
     """Draw a connected one-hex-wide line (river, roads_tracks / roads_paved / roads_imperial, blockout_cliff, canal)
     through waypoints [[c, r], ...]."""
@@ -576,14 +576,14 @@ def draw_tile_line(set: str, points: list[list[int]], width: int = 1, dry_run: b
 
 @mcp.tool()
 def fill_tiles(set: str, at: list[int], max_hexes: int = 20000, dry_run: bool = False, allow_warnings: bool = False,
-               map_name: str = "3k_dlc07_main_map", tile_map: str | None = None, ak_root: str | None = None):
+               map_name: str | None = None, tile_map: str | None = None, ak_root: str | None = None):
     """Flood-fill the connected same-colour area containing hex at [c, r] with a tile set."""
     op = {"op": "fill", "set": set, "at": at, "max": max_hexes}
     return edit_tiles([op], None, dry_run, allow_warnings, False, True, map_name, tile_map, ak_root)
 
 
 @mcp.tool()
-def validate_tiles(rect: list[int] | None = None, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+def validate_tiles(rect: list[int] | None = None, map_name: str | None = None, tile_map: str | None = None,
                    ak_root: str | None = None) -> dict:
     """Hex-rule check of the tile map (palette, line width, coast ring, cliff ends, river ends / crossings, unseen
     patterns) over rect [c0, r0, c1, r1] or the whole map. validate_tilemap also checks the kit files around it."""
@@ -591,7 +591,7 @@ def validate_tiles(rect: list[int] | None = None, map_name: str = "3k_dlc07_main
 
 
 @mcp.tool()
-def tile_errors(map_name: str = "3k_dlc07_main_map", simulate: bool = False, codes: list[str] | None = None,
+def tile_errors(map_name: str | None = None, simulate: bool = False, codes: list[str] | None = None,
                 rect: list[int] | None = None, limit: int = 200, fast: bool = False, tile_map: str | None = None,
                 ak_root: str | None = None) -> dict:
     """Tile error mode: every tile-map error, one per hex, each with a recommended fix (the same engine as the app's
@@ -610,7 +610,7 @@ def tile_errors(map_name: str = "3k_dlc07_main_map", simulate: bool = False, cod
 
 
 @mcp.tool()
-def fix_tiles(map_name: str = "3k_dlc07_main_map", codes: list[str] | None = None, verified_only: bool = True,
+def fix_tiles(map_name: str | None = None, codes: list[str] | None = None, verified_only: bool = True,
               dry_run: bool = False, simulate: bool = False, rect: list[int] | None = None,
               tile_map: str | None = None, ak_root: str | None = None) -> dict:
     """Apply the recommended fixes for tile errors as ONE journaled edit (undo with tile_undo). Run tile_checkpoint
@@ -629,7 +629,7 @@ def fix_tiles(map_name: str = "3k_dlc07_main_map", codes: list[str] | None = Non
 
 @mcp.tool()
 def preview_tiles(rect: list[int] | None = None, center: list[int] | None = None, size: int = 30, width: int = 1024,
-                  show_edits: bool = True, show_issues: bool = True, map_name: str = "3k_dlc07_main_map",
+                  show_edits: bool = True, show_issues: bool = True, map_name: str | None = None,
                   tile_map: str | None = None, ak_root: str | None = None):
     """PNG of a hex area (rect [c0, r0, c1, r1], or center [c, r] with size): hexes in tile-set colours, a col/row
     grid and legend; show_edits outlines every journaled edit in white, show_issues rings rule problems (red error,
@@ -644,14 +644,14 @@ def preview_tiles(rect: list[int] | None = None, center: list[int] | None = None
 
 
 @mcp.tool()
-def tile_checkpoint(label: str, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+def tile_checkpoint(label: str, map_name: str | None = None, tile_map: str | None = None,
                     ak_root: str | None = None) -> dict:
     """Name the current tile-map edit state so tile_rollback(label) can return to it."""
     return _tiles("tiles-checkpoint", map_name, ak_root, tile_map, label)
 
 
 @mcp.tool()
-def tile_rollback(label: str, force: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+def tile_rollback(label: str, force: bool = False, map_name: str | None = None, tile_map: str | None = None,
                   ak_root: str | None = None) -> dict:
     """Undo every tile edit since checkpoint `label` (byte-exact). Refuses if tile_map.png was changed outside these
     tools since (e.g. regenerated); force=True overwrites anyway."""
@@ -659,21 +659,21 @@ def tile_rollback(label: str, force: bool = False, map_name: str = "3k_dlc07_mai
 
 
 @mcp.tool()
-def tile_undo(steps: int = 1, force: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+def tile_undo(steps: int = 1, force: bool = False, map_name: str | None = None, tile_map: str | None = None,
               ak_root: str | None = None) -> dict:
     """Undo the last `steps` tile edit batches."""
     return _tiles("tiles-undo", map_name, ak_root, tile_map, "--steps", str(steps), *(["--force"] if force else []))
 
 
 @mcp.tool()
-def tile_history(map_name: str = "3k_dlc07_main_map", tile_map: str | None = None, ak_root: str | None = None) -> dict:
+def tile_history(map_name: str | None = None, tile_map: str | None = None, ak_root: str | None = None) -> dict:
     """Tile edit batches so far (seq, time, label, hexes, ops) and the named checkpoints."""
     return _tiles("tiles-history", map_name, ak_root, tile_map)
 
 
 @mcp.tool()
 def replay_tiles(from_seq: int = 1, to_seq: int | None = None, dry_run: bool = False, allow_warnings: bool = False,
-                 force: bool = False, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+                 force: bool = False, map_name: str | None = None, tile_map: str | None = None,
                  ak_root: str | None = None):
     """Re-apply recorded tile edits (seq range, default all) to the current tile map as one new validated batch, e.g.
     after caime_tilemap.py regenerated it and wiped hand edits."""
@@ -687,17 +687,17 @@ def replay_tiles(from_seq: int = 1, to_seq: int | None = None, dry_run: bool = F
 
 @mcp.tool()
 def check_tile_holes(tile_list: str | None = None, since_seq: int = 0, limit: int = 40,
-                     map_name: str = "3k_dlc07_main_map", tile_map: str | None = None, ak_root: str | None = None) -> dict:
-    """After BOB Terrain / Tilemap: tile-map cells no tile_list.bin record covers (see-through holes), clustered,
-    edge vs suspect, and which clusters lie in hexes edited since seq `since_seq`. tile_list defaults to the kit's
-    working_data/terrain/campaigns/<map>/tile_list.bin."""
+                     map_name: str | None = None, tile_map: str | None = None, ak_root: str | None = None) -> dict:
+    """After build_step tile_list: tile-map cells no tile_list.bin record covers (see-through holes), clustered,
+    edge vs suspect, and which clusters lie in hexes edited since seq `since_seq`. tile_list defaults to the default
+    build target's output/compiled/<map>/terrain/campaigns/<map>/tile_list.bin."""
     args = ["--since", str(since_seq), "--limit", str(limit)]
     if tile_list: args += ["--tile-list", tile_list]
     return _tiles("tiles-holes", map_name, ak_root, tile_map, *args)
 
 
 @mcp.tool()
-def simulate_tiles(since_seq: int = 0, limit: int = 60, map_name: str = "3k_dlc07_main_map", tile_map: str | None = None,
+def simulate_tiles(since_seq: int = 0, limit: int = 60, map_name: str | None = None, tile_map: str | None = None,
                    ak_root: str | None = None) -> dict:
     """Simulate BOB's Terrain / Tilemap on the tile map (whole map, ~1-3 min) and list the hexes that would get no tile
     (see-through holes): those in hexes edited since seq `since_seq` first, then the rest. Use before a BOB run to
@@ -713,28 +713,28 @@ def _entities(command: str, project: str | None, map_name: str | None, ak_root: 
 
 
 @mcp.tool()
-def list_entity_types(project: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def list_entity_types(project: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Every Terry entity type with its component layout, how often the kit uses it, and whether Terry allows it in the
     project (campaign tile_map, battle prefab, ...). project: a .terry path (default: the campaign map's)."""
     return _entities("entity-types", project, map_name, ak_root)
 
 
 @mcp.tool()
-def describe_entity_type(type: str, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def describe_entity_type(type: str, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """One entity type: its components and each component's fields (type, default, known values), conditional
     components ("when shape=polyline") and where Terry allows it. Use before create/set to get exact field names."""
     return _entities("entity-type", None, map_name, ak_root, type)
 
 
 @mcp.tool()
-def terry_project_info(project: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def terry_project_info(project: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Project type and database, layer count, active layer, terrain maps, and the undo history folder."""
     return _entities("entity-project", project, map_name, ak_root)
 
 
 @mcp.tool()
 def list_layers(nested: bool = False, name_filter: str | None = None, project: str | None = None,
-                map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                map_name: str | None = None, ak_root: str | None = None) -> dict:
     """The layer tree: file layers with entity counts by type, export/visible/frozen/active state; nested=True also
     lists each file's folder and tag layers (with member counts)."""
     result = _entities("entity-layers", project, map_name, ak_root, *(["--all"] if nested else []))
@@ -747,7 +747,7 @@ def list_layers(nested: bool = False, name_filter: str | None = None, project: s
 def query_entities(types: list[str] | None = None, layer: str | None = None, where: list[str] | None = None,
                    name: str | None = None, rect: list[float] | None = None, parent: str | None = None,
                    full: bool = False, limit: int = 200, project: str | None = None,
-                   map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                   map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Find entities. types: entity types ("Prop", "PointLight", "TagLayer"...; layers are excluded unless named);
     layer: a file layer name or id; where: field filters "ECMesh.model_path~tree" (contains), "ECX.f=value",
     "ECX.f!=value", or "ECComponent" (has it); name: name contains; rect: [x0, z0, x1, z1] on position; parent: a
@@ -764,7 +764,7 @@ def query_entities(types: list[str] | None = None, layer: str | None = None, whe
 
 
 @mcp.tool()
-def get_entities(ids: list[str], project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def get_entities(ids: list[str], project: str | None = None, map_name: str | None = None,
                  ak_root: str | None = None):
     """Full entities: type, name, layer, parents, group, and every component with all its fields."""
     return _entities("entity-get", project, map_name, ak_root, *ids)
@@ -772,7 +772,7 @@ def get_entities(ids: list[str], project: str | None = None, map_name: str = "3k
 
 @mcp.tool()
 def edit_entities(ops: list[dict], label: str | None = None, project: str | None = None,
-                  map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                  map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Apply a batch of generic entity edits as one undo step. Nothing is written if any op fails.
 
     Targets: "id", "ids": [...], or "query": {types, layer, name, fields: [filters as in query_entities], rect, parent}
@@ -807,7 +807,7 @@ def edit_entities(ops: list[dict], label: str | None = None, project: str | None
 
 
 @mcp.tool()
-def set_entity_fields(ids: list[str], fields: dict, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def set_entity_fields(ids: list[str], fields: dict, project: str | None = None, map_name: str | None = None,
                       ak_root: str | None = None) -> dict:
     """Set fields on entities: fields = {"ECComponent.field": value}. Shortcut for edit_entities set."""
     return edit_entities([{"op": "set", "ids": ids, "fields": fields}], project=project, map_name=map_name, ak_root=ak_root)
@@ -815,7 +815,7 @@ def set_entity_fields(ids: list[str], fields: dict, project: str | None = None, 
 
 @mcp.tool()
 def bulk_set_entities(query: dict, fields: dict, label: str | None = None, project: str | None = None,
-                      map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                      map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Find-and-replace: set fields on every entity a query matches. query = {types, layer, name, fields: [filters],
     rect, parent}; e.g. {"types":["Prop"], "fields":["ECMesh.model_path~old_tree"]} with
     {"ECMesh.model_path": "<new path>"}. Run query_entities with the same query first to check the matches."""
@@ -826,7 +826,7 @@ def bulk_set_entities(query: dict, fields: dict, label: str | None = None, proje
 @mcp.tool()
 def create_entity(type: str, layer: str, position: list[float] | None = None, fields: dict | None = None,
                   name: str | None = None, parent: str | None = None, project: str | None = None,
-                  map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                  map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Create one entity of a Terry type in a file layer, with Terry's component layout and default values."""
     op = {"op": "create", "type": type, "layer": layer}
     if position: op["position"] = position
@@ -838,7 +838,7 @@ def create_entity(type: str, layer: str, position: list[float] | None = None, fi
 
 @mcp.tool()
 def delete_entities(ids: list[str], with_members: bool = False, project: str | None = None,
-                    map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                    map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Delete entities (any type). A folder/tag layer's members move up a level unless with_members=True."""
     return edit_entities([{"op": "delete", "ids": ids, "with_members": with_members}], project=project,
                          map_name=map_name, ak_root=ak_root)
@@ -846,7 +846,7 @@ def delete_entities(ids: list[str], with_members: bool = False, project: str | N
 
 @mcp.tool()
 def move_entities_to_layer(ids: list[str], layer: str, parent: str | None = None, project: str | None = None,
-                           map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                           map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Move entities to another file layer (optionally into a folder/tag layer there). Ids are kept."""
     op = {"op": "move_to_layer", "ids": ids, "layer": layer}
     if parent: op["parent"] = parent
@@ -855,7 +855,7 @@ def move_entities_to_layer(ids: list[str], layer: str, parent: str | None = None
 
 @mcp.tool()
 def create_layer(name: str, in_layer: str | None = None, tags: str | None = None, parent: str | None = None,
-                 project: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                 project: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Create a layer: without in_layer, a new file layer in the project (its own .layer file); with in_layer, a
     folder layer inside that file, or a tag layer when tags is given (members export with those meta tags)."""
     op = {"op": "create_layer", "name": name}
@@ -867,7 +867,7 @@ def create_layer(name: str, in_layer: str | None = None, tags: str | None = None
 
 @mcp.tool()
 def set_layer_state(layer: str, visible: bool | None = None, frozen: bool | None = None, export: bool | None = None,
-                    active: bool | None = None, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+                    active: bool | None = None, project: str | None = None, map_name: str | None = None,
                     ak_root: str | None = None) -> dict:
     """Show/hide, lock/unlock, export on/off, or make active a layer (file layer name/id or nested layer id)."""
     op = {"op": "layer_state", "id": layer}
@@ -877,35 +877,35 @@ def set_layer_state(layer: str, visible: bool | None = None, frozen: bool | None
 
 
 @mcp.tool()
-def entity_checkpoint(label: str, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def entity_checkpoint(label: str, project: str | None = None, map_name: str | None = None,
                       ak_root: str | None = None) -> dict:
     """Name the current state so entity_rollback can return to it."""
     return _entities("entity-checkpoint", project, map_name, ak_root, label)
 
 
 @mcp.tool()
-def entity_rollback(label: str, force: bool = False, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def entity_rollback(label: str, force: bool = False, project: str | None = None, map_name: str | None = None,
                     ak_root: str | None = None) -> dict:
     """Undo every entity edit made since a checkpoint."""
     return _entities("entity-rollback", project, map_name, ak_root, label, *(["--force"] if force else []))
 
 
 @mcp.tool()
-def entity_undo(steps: int = 1, force: bool = False, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def entity_undo(steps: int = 1, force: bool = False, project: str | None = None, map_name: str | None = None,
                 ak_root: str | None = None) -> dict:
     """Undo the last entity edit batches (restores every file they touched, including created/deleted layer files)."""
     return _entities("entity-undo", project, map_name, ak_root, "--steps", str(steps), *(["--force"] if force else []))
 
 
 @mcp.tool()
-def entity_history(project: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+def entity_history(project: str | None = None, map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Edit batches (seq, time, label, files) and checkpoints."""
     return _entities("entity-history", project, map_name, ak_root)
 
 
 @mcp.tool()
 def list_prefabs(filter: str | None = None, limit: int = 300, project: str | None = None,
-                 map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                 map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Prefab keys in the project database's library (battle or campaign), with their paths."""
     args = ["--limit", str(limit)]
     if filter: args += ["--filter", filter]
@@ -913,7 +913,7 @@ def list_prefabs(filter: str | None = None, limit: int = 300, project: str | Non
 
 
 @mcp.tool()
-def describe_prefab(key: str, project: str | None = None, map_name: str = "3k_dlc07_main_map",
+def describe_prefab(key: str, project: str | None = None, map_name: str | None = None,
                     ak_root: str | None = None) -> dict:
     """What a prefab holds: entity count (and with nested prefabs expanded), types, x/z bounds, nested keys, assets."""
     return _entities("prefab-get", project, map_name, ak_root, key)
@@ -922,7 +922,7 @@ def describe_prefab(key: str, project: str | None = None, map_name: str = "3k_dl
 @mcp.tool()
 def place_prefab(key: str, layer: str, position: list[float], rotation: list[float] | None = None,
                  scale: float | list[float] | None = None, parent: str | None = None, project: str | None = None,
-                 map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                 map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Place a Prefab instance (key from list_prefabs) in a file layer. Rotation in degrees (y = heading)."""
     op = {"op": "place_prefab", "key": key, "layer": layer, "position": position}
     if rotation: op["rotation"] = rotation
@@ -933,7 +933,7 @@ def place_prefab(key: str, layer: str, position: list[float], rotation: list[flo
 
 @mcp.tool()
 def expand_prefabs(ids: list[str], recursive: bool = True, into_folder: bool = True, project: str | None = None,
-                   map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                   map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Break Prefab instances apart into their entities (transforms composed, overrides applied, nested prefabs
     expanded when recursive), in a folder layer named after the prefab unless into_folder=False."""
     return edit_entities([{"op": "expand_prefab", "ids": ids, "recursive": recursive, "into_folder": into_folder}],
@@ -942,7 +942,7 @@ def expand_prefabs(ids: list[str], recursive: bool = True, into_folder: bool = T
 
 @mcp.tool()
 def make_prefab(ids: list[str], key: str, folder: str | None = None, replace: bool = True, project: str | None = None,
-                map_name: str = "3k_dlc07_main_map", ak_root: str | None = None) -> dict:
+                map_name: str | None = None, ak_root: str | None = None) -> dict:
     """Save entities as a new prefab (<library>/<folder>/<key>.terry, centred on their x/z middle at the lowest y);
     with replace the originals become one instance of it. Undoable like any edit (the new files are removed)."""
     op = {"op": "make_prefab", "ids": ids, "key": key, "replace": replace}
@@ -993,30 +993,12 @@ def preview_asset(path: str, yaw: float = 35, pitch: float = 30, size: int = 384
 
 
 @mcp.tool()
-def check_project_assets(project: str | None = None, map_name: str = "3k_dlc07_main_map", ak_root: str | None = None,
+def check_project_assets(project: str | None = None, map_name: str | None = None, ak_root: str | None = None,
                          mod_packs: list[str] | None = None, asset_roots: list[str] | None = None) -> dict:
     """Load every model a project's entities use (ECMesh / ECDecal model_path) and report the ones that fail or miss
     materials/textures, with how many entities use each."""
     extra = _common(map_name, ak_root)
     return _assets("asset-check", *extra, mod_packs=mod_packs, asset_roots=asset_roots, project=project)
-
-@mcp.tool()
-def map_audit(map_name: str = "3k_dlc07_main_map", ak_root: str | None = None, project: str | None = None,
-              packs: list[str] | None = None, checks: list[str] | None = None, out_dir: str | None = None) -> dict:
-    """Audit a campaign map's project layers (hidden included) for defects, read-only. Checks: floating-mountain /
-    buried-mountain (LF-offset mountains: stored y is an offset above the terrain), buried-prop, floating-prop (rocks),
-    prop-in-sea, wrong-region (info), on-city-footprint (mountains/rocks/trees crowding map.hex towns), duplicate,
-    asset, scale-outlier, city (map.hex settlement slots), road-river, city-dressing (info). Writes findings.csv,
-    summary.json and fix_<check>.json (entity-edit ops: apply after review with edit_entities / entity-edit) to
-    out_dir (default output/audit/<map>); returns the summary. Calibrated on vanilla dlc07: compare counts with it.
-    Use packs for mod packs (e.g. the map's native .pack) so their models resolve."""
-    args = ["map-audit", *_common(map_name, ak_root)]
-    for p in packs or []: args += ["--pack", p]
-    if project: args += ["--project", project]
-    if checks: args += ["--checks", ",".join(checks)]
-    if out_dir: args += ["--out", out_dir]
-    result = _run(args, timeout=1800)
-    return result.get("result", result)
 
 
 if __name__ == "__main__":

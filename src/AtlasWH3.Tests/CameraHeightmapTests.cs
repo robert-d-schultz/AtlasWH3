@@ -43,26 +43,7 @@ public class CameraHeightmapTests
     [InlineData(3200, 1941, 800, 486)]     // IEE
     [InlineData(4096, 3549, 1024, 888)]    // Old World
     public void GridSize_IsTheTileMapTimesTheResolutionRoundedUp(int tilesW, int tilesH, int w, int h) =>
-        Assert.Equal((w, h), CameraHeightmapStep.GridSize(tilesW, tilesH, CameraHeightmapStep.DefaultResolutionScale));
-
-    [Fact]
-    public void ReadSettings_DefaultsWithoutRulesAndLaterFilesWin()
-    {
-        var dir = Directory.CreateTempSubdirectory().FullName;
-        try
-        {
-            var none = CameraHeightmapStep.ReadSettings(Path.Combine(dir, "missing.bob"));
-            Assert.False(none.FromRules);
-            Assert.Equal((0.25f, 8), (none.ResolutionScale, none.SamplesPerUnit));
-
-            File.WriteAllText(Path.Combine(dir, "a.bob"), "[Terrain]\n\tcam_hmap_resolution_scale = 1\n\tcam_hmap_samples_per_wu = 4\n");
-            File.WriteAllText(Path.Combine(dir, "b.bob"), "[Terrain]\n\tcam_hmap_samples_per_wu = 2\n\tcam_hmap_apply_blur = true\n");
-            var s = CameraHeightmapStep.ReadSettings(Path.Combine(dir, "a.bob"), Path.Combine(dir, "b.bob"));
-            Assert.True(s.FromRules);
-            Assert.Equal((1f, 2, true), (s.ResolutionScale, s.SamplesPerUnit, s.ApplyBlur));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
+        Assert.Equal((w, h), CameraHeightmapStep.GridSize(tilesW, tilesH, CameraHeightmapStep.ResolutionScale));
 
     [Fact]
     public void Sample_KeepsTheHighestSampleOfEachCell()

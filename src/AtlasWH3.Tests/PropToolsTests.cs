@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using AtlasWH3.Core;
 using AtlasWH3.Core.Editing;
+using AtlasWH3.Core.Exporters;
+using AtlasWH3.Formats.Packs;
 using AtlasWH3.Formats.Terry;
 using AtlasWH3.Formats.Trees;
 
@@ -238,12 +240,15 @@ public class PropToolsTests
                 AssemblyKitRoot = TestKits.Kit(map), GameDataDir = TestKits.Wh3GameData, MapName = map, OutputRoot = tmp.FullName,
                 ModPacks = [TestKits.Pack(pack)],
             };
-            var treeList = Path.Combine(paths.AkWorkingCampaignMapDir, "display", "trees", "trees.campaign_tree_list");
-            if (!File.Exists(Path.Combine(paths.AkTerrainDir, map + ".terry")) || !File.Exists(treeList) || !File.Exists(paths.ModPacks[0])) return;
+            if (!File.Exists(Path.Combine(paths.AkTerrainDir, map + ".terry")) || !File.Exists(paths.ModPacks[0])) return;
+            // the pack's trees, against the pack's full_logic_map (no build output here): one BOB run's pair
+            var treeList = PackFile.Open(paths.ModPacks[0]).TryRead(TreeExporter.PackPath(map));
+            Assert.True(treeList is not null, $"no {TreeExporter.PackPath(map)} in {paths.ModPacks[0]}");
             var scene = GroundHeight.Scene(paths, map, out var why);
             Assert.True(scene is not null, why);
             Assert.StartsWith("scene", scene!.Description);
-            var trees = CampaignTreeList.Load(treeList).Types.SelectMany(t => t.Instances).Where((_, i) => i % 97 == 0).ToList();
+            Assert.Contains("game packs", scene.Description);
+            var trees = CampaignTreeList.Read(treeList!).Types.SelectMany(t => t.Instances).Where((_, i) => i % 97 == 0).ToList();
             var close = trees.Count(t => Math.Abs(scene.At(t.X, t.Z) - t.Y) < 1e-3);
             Assert.True(close >= trees.Count * 0.99, $"{close} of {trees.Count} tree heights match");
 

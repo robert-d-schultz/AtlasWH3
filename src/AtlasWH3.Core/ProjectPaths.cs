@@ -15,7 +15,7 @@ public sealed record ProjectPaths
     public string CacheRoot { get; init; } = Defaults.Cache;
     /// <summary>Mod packs (<c>--pack &lt;file.pack&gt;</c>, repeatable, highest priority first): searched before the
     /// vanilla packs for assets, and, for the map's compiled files (tile_list.bin, texture_arrays.xml), before the
-    /// kit's working_data and the vanilla folder.</summary>
+    /// vanilla folder.</summary>
     public IReadOnlyList<string> ModPacks { get; init; } = [];
     /// <summary>Where the tile map editor and the tile_list step read tile_map.png (kit, a file, or a pack entry) and
     /// where the editor saves it.</summary>
@@ -34,10 +34,13 @@ public sealed record ProjectPaths
     public string TreeTypeCulturesTsv => Path.Combine(DbTsvRoot, "campaign_tree_type_cultures_tables", "data__.tsv");
 
     public string AkTerrainDir => Path.Combine(AssemblyKitRoot, "raw_data", "terrain", "campaigns", MapName);
+    /// <summary>The kit's working_data: BOB's outputs. Written to (a build profile's target, the battle catchments for
+    /// BOB's pack step), never read as an input.</summary>
     public string AkWorkingDir => Path.Combine(AssemblyKitRoot, "working_data");
-    public string AkWorkingCampaignMapDir => Path.Combine(AkWorkingDir, "campaign_maps", MapName);
     public string AkDesignCampaignMapDir => Path.Combine(AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_maps", MapName);
     public string TextureCacheDir => Path.Combine(CacheRoot, "terrain_textures");
+    /// <summary>The CLI's default build target for the map (laid out like working_data).</summary>
+    public string BuildTarget => Path.Combine(OutputRoot, "compiled", MapName);
 
     /// <summary>Applies <c>--map &lt;name&gt;</c>, <c>--root &lt;compiled root&gt;</c>, <c>--ak &lt;assembly kit root&gt;</c> and
     /// <c>--pack &lt;mod pack&gt;</c> (repeatable)

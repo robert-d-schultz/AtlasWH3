@@ -10,14 +10,15 @@ public static partial class Walkthroughs
         new("start.selector", "Assembly kit and map",
             "Pick the assembly kit and the map to work on, including maps from your linked mod packs. " +
             "Every editor you open from here uses this map, and the choice is remembered."),
-        new("start.scene", "Scene editor",
-            "Props, entities, prefabs and layers of the map, in a top-down view and in 3D. Add new props and clamp floating ones to the ground here."),
-        new("start.tiles", "Tile map",
-            "Paint the campaign tile map hex by hex (roads, rivers, coast, mountains) with live checks for tiles the build can't place."),
-        new("start.painter", "Terrain painter",
-            "Raise, lower and smooth the heights, paint ground textures and place or erase trees on the compiled map."),
         new("start.build", "Build",
-            "Compiles the map natively (tiles, meshes, props, rivers, trees), runs your own steps, then packs and installs the mod."),
+            "Compiles the map natively (heights, tiles, props, rivers, trees, devastation pieces, AI pathfinding), runs your own steps, " +
+            "then packs and installs the mod."),
+        new("start.scene", "Scene editor (preview)",
+            "Props, entities, prefabs and layers of the map, in a top-down view and in 3D. Add new props and clamp floating ones to the ground here. " +
+            "A preview: parts of it are still being moved to WH3."),
+        new("start.tiles", "Tile map (preview)",
+            "Paint the campaign tile map hex by hex (roads, rivers, coast, mountains) with live checks for tiles the build can't place. " +
+            "A preview: some of its checks are still Three Kingdoms rules."),
         new("start.settingsTile", "Settings",
             "Game and kit folders, linked mod packs (only ever read), the tile map source and Prepare game data. " +
             "Check these first on a new install."),

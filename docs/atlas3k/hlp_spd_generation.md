@@ -66,7 +66,7 @@ the repo has no ESF code yet.
   `pathfinding.ppd`, number of regions, settlements and ports.
 - Change one thing and diff (the method that cracked the BOB formats): a small test map from CAIME, one bridge
   removed, one road added. Regenerate through the game (slow but scriptable) and see which HLP/SPD entries move.
-- Deliverable: a field-by-field spec, as in `docs/bob_campaign_build.md`.
+- Deliverable: a field-by-field spec, as in `docs/atlas3k/bob_campaign_build.md`.
 
 **Phase 3 — find the generator in the exe (white box, if phase 2 stalls).**
 - Start from the string xrefs above with `research/bob_re/disasm_grep.py` / `disasm_calls.py` and Ghidra

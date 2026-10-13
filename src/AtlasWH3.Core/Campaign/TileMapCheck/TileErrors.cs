@@ -53,8 +53,6 @@ public static class TileErrors
         "layout.filler" => "Make the filler pixels black (top row of even columns, bottom row of odd columns).",
         "climate.size" or "climate.missing" => "Give the map a climate_map.png the size of the tile map (and climate_map_g.png, 4x).",
         "inputs.sizes" => "Resize the .terry's maps to the tile map's size (Height, HeightSea, BlendCampaign 4x; CampaignTree 1x).",
-        "inputs.extents" => "Set the map's extents in campaign_map_playable_areas / campaign_maps to the new size.",
-        "inputs.rules_bob" => "Restore raw_data/terrain/campaigns/rules.bob (save_final_tile_map, generate_global_mesh).",
         _ => "",
     };
 

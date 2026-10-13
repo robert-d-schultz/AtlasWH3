@@ -46,7 +46,7 @@ public sealed record TileMapCheckOptions
 /// Pre-flight checks of a campaign tile map before BOB's Terrain / Tilemap action (or the native tile_list step):
 /// file and layout, palette, climate map, the sizes and DB extents BOB reads alongside it, and the hex-level
 /// line / coast / river / crossing rules CA's own map follows. Rule sources: research/guandu/caime_3k_tilemap_issue.md,
-/// research/main190/tile_repair.py, docs/bob_campaign_build.md, docs/guandu_campaign_build.md.
+/// research/main190/tile_repair.py, docs/atlas3k/bob_campaign_build.md, docs/atlas3k/guandu_campaign_build.md.
 /// </summary>
 public static class TileMapValidator
 {
@@ -105,8 +105,6 @@ public static class TileMapValidator
         void Add(string code, string severity, string message, IReadOnlyList<int[]>? hexes = null, int? count = null) =>
             findings.Add(new TileMapFinding(code, severity, message, count ?? hexes?.Count ?? 1,
                 hexes?.Take(MaxListedHexes).ToList() ?? []) { AllHexes = hexes ?? [] });
-
-        if (!options.TileMapOnly) CheckKitFiles(paths, Add);
 
         if (!File.Exists(tileMapPath))
         {
@@ -214,20 +212,6 @@ public static class TileMapValidator
 
     // ---------------------------------------------------------------- kit files
 
-    private static void CheckKitFiles(ProjectPaths paths, Action<string, string, string, IReadOnlyList<int[]>?, int?> add)
-    {
-        var rules = Path.Combine(paths.AssemblyKitRoot, "raw_data", "terrain", "campaigns", "rules.bob");
-        if (!File.Exists(rules))
-            add("inputs.rules_bob", TileMapFinding.Error, $"{rules} is missing: BOB offers no Tilemap / climate / global mesh actions without it", null, null);
-        else
-        {
-            var text = File.ReadAllText(rules);
-            foreach (var flag in new[] { "save_final_tile_map", "generate_global_mesh" })
-                if (!Regex.IsMatch(text, $@"{flag}\s*=\s*true", RegexOptions.IgnoreCase))
-                    add("inputs.rules_bob", TileMapFinding.Error, $"rules.bob does not set {flag} = true", null, null);
-        }
-    }
-
     private static void CheckSizes(ProjectPaths paths, HexTileMap map, Action<string, string, string, IReadOnlyList<int[]>?, int?> add)
     {
         int w = map.PixelWidth, h = map.PixelHeight;
@@ -248,29 +232,6 @@ public static class TileMapValidator
             Expect($".terry {type} size", m.Size, expected);
             foreach (var layer in m.Layers)
                 if (project.LayerTifPath(m, layer) is var tif && File.Exists(tif)) Expect(Path.GetFileName(tif), TiffMap.ReadSize(tif), expected);
-        }
-    }
-
-    /// <summary>BOB reads the world size from campaign_map_playable_areas: a row left over from another grid size
-    /// builds the tile list and meshes for the wrong width.</summary>
-    private static void CheckExtents(ProjectPaths paths, int w, int h, Action<string, string, string, IReadOnlyList<int[]>?, int?> add)
-    {
-        var dir = Path.Combine(paths.AssemblyKitRoot, "raw_data", "EmpireDesignData");
-        double hexX = (w - 1) * HexX, hexZ = (h - 1) * HexZ;
-        foreach (var (table, tolerance) in new[] { ("campaign_map_playable_areas", 1.5), ("campaign_maps", 2.0) })
-        {
-            var file = Path.Combine(dir, table + ".xml");
-            if (!File.Exists(file)) { add("inputs.extents", TileMapFinding.Error, $"{file} is missing (BOB reads its DB from EmpireDesignData)", null, null); continue; }
-            var row = Regex.Matches(File.ReadAllText(file), $@"<{table}\b.*?</{table}>", RegexOptions.Singleline)
-                .Select(m => m.Value)
-                .FirstOrDefault(r => Regex.IsMatch(r, $@"<mapname>\s*{Regex.Escape(paths.MapName)}\s*</mapname>"));
-            if (row is null) { add("inputs.extents", TileMapFinding.Error, $"EmpireDesignData/{table} has no row for {paths.MapName}", null, null); continue; }
-            double V(string tag) => double.TryParse(Regex.Match(row, $@"<{tag}>\s*([-0-9.eE]+)\s*</{tag}>").Groups[1].Value,
-                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : double.NaN;
-            double maxX = V("maxx"), maxY = V("maxy");
-            if (!(Math.Abs(maxX - hexX) <= tolerance && Math.Abs(maxY - hexZ) <= tolerance))
-                add("inputs.extents", TileMapFinding.Error,
-                    $"EmpireDesignData/{table} max {maxX} x {maxY} does not fit a {w}x{h}-hex map (~{hexX:F1} x {hexZ:F1}): update the kit and the Movie pack rows before Tilemap", null, null);
         }
     }
 

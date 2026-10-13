@@ -102,8 +102,8 @@ public sealed class SceneModel
     }
 
     /// <summary>
-    /// Reads the map's compiled tile_list.bin (the --pack mod packs, kit working_data, the vanilla folder, then the game
-    /// packs) and the campaign
+    /// Reads the map's compiled tile_list.bin (the --pack mod packs, the vanilla folder, then the game packs) and the
+    /// campaign
     /// tile database (sizes, tile sets) into placements. tile_list.bin is a build output: after editing tile_map.png
     /// it shows the last build, not the edit.
     /// </summary>
@@ -117,12 +117,8 @@ public sealed class SceneModel
             string? source = null;
             if (FromModPacks(relative) is var (modBytes, modPack)) { list = AtlasWH3.Formats.Maps.TileList.Read(modBytes); source = modPack; }
             if (list is null)
-                foreach (var candidate in new[]
-                         {
-                             Path.Combine(_paths.AkWorkingDir, relative.Replace('/', Path.DirectorySeparatorChar)),
-                             Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)),
-                         })
-                    if (File.Exists(candidate)) { list = AtlasWH3.Formats.Maps.TileList.Read(candidate); source = candidate; break; }
+                if (Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)) is var candidate && File.Exists(candidate))
+                { list = AtlasWH3.Formats.Maps.TileList.Read(candidate); source = candidate; }
             if (list is null && Models.Source.TryRead(relative) is { } packed) { list = AtlasWH3.Formats.Maps.TileList.Read(packed); source = Models.Source.Locate(relative); }
             if (list is null) { TilesNote = "no tile_list.bin (build the map: Build > tile_list)"; return; }
 
@@ -238,9 +234,9 @@ public sealed class SceneModel
     private RegionMap? BuildRegions()
     {
         if (Terrain is not var (_, worldW, worldH)) { RegionsNote = "no terrain"; return null; }
-        var lookup = AtlasWH3.Core.Campaign.Props.HexRegionLookup.ForMap(_paths with { MapName = Project.MapName }, out var why);
+        var lookup = AtlasWH3.Core.Campaign.Props.HexRegionLookup.ForMapHex(_paths with { MapName = Project.MapName }, out var why);
         if (lookup is null) { RegionsNote = why; return null; }
-        var hex = lookup.Hex;
+        var hex = lookup.Hex!;
         int w = Math.Min(4096, hex.Width * 3), h = Math.Max(1, (int)Math.Round(w * worldH / worldW));
         var index = new int[w * h];
         Parallel.For(0, h, y =>
@@ -460,10 +456,14 @@ public sealed class SceneModel
             var width = (double?)Project.WorldWidth;
             if (width is null)
             {
-                var mapData = Path.Combine((_paths with { MapName = Project.MapName }).AkWorkingCampaignMapDir, "map_data.esf");
-                if (File.Exists(mapData)) width = AtlasWH3.Formats.Esf.MapDataBounds.Read(mapData).Width;
+                if (GameSetup.CampaignMapFile(_paths, Project.MapName, "map_data.esf") is { } mapData)
+                    width = AtlasWH3.Formats.Esf.MapDataBounds.Read(AtlasWH3.Formats.Esf.EsfTree.Read(mapData.Data)).Width;
             }
-            if (width is null) { TerrainNote = "the .terry has no world_width and the kit has no map_data.esf"; return; }
+            if (width is null)
+            {
+                TerrainNote = "the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(_paths, Project.MapName, "map_data.esf");
+                return;
+            }
             Terrain = AtlasWH3.Core.Campaign.Terrain.CampaignTerrain.Load(Project, width.Value);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException) { TerrainNote = "terrain not read: " + ex.Message; }
@@ -559,7 +559,6 @@ public sealed class SceneModel
         }
         foreach (var candidate in new[]
                  {
-                     Path.Combine(_paths.AkWorkingDir, relative.Replace('/', Path.DirectorySeparatorChar)),
                      Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)),
                      (_paths with { MapName = map }).TextureArraysXml,
                  })

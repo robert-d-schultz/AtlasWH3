@@ -11,8 +11,7 @@ namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
 /// terrain\campaigns\&lt;map&gt;\pieces\event_&lt;colour&gt;\ plus the map's event_tiles and event_trees (BOB "Devastation
-/// pieces", bob_terrain ACTION_PROCESS_TERRAIN_DEVASTATION_PIECES), from this build's compiled files (else the kit's
-/// working_data). Read off bob_terrain (0x180011f00 tiles, 0x180013460 trees, 0x18000e430 area lookup) and measured on
+/// pieces", bob_terrain ACTION_PROCESS_TERRAIN_DEVASTATION_PIECES), from this build's compiled files. Read off bob_terrain (0x180011f00 tiles, 0x180013460 trees, 0x18000e430 area lookup) and measured on
 /// every piece of the IEE and Old World packs and a fresh BOB run:
 ///  - a piece per area on the EventAreaMask map (its tight box), but for black, the "_empty" area; the folder is the
 ///    area's palette colour (<c>pieces/event_%06x/</c>). The pieces folder is emptied first: BOB never cleans it;
@@ -69,7 +68,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         PackSet Packs() => GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
 
         string? Compiled(string root, string relative) =>
-            new[] { Path.Combine(root, relative), Path.Combine(ctx.Paths.AkWorkingDir, relative) }.FirstOrDefault(File.Exists);
+            Path.Combine(root, relative) is var path && File.Exists(path) ? path : null;
         string? Terrain(string root, string map, string relative) => Compiled(root, Path.Combine("terrain", "campaigns", map, relative));
 
         var devastated = DevastatedMapName(ctx);
@@ -102,8 +101,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                     var project = TerryProject.Load(TerryFileOf(ctx, devastated));
                     devastatedObjects = Objects(ctx, project, devastated, Packs, devastatedNotes);
                     var log = new CampaignBuildContext(ctx.Paths, ctx.TargetRoot, m => ctx.Log($"{devastated}: {m}")) { Cancel = ctx.Cancel };
+                    var pieceNotes = new List<string>();
                     pieceAt = Write(project, rel => Terrain(build!, devastated, rel), Compiled(build!, TreeExporter.PackPath(devastated)),
-                                    outDir!, TileDb, log, devastatedWritten, devastatedNotes, devastatedObjects);
+                                    outDir!, TileDb, log, devastatedWritten, pieceNotes, devastatedObjects);
+                    devastatedNotes.AddRange(pieceNotes.Select(n => $"{devastated}: {n}"));
                 });
         }
         catch (AggregateException e) when (e.InnerExceptions.Count == 1)
@@ -171,8 +172,9 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             notes.Add($"{mapName}: no game data folder {ctx.Paths.GameDataDir}: no objects in the pieces");
             return null;
         }
-        var builder = new Wh3GlobalPropsBuilder(packs(), PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            Wh3GlobalPropsBuilder.ReadCultures(ctx.Paths.AssemblyKitRoot), mapName, (0, 0, 0, 0), (_, _) => "");
+        var packSet = packs();
+        var builder = new Wh3GlobalPropsBuilder(packSet, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
+            Wh3GlobalPropsBuilder.ReadCultures(packSet), mapName, (0, 0, 0, 0), (_, _) => "");
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{mapName}: objects of {layers.Count} exported layers...");
         builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);
@@ -290,11 +292,10 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         var layouts = pieces.Select(_ => new List<PieceTexture>()).ToList();
         foreach (var (name, mapPath, flipped) in EventPieces.Textures)
         {
-            if (compiled(mapPath) is not { } source) { notes.Add($"no {mapPath} (this build or working_data): not in the pieces"); continue; }
+            if (compiled(mapPath) is not { } source) { notes.Add($"no {mapPath} (not built): not in the pieces"); continue; }
             ctx.Log($"{name}...");
             var bytes = File.ReadAllBytes(source);
             var layout = EventPieces.TextureLayout.Of(bytes);
-            if (!source.StartsWith(ctx.TargetRoot, StringComparison.OrdinalIgnoreCase)) notes.Add($"{name} cut from {source}");
             Parallel.For(0, pieces.Count, new ParallelOptions { CancellationToken = ctx.Cancel }, i =>
             {
                 var texture = EventPieces.Layout(name, flipped, layout, maskW, maskH, pieces[i].Box);
@@ -319,7 +320,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             written.Add(path);
             notes.Add($"{tiles.Sum(t => t.Count)} road tiles in {tiles.Count(t => t.Count > 0)} pieces, {eventTiles.Count} road tiles in event_tiles");
         }
-        else notes.Add("no tile_list.bin (this build or working_data): no tile_list in the pieces, no event_tiles");
+        else notes.Add("no tile_list.bin (not built): no tile_list in the pieces, no event_tiles");
 
         // trees
         if (treeList is not null)
@@ -334,7 +335,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             written.Add(path);
             notes.Add($"{trees.Sum(t => t.Count)} trees in {trees.Count(t => t.Count > 0)} pieces");
         }
-        else notes.Add("no trees.campaign_tree_list (this build or working_data): no tree_list in the pieces, no event_trees");
+        else notes.Add("no trees.campaign_tree_list (not built): no tree_list in the pieces, no event_trees");
 
         // objects and sounds
         Func<float, float, int>? pieceAt = null;

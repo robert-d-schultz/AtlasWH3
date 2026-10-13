@@ -56,7 +56,7 @@ public sealed class GroundHeight
 
     /// <summary>
     /// The bare built terrain for the map, or null (with the reason) when no usable full_logic_map exists. Looks in the
-    /// native build output, the kit's working_data, then the packs (the map's mod packs first). With a
+    /// native build output, then the packs (the map's mod packs first). With a
     /// <paramref name="reference"/> (the project's own height, world extents <paramref name="worldW"/> ×
     /// <paramref name="worldH"/>) the first candidate that agrees with it is used, so a build of another map or an old
     /// build is skipped.
@@ -77,17 +77,16 @@ public sealed class GroundHeight
         var terry = Path.Combine(mapPaths.AkTerrainDir, mapName + ".terry");
         if (!File.Exists(terry)) { why = $"no {terry}"; return null; }
         var project = TerryProject.Load(terry);
-        var mapData = new[] { Path.Combine(paths.OutputRoot, "compiled", mapName, "campaign_maps", mapName, "map_data.esf"),
-                              Path.Combine(mapPaths.AkWorkingCampaignMapDir, "map_data.esf") }.FirstOrDefault(File.Exists);
-        float? width = project.WorldWidth ?? (mapData is null ? null : MapDataBounds.Read(mapData).Width);
-        if (width is null) { why = "the .terry has no world_width and there is no map_data.esf"; return null; }
+        float? width = project.WorldWidth ?? (GameSetup.CampaignMapFile(paths, mapName, "map_data.esf") is { } mapData
+            ? MapDataBounds.Read(Formats.Esf.EsfTree.Read(mapData.Data)).Width : null);
+        if (width is null) { why = "the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(paths, mapName, "map_data.esf"); return null; }
 
         var packs = Directory.Exists(paths.GameDataDir) ? GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks) : null;
         if (scene && packs is null) { why = "no game data folder for the props' height patches"; return null; }
         var patches = scene ? TreeHeightField.LoadPatches(project, packs!, []) : [];
 
         var rel = Path.Combine("terrain", "campaigns", mapName, "full_logic_map.compressed_map");
-        var candidates = new[] { Path.Combine(paths.OutputRoot, "compiled", mapName, rel), Path.Combine(paths.AkWorkingDir, rel) }
+        var candidates = new[] { Path.Combine(mapPaths.BuildTarget, rel) }
             .Where(File.Exists).Select(f => (From: f, Load: (Func<byte[]?>)(() => File.ReadAllBytes(f)))).ToList();
         candidates.Add(("game packs", () => packs?.TryRead($"terrain/campaigns/{mapName}/full_logic_map.compressed_map")));
 

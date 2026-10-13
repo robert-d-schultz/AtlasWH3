@@ -199,8 +199,8 @@ static class TileCommands
 
     private static JsonNode Holes(TileMapEditor editor, ProjectPaths paths, Args a)
     {
-        var listPath = a.Option("--tile-list") ?? Path.Combine(paths.AkWorkingDir, "terrain", "campaigns", paths.MapName, "tile_list.bin");
-        if (!File.Exists(listPath)) throw new FileNotFoundException("tile_list.bin not found (run BOB Terrain / Tilemap, or pass --tile-list)", listPath);
+        var listPath = a.Option("--tile-list") ?? Path.Combine(paths.BuildTarget, "terrain", "campaigns", paths.MapName, "tile_list.bin");
+        if (!File.Exists(listPath)) throw new FileNotFoundException("tile_list.bin not found (build step tile_list, or pass --tile-list)", listPath);
         var edited = editor.EditedHexes(int.Parse(a.Option("--since") ?? "0"));
         var report = TileHoles.Check(TileList.Read(listPath), editor.Database, edited);
         var limit = int.Parse(a.Option("--limit") ?? "40");

@@ -176,6 +176,32 @@ public static partial class GameSetup
         return new PackSet(mods.Concat(PackSet.OpenVanilla(gameDataDir, vanillaFilter).Packs));
     }
 
+    /// <summary>campaign_maps\&lt;map&gt;\&lt;file&gt; as the game loads it, with the pack it came from: the linked mod packs
+    /// (highest priority first), then the vanilla packs. Null when no pack has it. CAIME's map_data.esf and
+    /// pathfinding.ppd ship in the map's mod pack, so the build reads them there.</summary>
+    public static (byte[] Data, string Pack)? CampaignMapFile(ProjectPaths paths, string map, string file)
+    {
+        var internalPath = $"campaign_maps/{map}/{file}";
+        return CampaignMapPack(paths, internalPath) is { } owner ? (owner.TryRead(internalPath)!, owner.SourcePath) : null;
+    }
+
+    /// <summary>Whether <see cref="CampaignMapFile"/> finds the file, from the packs' indexes only (nothing is read).</summary>
+    public static bool HasCampaignMapFile(ProjectPaths paths, string map, string file) =>
+        CampaignMapPack(paths, $"campaign_maps/{map}/{file}") is not null;
+
+    private static PackFile? CampaignMapPack(ProjectPaths paths, string internalPath)
+    {
+        foreach (var path in paths.ModPacks.Where(File.Exists))
+            if (PackFile.Open(path) is var pack && pack.Contains(internalPath)) return pack;
+        return Directory.Exists(paths.GameDataDir) ? PackSet.OpenVanilla(paths.GameDataDir).FindOwner(internalPath) : null;
+    }
+
+    /// <summary>Where <see cref="CampaignMapFile"/> looks, for a missing-input message.</summary>
+    public static string CampaignMapFileMissing(ProjectPaths paths, string map, string file) =>
+        $"no campaign_maps\\{map}\\{file} in " + (paths.ModPacks.Count > 0
+            ? $"the linked mod packs ({string.Join(", ", paths.ModPacks.Select(Path.GetFileName))}) or the game's packs"
+            : "the game's packs, and no mod pack is linked: link the map's mod pack");
+
     /// <summary>Campaign maps in the vanilla packs (folders under campaign_maps\ that have terrain).</summary>
     public static IReadOnlyList<string> VanillaMaps(string gameDataDir)
     {

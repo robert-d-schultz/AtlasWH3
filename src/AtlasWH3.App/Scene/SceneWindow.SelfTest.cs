@@ -569,7 +569,7 @@ public sealed partial class SceneWindow
             else
             {
                 // Region hex bounding boxes from map.hex.
-                var hex = map.Lookup.Hex;
+                var hex = map.Lookup.Hex!;   // the scene's lookup is map.hex's (ForMapHex)
                 var boxes = new Dictionary<int, (float X0, float Z0, float X1, float Z1)>();
                 for (var r = 0; r < hex.Height; r++)
                     for (var col = 0; col < hex.Width; col++)

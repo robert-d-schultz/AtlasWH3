@@ -8,7 +8,8 @@ using AtlasWH3.Formats.Maps;
 /// <summary>
 /// hlp-spd: builds a campaign map's hlp_data.esf / spd_data.esf from its pathfinding.ppd + map_data.esf (the native
 /// replacement for the game's reprocess_hlp_data / reprocess_spd_data) and optionally compares them with reference files.
-///   hlp-spd --in &lt;dir with pathfinding.ppd, map_data.esf&gt; [--out &lt;dir&gt;] [--compare &lt;dir with reference esf&gt;]
+///   hlp-spd [--in &lt;dir with pathfinding.ppd, map_data.esf&gt;; default: the map's, from --pack, else the game's packs]
+///           [--out &lt;dir&gt;] [--compare &lt;dir with reference esf&gt;]
 ///           [--only hlp|spd] [--legacy-stl] [--threshold f] [--centre-blocked] [--threads n]
 ///           [--wrap-like-game] (hlp region tables with the game's wrapping u32 sums, for parity; default: corrected)
 ///           [--legacy-centre] (hlp centre paths of older game builds: vanilla chaos 1-4, combi 1-4, prologue, darklands)
@@ -53,14 +54,19 @@ static class AiPathfindingCommands
     public static int Run(ProjectPaths paths, string command, string[] a)
     {
         if (command == "esf-roundtrip") return RoundTrip(a);
-        var inDir = Option(a, "--in") ?? paths.AkWorkingCampaignMapDir;
+        // the map's pathfinding.ppd and map_data.esf: loose files in --in, else as its mod pack (--pack) ships them
+        var inDir = Option(a, "--in");
+        byte[] Input(string file) => inDir is not null ? File.ReadAllBytes(Path.Combine(inDir, file))
+            : GameSetup.CampaignMapFile(paths, paths.MapName, file)?.Data
+              ?? throw new FileNotFoundException(GameSetup.CampaignMapFileMissing(paths, paths.MapName, file));
         var outDir = Option(a, "--out");
         var compare = Option(a, "--compare");
         var only = Option(a, "--only");
         var threads = int.Parse(Option(a, "--threads") ?? "0");
         var sw = Stopwatch.StartNew();
-        var ppd = PathfindingPpd.Read(Path.Combine(inDir, "pathfinding.ppd"));
-        var regions = MapDataRegions.Read(Path.Combine(inDir, "map_data.esf"));
+        var ppd = PathfindingPpd.Read(Input("pathfinding.ppd"));
+        var mapData = Input("map_data.esf");
+        var regions = MapDataRegions.Read(EsfTree.Read(mapData));
         var dbNotes = new List<string>();
         var settings = AiPathfindingStep.DbSettings(paths, dbNotes);
         foreach (var note in dbNotes) Console.WriteLine(note);
@@ -114,7 +120,7 @@ static class AiPathfindingCommands
                 if (a.Contains("--edge-costs")) SpdCompare.EdgeCosts(refSpd, grid);
                 if (a.Contains("--hexmap-flags"))
                 {
-                    var hm = EsfTree.Read(Path.Combine(inDir, "map_data.esf")).Root.Descendants("HEX_MAP_DATA").First().Children.OfType<EsfArray>().First().Data;
+                    var hm = EsfTree.Read(mapData).Root.Descendants("HEX_MAP_DATA").First().Children.OfType<EsfArray>().First().Data;
                     var piece = SpdBuilder.Pieces(grid, out var pc);
                     var refSets = new HashSet<(int, int)>(refSpd.SetLandmarks.Select(p => ((int)p.X, (int)p.Y)));
                     var stats = new Dictionary<string, int>();

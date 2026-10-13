@@ -9,8 +9,8 @@ IEE and Old World maps (all four inputs and outputs per map). `extract_refs.py` 
 out through rpfm_server.
 
 - **Pipeline:** the `hlp_spd` step runs with the other native steps. It reads `pathfinding.ppd` and `map_data.esf`
-  from the build output's `campaign_maps/<map>`, else the kit's working_data, and the DB values from the linked mod
-  packs and vanilla. It writes both files with magic `CB AB`.
+  from `campaign_maps/<map>` in the map's linked mod pack (else the vanilla packs, for a vanilla map), and the DB
+  values from the linked mod packs and vanilla. It writes both files with magic `CB AB`.
   - IEE: about 1 minute. Old World: about 5 minutes (283 s for hlp, nearly all of it the region tables), peak 4 GB.
     The game itself takes over 10 minutes on IEE.
 - **CLI:** `hlp-spd --in <dir> [--out <dir>] [--compare <dir>]` reports field-level parity for both files.
@@ -290,7 +290,7 @@ The game normally writes both with `CAI_PATHFINDER::reprocess_spd_data` / `repro
 
 ## Running it
 
-- **Pipeline step:** `hlp_spd`, which runs after `lookup`. It reads `pathfinding.ppd` and `map_data.esf` from the build output's `campaign_maps/<map>` folder, falling back to the kit's `working_data`. It writes `spd_data.esf` and `hlp_data.esf` next to them.
+- **Pipeline step:** `hlp_spd`, which runs after `lookup`. It reads `pathfinding.ppd` and `map_data.esf` from `campaign_maps/<map>` in the map's linked mod pack (the vanilla packs for a vanilla map); no kit fallback. It writes `spd_data.esf` and `hlp_data.esf` into the build output's `campaign_maps/<map>`.
 - **CLI:**
 
 ```

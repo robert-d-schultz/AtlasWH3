@@ -23,9 +23,9 @@ most of BOB's campaign code lives in shared Warscape DLLs, so the same functions
 
 Rules per step, formats and current numbers: [`docs/native_campaign_build.md`](../docs/native_campaign_build.md).
 Deep dives: [`docs/bob_tile_matching.md`](../docs/bob_tile_matching.md),
-[`docs/bob_re_tile_placement.md`](../docs/bob_re_tile_placement.md),
-[`docs/bob_re_global_mesh.md`](../docs/bob_re_global_mesh.md),
-[`docs/bob_campaign_build.md`](../docs/bob_campaign_build.md).
+[`docs/atlas3k/bob_re_tile_placement.md`](../docs/atlas3k/bob_re_tile_placement.md),
+[`docs/atlas3k/bob_re_global_mesh.md`](../docs/atlas3k/bob_re_global_mesh.md),
+[`docs/atlas3k/bob_campaign_build.md`](../docs/atlas3k/bob_campaign_build.md).
 
 ## The method
 

@@ -1,93 +1,183 @@
 # AtlasWH3
 
-Campaign map tooling for **Total War: WARHAMMER III**. It builds a campaign map from the Assembly Kit's own sources
-(the Terry project, its layers and maps) **natively**, without BOB, and adds editors for those sources.
+**Build Total War: WARHAMMER III campaign maps without BOB.**
 
-AtlasWH3 is a standalone fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3K), the same tooling for Total War:
-THREE KINGDOMS. The two games share an engine, but WH3's campaign pipeline differs a lot from 3K's, so AtlasWH3 is
-retargeted to WH3 only.
+AtlasWH3 compiles a campaign map from your Assembly Kit sources (the Terry project, its layers and maps) in one run,
+then packs it into your mod and installs it. It does everything BOB's campaign actions do, plus the AI pathfinding
+data the game would otherwise have to build, and it runs headless from the command line as well as from a window.
 
-> **Status: early port.** Phase 0 (fork housekeeping) is done, and most of Phase 1 (reading WH3's packs, DB, Terry
-> projects, map.hex, tile database, tile lists and tree lists). The first native WH3 steps, `heightmaps`, `tile_list`,
-> `trees`, `global_map` and `masks`, are in. Together they replace every BOB action that can't run headless.
-> `devastation_pieces` cuts the event-area pieces of the map and of its devastated project (no fake devastate
-> campaign), so far without the pieces' objects. `lookup`, `camera_heightmap`, `global_props` (props, effects,
-> lights and sounds) and `rivers` (the river meshes, identical to BOB's) are in too. `hlp_spd` (the AI pathfinding
-> files, without the game) is in as well: byte-identical on the prologue map, close on the others. Its in-game check is
-> still to come. Progress per phase is in [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md) §6.
+- **One run instead of ten actions.** A full IEE build takes about 5 minutes on a 4-core machine. A BOB reprocess of
+  the same map takes about 20, with a pack round trip between some of its actions.
+- **No workarounds.** The devastated map needs no fake second campaign. The camera height map builds (BOB's action
+  fails). Nothing has to be packed and installed halfway through.
+- **Checked against BOB.** Most outputs are byte-identical to BOB's on the test maps, and the full IEE build has been
+  played in game.
 
-## Why
-
-A full reprocess of a WH3 campaign map in BOB takes about 20 minutes:
-- about ten separate actions
-- BOB takes minutes just to open
-- some actions read their inputs from the **.pack** instead of `working_data`, so intermediate results have to be
-  packed and installed between actions
-
-Two outputs don't build in BOB at all:
-- *Generate Camera Height Map* fails (the kit's rules.bob has none of its settings), so `camera_heightmap.png` is
-  made by hand.
-- Devastation pieces only come out if you set up a fake second campaign map for BOB to process.
-
-The goal is **one command that rebuilds the whole map from loose files**, with no pack round trips and no workarounds.
-
-## Planned build steps
+## What it builds
 
 | Step | Writes | Replaces |
 |---|---|---|
-| `heightmaps` | `full_height_map.dds`, `full_logic_map.compressed_map`, `shroud_heights.dds` | Campaign Heightmap, Campaign Shroud Heights |
+| `heightmaps` | `full_height_map.dds`, `full_logic_map.compressed_map`, `shroud_heights.dds`, `lf_normal.dds` | Campaign Heightmap, Campaign Shroud Heights |
+| `tile_list` | `tile_list.bin`, `tile_mask.dds`, `patch_mask.dds` | Tilemap |
 | `trees` | `trees.campaign_tree_list` | Campaign Trees |
-| `tile_list` | `tile_list.bin`, `tile_mask.dds` | Tilemap |
-| `global_map` | `global_map\` (blend, texture arrays from the packs' asset db, tile list) | Global Tilemap, Campaign Global Blendmap |
-| `masks` | colour overlays, corruption, snow, event area and patch masks, `lf_normal` | Color Overlay, Corruption / Snow / Event Area / Patch Visibility Mask |
-| `devastation_pieces` | `pieces\event_*` for the main and devastated maps | Devastation pieces, without a fake campaign |
+| `global_map` | `global_map\` (blend, texture arrays, tile list) | Global Tilemap, Campaign Global Blendmap |
+| `masks` | colour overlays, corruption, snow and event area masks | Color Overlay, Corruption / Snow / Event Area Mask |
+| `rivers` | `models\river_*` | Terry file (river export) |
+| `global_props` | `global_props.bin`, `global_props_sound.bin` | Terry file (props export) |
+| `environment` | `environment_collection.xml` | Terry file |
+| `devastation_pieces` | `pieces\event_*`, `event_tiles`, `event_trees`, `event_vfx`, for the map and its devastated version | Devastation pieces |
 | `lookup` | `*_lookup.tga` / `.dds`, `_minimap.tga` | Convert lookup texture |
-| `camera_heightmap` | `camera_heightmap.png` (with the props' height patches) | Generate Camera Height Map (fails in BOB) |
-| `global_props` | `global_props.bin`, `global_props_sound.bin` | the Terry file action's props export |
-| `rivers` | `models\river_*` | the Terry file action's river export |
-| `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation during a startpos build (no BOB action) |
+| `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map |
+| `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation during a startpos build |
 
-Only BOB's default actions can run headless (the Terry file, the mask textures and Devastation pieces, as one group;
-see [`docs/bob_wh3.md`](docs/bob_wh3.md)). Until those steps are native, the hybrid build (Phase 2) will run that group in
-an isolated copy of the kit. Heightmap, Tilemap, Trees and Global Tilemap can't run headless, so they go native first.
-- **The aim:** files that work correctly in game first, then byte-identical to BOB's output wherever that is
-  practical.
-- **Inputs, not outputs:** `map.hex`, `map_data.esf`, `pathfinding.ppd` and the lookup `.bmp` come from CAIME, as
-  they did for Atlas3K. `startpos.esf` is out of scope.
+Independent steps run in parallel. Every step reads the kit's sources and the game and mod packs directly, so
+nothing has to be installed between steps.
+
+**How close to BOB:** the logic map, shroud heights, tile list, masks, piece textures and river models (but for two
+bytes BOB leaves uninitialised) are byte-identical to BOB's on IEE and The Old World. Trees are byte-identical on Old World; on IEE every tree has the
+same id, position and rotation, and all but 23 of 253,903 heights agree within 1e-3. `global_props.bin` has the same
+objects in the same bodies; BOB's own record order changes from run to run, so it is compared by content.
+`hlp_data.esf` and `spd_data.esf` match the game's own files byte for byte on IEE (on Old World one value differs,
+where the game's pathfinder has a bug). Each step's record, with every remaining difference explained, is in
+[`docs/native_campaign_build.md`](docs/native_campaign_build.md).
+
+**Where it differs on purpose:** `patch_mask.dds` covers the whole map (BOB's misses a band in the north). Props go
+into quadtree cells by their models' real bounds (BOB uses a 2 × 2 × 2 cube for any model not loose in the kit).
+Region lookups can move regions past the 1024 palette entries the game reads. Cultures come from the packs'
+`prefab_types`, so a mod's own cultures get their own buckets (BOB read the kit's vanilla table). Props get their
+regions from `map_data.esf`, the file the game reads. `full_height_map.dds` uses AtlasWH3's own BC6H encoder, with
+about half the error of BOB's.
+
+## What you need
+
+- Windows 10 or 11, x64.
+- Total War: WARHAMMER III and its Assembly Kit, with your map's Terry project in `raw_data\terrain\campaigns\<map>`.
+- Your mod's `.pack`, linked. The build reads CAIME's `map_data.esf` and `pathfinding.ppd` from its
+  `campaign_maps\<map>\`, and the mod's DB tables, models and textures; and it merges the build into a copy of it.
+  (A vanilla map needs no mod pack: its files are in the game's packs.)
+- CAIME's region lookup `.bmp`, in the kit's `raw_data\EmpireDesignData\campaign_maps\<map>` (a copy CAIME writes
+  to `working_data` is not read).
+- Optional: the map's devastated project, `<map without _1>_devastate_1` beside it (or named in the project), for the
+  devastated pieces.
+
+## Install
+
+Download the zip from the [Releases](https://github.com/robert-d-schultz/AtlasWH3/releases) page and unzip it
+anywhere. It needs no .NET install. Run `AtlasWH3.exe` for the app, or `AtlasWH3.Cli.exe` from a terminal.
+
+The download is unsigned, so Windows SmartScreen may warn on the first start (More info › Run anyway).
+
+## Quick start
+
+**Back up first.** A new project builds into the kit's `working_data`, as BOB does, and Install replaces your mod's
+pack in the game's `data` folder. Back up the pack, or give the project its own output folder (below).
+
+### In the app
+
+1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install), and link your
+   mod's pack.
+2. **Start page:** pick the kit and the map.
+3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*, save it, then *Build all* (F7).
+
+The Build window shows each step's progress, time and notes, and keeps a log of every build in
+`%LocalAppData%\AtlasWH3\output\build_logs`.
+
+### From the command line
+
+```
+AtlasWH3.Cli new-project iee.atlaswh3 --map cr_combi_expanded_map_1 --pack "D:\...\data\!cr_immortal_empires_expanded.pack"
+AtlasWH3.Cli build --project iee.atlaswh3
+```
+
+- `--segments validate,compile,pack` builds and packs without installing.
+- `--steps tile_list,global_map` compiles only those steps.
+- `--json` prints the report as JSON.
+- `AtlasWH3.Cli help` lists every command.
+
+### The project file
+
+A project (`.atlaswh3`, JSON) holds one map's build. This one, based on IEE's, compiles into a folder beside the
+project, merges the result into a copy of the mod's pack there, and installs that copy. Settings left out keep their
+defaults.
+
+```json
+{
+  "name": "IEE",
+  "map": "cr_combi_expanded_map_1",
+  "modPacks": ["{game}\\!cr_immortal_empires_expanded.pack"],
+  "build": {
+    "output": "{project}\\out",
+    "packs": [
+      {
+        "mode": "merge",
+        "base": "{game}\\!cr_immortal_empires_expanded.pack",
+        "output": "{project}\\!cr_immortal_empires_expanded.pack",
+        "contents": [{ "source": "{compiled}" }]
+      }
+    ],
+    "install": { "enabled": true }
+  }
+}
+```
+
+- **Segments:** a build runs Validate, Compile, Pack and Install, in that order, and stops at the first failure.
+  `customSteps` adds your own commands before or after any of them (a startpos build, a script).
+- **Tokens:** `{project}`, `{game}` (the data folder), `{ak}`, `{map}`, `{devastated}`, `{out}` and `{pack}` expand
+  in paths. Relative paths are relative to the project file.
+- **Pack:** `{compiled}` means the files this build wrote, nothing else from `working_data`. A merge keeps everything
+  else in the base pack (DB, scripts, battle maps) and drops river models and pieces the build no longer makes. A map
+  can ship in several packs; `exclude` and a content `path` split it (see
+  [`docs/native_campaign_build.md`](docs/native_campaign_build.md#project-build-pack-and-install)).
+- **Install** refuses while the game runs, swaps the pack in through a temporary file, and keeps one backup of the
+  pack it replaces in `%LocalAppData%\AtlasWH3\output\pack_backups` (`"backup": false` turns that off).
+- **Map settings:** `acceptTileMap` (tile-map check codes to build through), `patchMask` (`fitted`, or `vanilla` for
+  BOB's), `lookupLast` (regions to move past palette entry 1024), `devastatedMap` (a name, or `none`).
+
+## Limits
+
+- `startpos.esf` is not built: it still comes from the game (an RPFM startpos build works as a custom step).
+- CAIME's files are inputs, not outputs.
+- The full build has been played in game on IEE. Other maps, Old World included, are checked against BOB's output.
+- The Scene editor, Tile map and Campaign battles windows are a **preview**: they come from Atlas3K and are only
+  partly moved to WH3.
+
+The full list is in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
 
 ## Documentation
 
-- [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md): the plan, with the decisions made, the phases, the test maps and
-  the risks.
-- [`docs/surveys/warhammer3.md`](docs/surveys/warhammer3.md): Atlas3K's survey of how far its 3K build carries over
-  to WH3, format by format.
-- [`docs/upstream_sync.md`](docs/upstream_sync.md): how to look at Atlas3K's changes since the fork and cherry-pick
-  fixes.
-- The rest of `docs/` and `research/` is Atlas3K's 3K documentation. It is kept for its method (Ghidra, Frida
-  instrumentation of BOB, byte-level parity diffs) and for the rules the two games share.
-- Atlas3K's own README (3K features, install, build window, CLI):
-  [at the fork point](https://github.com/Ironictw2st/Atlas3K/blob/cdd0a08fa0a07db3bc2e7faba6822a75d5512d91/README.md).
-
-## Related tools
-
-- [WH3_visual_map_decompiler](https://github.com/robert-d-schultz/WH3_visual_map_decompiler) does the reverse: it
-  turns a compiled WH3 campaign map back into a Terry project. AtlasWH3 reuses its format readers, and the two together
-  give a round-trip test.
-- [CampaignMapToolkit (CAIME)](https://github.com/robert-d-schultz/CampaignMapToolkit) makes the campaign AI map files
-  AtlasWH3 takes as input. Its code is under a non-commercial licence, so none of it is copied here.
+- [`docs/native_campaign_build.md`](docs/native_campaign_build.md): each step, what it reads and writes, and its
+  parity with BOB.
+- [`docs/end_to_end.md`](docs/end_to_end.md): the IEE build, from the kit into the game, and the in-game checks.
+- [`docs/hlp_spd.md`](docs/hlp_spd.md): the AI pathfinding files.
+- [`docs/bob_wh3.md`](docs/bob_wh3.md): what WH3's BOB runs headless, and what it reads and writes.
+- [`docs/atlaswh3_plan.md`](docs/atlaswh3_plan.md): the plan, its decisions and phases.
+- [`docs/atlas3k/`](docs/atlas3k/): Atlas3K's Three Kingdoms notes, kept for their method.
+- [`research/`](research/): the scripts behind the parity work (Ghidra, Frida traces of BOB, byte-level diffs).
 
 ## Building from source
 
 ```
 dotnet build AtlasWH3.slnx -c Release
-dotnet test src/AtlasWH3.Tests
+dotnet test src/AtlasWH3.Tests --filter "FullyQualifiedName~BuildProjectTests"
+powershell -ExecutionPolicy Bypass -File tools\publish.ps1
 ```
 
-Needs the .NET 10 SDK (`global.json` takes any 10.0 feature band from 10.0.100). Tests that need a game install or kit
-data skip when it is missing.
+- **SDK:** .NET 10 (`global.json` takes any 10.0 feature band from 10.0.100).
+- **Publish:** `publish.ps1` writes the self-contained download to `dist\AtlasWH3-<version>\` and zips it.
+- **Tests:** the full suite takes about 16 minutes, so filter to the classes you touch. Tests that need the game or
+  kit data skip when it is missing.
 
-The data tests run on two fixture maps, IEE (`cr_combi_expanded_map_1`) and Old World (`cr_oldworld_map_1`). Freeze
-them right after a BOB run, so the tests keep comparing those sources with those BOB outputs while the maps change:
+| Project | Contents |
+|---|---|
+| `AtlasWH3.Formats` | Readers and writers: packs, DB, Terry, map.hex, tiles, BMD v27, ESF, DDS / BC6H, RMV2 |
+| `AtlasWH3.Core` | The build steps, projects, pack and install, the editors' model |
+| `AtlasWH3.Cli` | `AtlasWH3.Cli.exe` |
+| `AtlasWH3.App` | `AtlasWH3.exe` (WPF, Direct3D 11) |
+| `AtlasWH3.Tests` | xUnit |
+
+**Parity fixtures:** the data tests run on two maps, IEE (`cr_combi_expanded_map_1`) and Old World
+(`cr_oldworld_map_1`). Freeze them right after a BOB run, so the tests keep comparing those sources with those BOB
+outputs while the maps change:
 
 ```
 AtlasWH3.Cli fixture-freeze iee --maps cr_combi_expanded_map_1,cr_combi_expanded_map_devastate_1 --packs !cr_immortal_empires_expanded.pack
@@ -95,10 +185,25 @@ AtlasWH3.Cli fixture-freeze oldworld --maps cr_oldworld_map_1,cr_oldworld_map_de
 AtlasWH3.Cli fixture-check
 ```
 
-A fixture lives in `atlaswh3_fixtures` beside the kit, as hard links (no extra disk space). Without one, the tests read
-the live kit. Add `--replace` to freeze a fixture again.
+A fixture lives in `atlaswh3_fixtures` beside the kit, as hard links (no extra disk space). Without one, the tests
+read the live kit. Add `--replace` to freeze a fixture again.
 
-## Licence
+## Related tools
+
+- [WH3_visual_map_decompiler](https://github.com/robert-d-schultz/WH3_visual_map_decompiler) does the reverse: it
+  turns a compiled WH3 campaign map back into a Terry project. AtlasWH3 reuses its format readers, and the two
+  together give a round trip.
+- [CampaignMapToolkit (CAIME)](https://github.com/robert-d-schultz/CampaignMapToolkit) makes the campaign AI map files
+  AtlasWH3 takes as input. Its code is under a non-commercial licence, so none of it is copied here.
+- [RPFM](https://github.com/Frodo45127/rpfm): AtlasWH3 reads its `schema_wh3.ron` for DB layouts when it is
+  installed.
+
+## Credits and licence
+
+AtlasWH3 is a fork of [Atlas3K](https://github.com/Ironictw2st/Atlas3K), the same tooling for Total War: THREE
+KINGDOMS. The two games share an engine, and Atlas3K's pack, PNG, hex grid, tree and Terry code, and its method of
+matching BOB byte for byte, are the base this was built on. Atlas3K's own README is
+[at the fork point](https://github.com/Ironictw2st/Atlas3K/blob/cdd0a08fa0a07db3bc2e7faba6822a75d5512d91/README.md).
 
 [MIT](LICENSE), as Atlas3K. The libraries it uses keep their own licences; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -5,8 +5,9 @@
     <Company>AtlasWH3</Company>
     <Copyright>Copyright (c) 2026 Atlas3K contributors, AtlasWH3 contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <VersionPrefix>0.1.0</VersionPrefix>
-    <VersionSuffix>alpha.2</VersionSuffix>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <!-- a pre-release suffix (e.g. rc.1) goes in VersionSuffix -->
+    <VersionSuffix></VersionSuffix>
     <!-- appends +<commit> to InformationalVersion when built from git -->
     <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>

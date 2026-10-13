@@ -1,5 +1,5 @@
 """Prototype of BOB's campaign tile placement (WARSCAPE::EDITOR_TILE_MAP::build_tile_map).
-See docs/bob_re_tile_placement.md. Usage: python placement.py [out.pkl]
+See docs/atlas3k/bob_re_tile_placement.md. Usage: python placement.py [out.pkl]
 """
 import os, sys, time, pickle
 import numpy as np

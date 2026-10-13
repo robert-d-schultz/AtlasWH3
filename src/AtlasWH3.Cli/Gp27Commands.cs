@@ -16,7 +16,7 @@ static class Gp27Commands
         "gp27-pieces-diff" => PiecesDiff(a),
         "gp27-pieces-order" => PiecesOrder(a),
         "gp27-find" => Find(a),
-        "gp27-diff" => Diff(a),
+        "gp27-diff" => Diff(paths, a),
         "gp27-model" => ModelBox(paths, a),
         "gp27-cat" => Cat(paths, a),
         _ => throw new ArgumentException($"unknown command {command}"),
@@ -274,7 +274,7 @@ static class Gp27Commands
     {
         var packs = AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks);
         var b = new AtlasWH3.Core.Campaign.Props.Wh3GlobalPropsBuilder(packs, new AtlasWH3.Formats.Terry.PrefabLibrary(".", "campaign"),
-            new Dictionary<string, int>(), "", (0, 0, 1, 1), (_, _) => "");
+            new([], 0), "", (0, 0, 1, 1), (_, _) => "");   // model boxes only: no cultures, no buckets
         foreach (var m in models)
         {
             var d = b.ModelInfo(m);
@@ -317,11 +317,13 @@ static class Gp27Commands
 
     private sealed record Placed(string Region, int Cell, int Bucket, string Kind, string Identity, float X, float Z, object Record, string Entry);
 
-    /// <summary>gp27-diff &lt;native&gt; &lt;bob&gt; [--examples n]: entries, object placement and record fields.</summary>
-    private static int Diff(string[] a)
+    /// <summary>gp27-diff &lt;native&gt; &lt;bob&gt; [--examples n]: entries, object placement and record fields. The
+    /// content parity's one-prop buckets: the native file's from prefab_types of the game and --pack packs, BOB's from
+    /// vanilla's.</summary>
+    private static int Diff(ProjectPaths paths, string[] a)
     {
-        var files = a.Where(s => !s.StartsWith("--")).ToList();
         var examples = a.SkipWhile(s => s != "--examples").Skip(1).Select(int.Parse).FirstOrDefault(5);
+        var files = a.Where((s, i) => !s.StartsWith("--") && (i == 0 || a[i - 1] != "--examples")).ToList();
         var native = GlobalPropsParity.Load(files[0]);
         var bob = GlobalPropsParity.Load(files[1]);
         Console.WriteLine($"entries: native {native.Count:N0}, BOB {bob.Count:N0}");
@@ -402,7 +404,11 @@ static class Gp27Commands
         }
         Console.WriteLine($"common bucket bodies that differ: {bodies:N0} ({orderOnly:N0} only in record order, {other:N0} otherwise)");
         foreach (var e in orderEx) Console.WriteLine($"      {e}");
-        var parity = GlobalPropsParity.Compare(native, bob, examples);
+        var nativeMountains = Wh3GlobalPropsBuilder.ReadCultures(AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks))
+            .FirstMountainBucket;
+        var bobMountains = GlobalPropsParity.BobMountainBucket(paths.GameDataDir);
+        Console.WriteLine($"one-prop buckets from: native {nativeMountains} (the packs' prefab_types), BOB {bobMountains} (vanilla's)");
+        var parity = GlobalPropsParity.Compare(native, nativeMountains, bob, bobMountains, examples);
         Console.WriteLine($"content parity (record order and one-prop numbering ignored): {parity.Same:N0} groups the same, {parity.Differ:N0} differ ({parity.Share:P2})");
         foreach (var e in parity.Examples) Console.WriteLine($"      {e}");
         return 0;

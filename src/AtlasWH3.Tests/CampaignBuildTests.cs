@@ -152,10 +152,9 @@ public class CampaignBuildTests
     }
 
     [Fact]
-    public void Pipeline_OnlyNativeStepsRunByDefault()
+    public void Pipeline_StepsAreInDependencyOrder()
     {
-        Assert.DoesNotContain(CampaignBuildPipeline.NativeSteps, s => s is PendingStep);
-        Assert.Contains(CampaignBuildPipeline.NativeSteps, s => s.Name == "lookup");
+        Assert.Contains(CampaignBuildPipeline.AllSteps, s => s.Name == "lookup");
         // dependencies name real steps and come earlier (the pipeline creates tasks in this order)
         var seen = new HashSet<string>();
         foreach (var step in CampaignBuildPipeline.AllSteps)

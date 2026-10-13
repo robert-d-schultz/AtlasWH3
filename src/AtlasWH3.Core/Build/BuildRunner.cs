@@ -77,7 +77,7 @@ public sealed class BuildRunner
         {
             Write("", $"AtlasWH3 build: {_project.FilePath ?? _project.Name}  map {_project.Map}  output {_project.OutputDir(_paths)}");
             var ok = true;
-            if (ok && Want(BuildSegment.Validate)) ok = Validate();
+            if (ok && Want(BuildSegment.Validate)) ok = Validate(request.Steps);
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.BeforeCompile, request);
             if (ok && Want(BuildSegment.Compile)) ok = Compile(request.Steps);
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.AfterCompile, request);
@@ -94,12 +94,13 @@ public sealed class BuildRunner
 
     // ------------------------------------------------------------------ segments
 
-    private bool Validate() => Item("validate", notes =>
+    /// <summary>The input checks of the steps Compile will run (<paramref name="steps"/>, else the profile's).</summary>
+    private bool Validate(IReadOnlyList<string>? steps) => Item("validate", notes =>
     {
         var problems = new List<string>();
         var ctx = Context();
         // Steps that read another selected step's output are checked when they run (their inputs don't exist yet).
-        var selected = SelectedSteps(null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var selected = SelectedSteps(steps).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var name in selected)
         {
             var step = CampaignBuildPipeline.Find(name);
@@ -119,6 +120,9 @@ public sealed class BuildRunner
         return (problems, 0);
     });
 
+    /// <summary>The backup's folders: the kit's raw terrain and the compiled terrain.</summary>
+    private static readonly HashSet<string> BackupFolders = new(["raw_terrain", "working_terrain"], StringComparer.OrdinalIgnoreCase);
+
     private bool Compile(IReadOnlyList<string>? steps)
     {
         var selected = SelectedSteps(steps);
@@ -128,6 +132,14 @@ public sealed class BuildRunner
         if (_project.Build.Backup.Length > 0 && !Item("compile:backup", _ =>
         {
             var backup = _project.Resolve(_project.Build.Backup, _paths);
+            // the rolling copy is deleted first: never a folder that holds the sources, the output or the project
+            string[] sources = [_paths.AkTerrainDir, terrainOut];
+            if (sources.Any(s => IsUnder(s, backup) || IsUnder(backup, s)) || IsUnder(_project.Folder, backup))
+                return ([$"backup folder {backup} holds, or is inside, the kit's terrain, the output or the project; pick its own folder"], 0);
+            // and only a folder that holds nothing but an earlier backup (the game's data, another map's sources: kept)
+            if (Directory.Exists(backup) && Directory.EnumerateFileSystemEntries(backup)
+                    .FirstOrDefault(e => !(Directory.Exists(e) && BackupFolders.Contains(Path.GetFileName(e)))) is { } other)
+                return ([$"backup folder {backup} holds {Path.GetFileName(other)}, not only an earlier backup ({string.Join(", ", BackupFolders)}); pick its own folder"], 0);
             if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
             CopyDir(_paths.AkTerrainDir, Path.Combine(backup, "raw_terrain"));
             if (Directory.Exists(terrainOut)) CopyDir(terrainOut, Path.Combine(backup, "working_terrain"));
@@ -138,7 +150,7 @@ public sealed class BuildRunner
         foreach (var c in _project.Build.Clean)
         {
             var dir = Path.GetFullPath(Path.Combine(terrainOut, c));
-            if (!dir.StartsWith(terrainOut, StringComparison.OrdinalIgnoreCase)) continue;   // never outside the map's folder
+            if (!IsUnder(dir, terrainOut) || PathEquals(dir, terrainOut)) continue;   // only folders inside the map's folder
             if (Directory.Exists(dir)) { Directory.Delete(dir, recursive: true); Write("compile", $"cleaned {dir}"); }
         }
 
@@ -390,7 +402,7 @@ public sealed class BuildRunner
     private IReadOnlyList<string> SelectedSteps(IReadOnlyList<string>? steps) =>
         steps is { Count: > 0 } ? steps
         : _project.Build.Steps.Count > 0 ? _project.Build.Steps
-        : CampaignBuildPipeline.NativeSteps.Select(s => s.Name).ToList();
+        : CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToList();
 
     private void Log(string id, string message)
     {
@@ -404,8 +416,18 @@ public sealed class BuildRunner
         lock (this) _log?.WriteLine(line);
     }
 
-    private bool IsInGameData(string file) =>
-        Path.GetDirectoryName(Path.GetFullPath(file))!.TrimEnd('\\').Equals(Path.GetFullPath(_paths.GameDataDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    private bool IsInGameData(string file) => PathEquals(Path.GetDirectoryName(Path.GetFullPath(file))!, _paths.GameDataDir);
+
+    private static bool PathEquals(string a, string b) =>
+        Path.GetFullPath(a).TrimEnd('\\', '/').Equals(Path.GetFullPath(b).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary><paramref name="path"/> is <paramref name="root"/> or inside it.</summary>
+    internal static bool IsUnder(string path, string root)
+    {
+        var p = Path.GetFullPath(path).TrimEnd('\\', '/');
+        var r = Path.GetFullPath(root).TrimEnd('\\', '/');
+        return p.Equals(r, StringComparison.OrdinalIgnoreCase) || p.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
 
     public static bool GameRunning() => Process.GetProcessesByName(GameProcess).Length > 0;
 

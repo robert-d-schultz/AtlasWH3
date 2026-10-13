@@ -7,8 +7,8 @@ namespace AtlasWH3.Core.Campaign.AiPathfinding;
 
 /// <summary>
 /// campaign_maps\&lt;map&gt;\spd_data.esf and hlp_data.esf (WH3 v1): the campaign AI's offline pathfinding data, which
-/// otherwise only the game itself writes. Inputs: pathfinding.ppd and map_data.esf (CAIME / map data export) plus three
-/// DB values from the map's mod packs and the vanilla db (docs/hlp_spd.md).
+/// otherwise only the game itself writes. Inputs: pathfinding.ppd and map_data.esf (CAIME's, as the map's mod pack
+/// ships them) plus three DB values from the map's mod packs and the vanilla db (docs/hlp_spd.md).
 /// </summary>
 public sealed class AiPathfindingStep : ICampaignBuildStep
 {
@@ -16,26 +16,24 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
     public string ReplacesBobAction => "game startpos build: reprocess_spd_data / reprocess_hlp_data (no BOB action)";
     public IReadOnlyList<string> DependsOn => [];
 
-    /// <summary>pathfinding.ppd / map_data.esf: the build output's campaign_maps folder first, else the kit's working_data.</summary>
-    public static string? Input(CampaignBuildContext ctx, string file) =>
-        new[] { Path.Combine(ctx.CampaignMapOutDir, file), Path.Combine(ctx.Paths.AkWorkingCampaignMapDir, file) }
-            .FirstOrDefault(File.Exists);
+    public static readonly string[] Inputs = ["pathfinding.ppd", "map_data.esf"];
 
-    public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)
-    {
-        var missing = new List<string>();
-        foreach (var f in new[] { "pathfinding.ppd", "map_data.esf" })
-            if (Input(ctx, f) is null) missing.Add($"missing {f} (in {ctx.CampaignMapOutDir} or {ctx.Paths.AkWorkingCampaignMapDir})");
-        return missing;
-    }
+    public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx) =>
+        Inputs.Where(f => !GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, f))
+              .Select(f => GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, f)).ToList();
 
     public StepResult Run(CampaignBuildContext ctx)
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
         var written = new List<string>();
-        var ppd = PathfindingPpd.Read(Input(ctx, "pathfinding.ppd")!);
-        var regions = MapDataRegions.Read(Input(ctx, "map_data.esf")!);
+        var ppdFile = GameSetup.CampaignMapFile(ctx.Paths, ctx.CampaignMapName, "pathfinding.ppd")
+                      ?? throw new FileNotFoundException(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "pathfinding.ppd"));
+        var esfFile = GameSetup.CampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf")
+                      ?? throw new FileNotFoundException(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf"));
+        notes.Add($"pathfinding.ppd from {Path.GetFileName(ppdFile.Pack)}, map_data.esf from {Path.GetFileName(esfFile.Pack)}");
+        var ppd = PathfindingPpd.Read(ppdFile.Data);
+        var regions = MapDataRegions.Read(Formats.Esf.EsfTree.Read(esfFile.Data));
         var settings = DbSettings(ctx.Paths, notes);
         ctx.Log($"grid {ppd.Width}x{ppd.Height}, {regions.Regions.Count} region slots, road {settings.RoadCost}, beach {settings.LandToSeaCost}/{settings.SeaToLandCost}");
         var grid = new CampaignPathGrid(ppd, regions, settings);
