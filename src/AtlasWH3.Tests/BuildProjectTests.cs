@@ -236,6 +236,14 @@ public class BuildProjectTests : IDisposable
         report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
         Assert.Equal("ok", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
         Assert.True(File.Exists(Path.Combine(_dir, "project", "backups", "raw_terrain", "m.terry")));
+        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
+        Assert.Equal("ok", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);   // rolled over its own copy
+
+        Write(Path.Combine(_dir, "elsewhere"), "data.pack", "x");   // a folder that is not a backup: never deleted
+        project.Build.Backup = Path.Combine(_dir, "elsewhere");
+        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
+        Assert.Equal("failed", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
+        Assert.True(File.Exists(Path.Combine(_dir, "elsewhere", "data.pack")));
     }
 
     /// <summary>A project in its own folder over an empty kit with map m (its .terry only), output beside it.</summary>

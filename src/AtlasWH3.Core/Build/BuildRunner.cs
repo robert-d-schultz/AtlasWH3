@@ -120,6 +120,9 @@ public sealed class BuildRunner
         return (problems, 0);
     });
 
+    /// <summary>The backup's folders: the kit's raw terrain and the compiled terrain.</summary>
+    private static readonly HashSet<string> BackupFolders = new(["raw_terrain", "working_terrain"], StringComparer.OrdinalIgnoreCase);
+
     private bool Compile(IReadOnlyList<string>? steps)
     {
         var selected = SelectedSteps(steps);
@@ -133,6 +136,10 @@ public sealed class BuildRunner
             string[] sources = [_paths.AkTerrainDir, terrainOut];
             if (sources.Any(s => IsUnder(s, backup) || IsUnder(backup, s)) || IsUnder(_project.Folder, backup))
                 return ([$"backup folder {backup} holds, or is inside, the kit's terrain, the output or the project; pick its own folder"], 0);
+            // and only a folder that holds nothing but an earlier backup (the game's data, another map's sources: kept)
+            if (Directory.Exists(backup) && Directory.EnumerateFileSystemEntries(backup)
+                    .FirstOrDefault(e => !(Directory.Exists(e) && BackupFolders.Contains(Path.GetFileName(e)))) is { } other)
+                return ([$"backup folder {backup} holds {Path.GetFileName(other)}, not only an earlier backup ({string.Join(", ", BackupFolders)}); pick its own folder"], 0);
             if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
             CopyDir(_paths.AkTerrainDir, Path.Combine(backup, "raw_terrain"));
             if (Directory.Exists(terrainOut)) CopyDir(terrainOut, Path.Combine(backup, "working_terrain"));
