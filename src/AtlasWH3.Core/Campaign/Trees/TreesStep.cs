@@ -41,6 +41,8 @@ public sealed class TreesStep : ICampaignBuildStep
         }
         if (!GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf")) missing.Add(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf"));
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
+        // this build's own (step heightmaps; checked once it has run, or up front when it is not selected)
+        if (LogicMapPath(ctx) is null) missing.Add(NoLogicMap);
         return missing;
     }
 
@@ -63,7 +65,7 @@ public sealed class TreesStep : ICampaignBuildStep
         ReportUnknownColours(colours, db, ctx.Paths.ModPacks, notes);
 
         var logicPath = LogicMapPath(ctx);
-        if (logicPath is null) throw new FileNotFoundException("no full_logic_map.compressed_map in this build's output (run step 'heightmaps')");
+        if (logicPath is null) throw new FileNotFoundException(NoLogicMap);
         var patches = TreeHeightField.LoadPatches(project, packs, notes);
         ctx.Cancel.ThrowIfCancellationRequested();
         ctx.Log("placing trees...");
@@ -82,6 +84,8 @@ public sealed class TreesStep : ICampaignBuildStep
     /// the main map for a devastated project.</summary>
     public static (byte[] Data, string Pack)? MapData(CampaignBuildContext ctx) =>
         GameSetup.CampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf");
+
+    public const string NoLogicMap = "no full_logic_map.compressed_map in this build's output (run step 'heightmaps')";
 
     /// <summary>full_logic_map.compressed_map of this build (step heightmaps), or null.</summary>
     public static string? LogicMapPath(CampaignBuildContext ctx) =>

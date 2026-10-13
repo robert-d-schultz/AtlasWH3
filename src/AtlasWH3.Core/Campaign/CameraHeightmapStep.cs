@@ -35,6 +35,8 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     public string ReplacesBobAction => "Generate Camera Height Map";
     public IReadOnlyList<string> DependsOn => ["heightmaps", "tile_list"];
 
+    private const string NoTileList = "no tile_list.bin in this build's output (run step 'tile_list')";
+
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx)
     {
         var missing = new List<string>();
@@ -43,6 +45,9 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
             missing.Add("the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf") +
                         " to take the width from");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
+        // this build's own (the steps it depends on; checked once those have run, or up front when they are not selected)
+        if (TreesStep.LogicMapPath(ctx) is null) missing.Add(TreesStep.NoLogicMap);
+        if (!File.Exists(ctx.OutFile("tile_list.bin"))) missing.Add(NoTileList);
         return missing;
     }
 
@@ -51,9 +56,9 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
         var project = TerryProject.Load(ctx.TerryFile);
-        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException("no full_logic_map.compressed_map in this build's output (run step 'heightmaps')");
+        var logicPath = TreesStep.LogicMapPath(ctx) ?? throw new FileNotFoundException(TreesStep.NoLogicMap);
         var tileListPath = ctx.OutFile("tile_list.bin");
-        if (!File.Exists(tileListPath)) throw new FileNotFoundException("no tile_list.bin in this build's output (run step 'tile_list')");
+        if (!File.Exists(tileListPath)) throw new FileNotFoundException(NoTileList);
         var tiles = TileList.Read(tileListPath);
         var worldWidth = project.WorldWidth ?? MapDataBounds.Read(Formats.Esf.EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
 
