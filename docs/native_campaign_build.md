@@ -127,7 +127,7 @@ bob_terrain.modder.x64.dll's strings (2026-10-09):
   used, in root order. Header, climates and trailer are the root's. IEE keeps 52,707 of 339,338 records, Old World
   73,817 of 598,161. 3K kept every record and cleared the flag of base tiles.
 - BOB's Global Tilemap reads the tile list from the installed pack (the tilemap → global tilemap pack round trip).
-  The step reads this build's `tile_list.bin`, else the kit's working_data copy.
+  The step reads this build's `tile_list.bin` only; without one it leaves `global_map\tile_list.bin` out (a note).
 
 ### Masks (WH3)
 
@@ -250,7 +250,7 @@ fresh BOB run. The formats are in the decompiler's `docs/event-area-pieces.md`; 
 ### Lookup textures (WH3)
 
 `LookupTexture` is unchanged from Atlas3K (format under *Format notes*); the step converts every `*lookup*.bmp` of
-the map's working_data and EmpireDesignData folders.
+the map's EmpireDesignData folder (never working_data's copies).
 - **Minimap:** BOB's is not exactly `indices[::4, ::4]`. On IEE (3200 × 1941 → 800 × 485) 1,545 pixels differ, and
   every one of BOB's values sits within one source pixel of the [::4, ::4] sample, so BOB's sample point is off by up to
   a pixel along region borders. No simple coordinate formula (floor/round of y·H/h, centre sampling, (H−1)/(h−1)) or

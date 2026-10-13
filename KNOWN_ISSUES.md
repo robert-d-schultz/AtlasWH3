@@ -9,7 +9,7 @@
   example). Add it as a custom step after Pack if you need it.
 - **CAIME's files are inputs.** The build does not write `map_data.esf`, `pathfinding.ppd` or the region lookup
   `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (link it), and the lookup `.bmp` from
-  the kit's working_data or EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
+  the kit's EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
 - **A new project builds into the kit's `working_data`**, as BOB does, and with a linked mod pack its Install replaces
   that pack in the game's `data` folder (keeping one backup copy, unless the project turns it off). Set the project's
   output to its own folder to leave `working_data` alone.

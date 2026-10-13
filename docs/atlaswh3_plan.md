@@ -625,7 +625,8 @@ build comes first. The open items below stay as they are.
   region layers) and their CLI checks `trees-test` / `expand-test`. Left as loose ends: `TerrainData.LoadVanilla`,
   `ExpandCanvas`, `GlobalProps.ReadRegions` and the 3K painter (`MainWindow`), all still 3K-shaped; the cut commit
   restores the rest.
-- [ ] Still 3K-shaped: the lake commands (`lake-*`, `LakeBuilder`: lf shaping on 3K's u16 TIF) and the painter.
+- [x] ~~Still 3K-shaped: the lake commands (`lake-*`, `LakeBuilder`: lf shaping on 3K's u16 TIF) and the painter.~~
+  Cut for 1.0 (2026-10-12, the user): the lake commands; the painter's start tile is hidden (it reads 3K lf rasters).
 - [x] 5.4 Fixes from the user's first look (2026-10-11):
   - the sea: the scene draws each tile on the ground the game does, HeightSea under the tiles that use the alternative
     lf (tile_list.bin's sea tiles), Height elsewhere (`CampaignTerrain.Shown`). Height is about +0.5 under IEE's open

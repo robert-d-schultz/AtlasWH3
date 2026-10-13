@@ -223,7 +223,7 @@ def parity_check(built_dir: str, reference_dir: str, mask_junk: bool = True, onl
 def list_outputs(map_name: str | None = None, out_dir: str | None = None, to_working_data: bool = False) -> dict:
     """List the files currently in a build target for a map, with sizes and modification times."""
     map_name = map_name or DEFAULT_MAP
-    root =os.path.join(KIT, "working_data") if to_working_data else (
+    root = os.path.join(KIT, "working_data") if to_working_data else (
         out_dir or os.path.join(PROJECT, "output", "compiled", map_name))
     files = []
     for sub in (os.path.join("terrain", "campaigns", map_name), os.path.join("campaign_maps", map_name)):
