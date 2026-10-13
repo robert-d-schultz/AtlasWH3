@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-10-13)
 
 The first release of AtlasWH3: a Total War: WARHAMMER III campaign map builds from the Assembly Kit's sources in
 one run, without BOB, and installs as a mod pack. IEE's full build takes about 5 minutes on a 4-core machine (a BOB
