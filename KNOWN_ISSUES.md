@@ -8,11 +8,10 @@
 - **Start positions are not built.** `startpos.esf` still comes from the game (RPFM's start-position build, for
   example). Add it as a custom step after Pack if you need it.
 - **CAIME's files are inputs.** The build does not write `map_data.esf`, `pathfinding.ppd` or the region lookup
-  `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (link it), and the lookup `.bmp` from
-  the kit's EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
-- **A new project builds into the kit's `working_data`**, as BOB does, and with a linked mod pack its Install replaces
-  that pack in the game's `data` folder (keeping one backup copy, unless the project turns it off). Set the project's
-  output to its own folder to leave `working_data` alone.
+  `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (add it to the project's mod packs),
+  and the lookup `.bmp` from the Assembly Kit's EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
+- **The build writes into the map's mod pack** in the game's `data` folder (keeping one backup copy, unless the
+  project turns it off). A map that ships its event-area pieces in a pack of their own (Old World) sets it as the project's pieces pack.
 - **Height map:** `full_height_map.dds` is BC6H from AtlasWH3's own encoder. It is not byte-identical to BOB's (AMD
   Compress); its error against the source heights is about half BOB's.
 - **Tile list:** byte-identical to BOB's on IEE and Old World. A map whose hex width is not a multiple of 4 reports
@@ -31,7 +30,7 @@
   - props are put in quadtree cells by their models' real bounds. BOB treats any model whose `.wsmodel` isn't loose
     in the kit as a 2 × 2 × 2 cube, so a big prop can land in a cell smaller than itself;
   - cultures come from the packs' `prefab_types`. IEE's 23 own cultures (values 39-61) get their own buckets, where
-    BOB, reading the kit's vanilla table, put those objects in the NONE bucket; the mountain bodies then start at 1008
+    BOB, reading the Assembly Kit's vanilla table, put those objects in the NONE bucket; the mountain bodies then start at 1008
     (16 × prefab_types' 63 rows), not 640. The game reads that number only as a body's file name (CA's own maps start
     theirs at 576, 592 and 640). Not yet checked in game;
   - regions come from `map_data.esf`. They are `map.hex`'s wherever both come from one CAIME export.
@@ -46,12 +45,10 @@
   - The tile map validator's neighbourhood rules and reference pattern are 3K's; tile props and some tile textures
     are not drawn yet, and some props draw black.
   - The Campaign battles window does not read WH3's `battle_locations_map.bin` yet.
-  - The Terrain painter is hidden: it reads 3K's lf height rasters, which WH3 maps don't have.
 - The `tiles-*`, `props-*` and `entity-*` CLI commands share the editors' code and status.
 
 ## App
 
-- **Prepare game data** extracts one map at a time. Run it again for another map.
 - Folder changes in Settings apply to windows opened after saving.
 - The download is unsigned, so Windows SmartScreen may warn on the first start (More info › Run anyway).
 - Windows 10/11 x64 only. The 3D view needs Direct3D 11.

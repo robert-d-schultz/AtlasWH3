@@ -102,8 +102,7 @@ public sealed class SceneModel
     }
 
     /// <summary>
-    /// Reads the map's compiled tile_list.bin (the --pack mod packs, the vanilla folder, then the game packs) and the
-    /// campaign
+    /// Reads the map's compiled tile_list.bin (the mod packs, then the game packs) and the campaign
     /// tile database (sizes, tile sets) into placements. tile_list.bin is a build output: after editing tile_map.png
     /// it shows the last build, not the edit.
     /// </summary>
@@ -116,9 +115,6 @@ public sealed class SceneModel
             AtlasWH3.Formats.Maps.TileList? list = null;
             string? source = null;
             if (FromModPacks(relative) is var (modBytes, modPack)) { list = AtlasWH3.Formats.Maps.TileList.Read(modBytes); source = modPack; }
-            if (list is null)
-                if (Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)) is var candidate && File.Exists(candidate))
-                { list = AtlasWH3.Formats.Maps.TileList.Read(candidate); source = candidate; }
             if (list is null && Models.Source.TryRead(relative) is { } packed) { list = AtlasWH3.Formats.Maps.TileList.Read(packed); source = Models.Source.Locate(relative); }
             if (list is null) { TilesNote = "no tile_list.bin (build the map: Build > tile_list)"; return; }
 
@@ -480,7 +476,7 @@ public sealed class SceneModel
                 TreesNote = "no CampaignTree map";
                 return;
             }
-            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.FromPacks(GameSetup.OpenWithLinked(_paths.GameDataDir, _paths.ModPacks));
+            _treeDb = AtlasWH3.Formats.Trees.TreeDatabase.FromPacks(GameSetup.OpenWithMods(_paths.GameDataDir, _paths.ModPacks));
             var (map, palette) = TerrainComposite.Indexed(Project, "CampaignTree");
             if (palette is null) { TreesNote = "the CampaignTree map has no palette"; return; }
             var (_, worldW, _) = Terrain!;
@@ -545,32 +541,14 @@ public sealed class SceneModel
         return null;
     }
 
-    /// <summary>texture_arrays.xml for the project's map: the <c>--pack</c> mod packs, the kit's working_data, the
-    /// vanilla folder, else the game packs.</summary>
+    /// <summary>texture_arrays.xml for the project's map: the mod packs, else the game packs.</summary>
     private TextureArrays? LoadTextureArrays()
     {
-        var map = Project.MapName;
-        var relative = $"terrain/campaigns/{map}/global_map/texture_arrays.xml";
-        if (FromModPacks(relative) is var (modBytes, _))
-        {
-            var modTmp = Path.Combine(Path.GetTempPath(), $"texture_arrays_{map}_mod.xml");
-            File.WriteAllBytes(modTmp, modBytes);
-            return TextureArrays.Load(modTmp);
-        }
-        foreach (var candidate in new[]
-                 {
-                     Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)),
-                     (_paths with { MapName = map }).TextureArraysXml,
-                 })
-            if (File.Exists(candidate)) return TextureArrays.Load(candidate);
+        var relative = $"terrain/campaigns/{Project.MapName}/global_map/texture_arrays.xml";
+        if (FromModPacks(relative) is var (modBytes, _)) return TextureArrays.Parse(modBytes);
         try
         {
-            if (Models.Source.TryRead(relative) is { } bytes)
-            {
-                var tmp = Path.Combine(Path.GetTempPath(), $"texture_arrays_{map}.xml");
-                File.WriteAllBytes(tmp, bytes);
-                return TextureArrays.Load(tmp);
-            }
+            if (Models.Source.TryRead(relative) is { } bytes) return TextureArrays.Parse(bytes);
         }
         catch (Exception) { }
         return null;

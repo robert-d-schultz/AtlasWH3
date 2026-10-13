@@ -8,8 +8,8 @@ public static partial class Walkthroughs
             "Every campaign battle is cut from one battle terrain; its catchment areas decide where field battles, sieges and " +
             "gate battles can start, and which battle map a settlement loads. This window checks and fixes them for your regions."),
         new("battles.menu", "File menu",
-            "The catchments are read from your linked packs, then the game's. Save writes to the output folder; Export mod pack " +
-            "and Write to kit put the file where the game or the kit picks it up. The packs themselves are never written."),
+            "The catchments are read from your mod packs, then the game's. Save writes to the output folder; Export mod pack " +
+            "and Write to the Assembly Kit put the file where the game or the Assembly Kit picks it up. The packs themselves are never written."),
         new("battles.lists", "Catchment lists",
             "One list per battle type. Tick the lists to draw; the active list takes new areas and shows its coverage gaps."),
         new("battles.tools", "Tools",

@@ -5,7 +5,7 @@ namespace AtlasWH3.Core.Battle;
 
 /// <summary>
 /// The campaign battles of one campaign map: its campaign-battle terrain's compiled battle_locations_map.bin
-/// (catchment areas), the settlements of its map_data.esf, and the redirect checks. Everything is read from the linked
+/// (catchment areas), the settlements of its map_data.esf, and the redirect checks. Everything is read from the mod
 /// packs first, then the game's packs; nothing there is written. Saving goes to the output folder, a new mod pack or the
 /// kit's working_data (see <see cref="SourceGuard"/>).
 /// </summary>
@@ -50,8 +50,8 @@ public sealed class CampaignBattleWorkspace
                                                string terrainFolder = DefaultTerrainFolder, Action<string>? log = null)
     {
         var linked = paths.ModPacks.Where(File.Exists).ToList();
-        log?.Invoke($"opening {linked.Count} linked pack(s) and the game packs…");
-        var packs = GameSetup.OpenWithLinked(paths.GameDataDir, linked);
+        log?.Invoke($"opening {linked.Count} mod pack(s) and the game packs…");
+        var packs = GameSetup.OpenWithMods(paths.GameDataDir, linked);
         var vanilla = new PackSet(packs.Packs.Where(p => !linked.Any(l => string.Equals(Path.GetFullPath(l), Path.GetFullPath(p.SourcePath), StringComparison.OrdinalIgnoreCase))));
         return Load(paths, packs, vanilla, blmFile, modDataDir, terrainFolder, log);
     }
@@ -71,7 +71,7 @@ public sealed class CampaignBattleWorkspace
         }
         else
         {
-            blmBytes = packs.TryRead(blmPath) ?? throw new FileNotFoundException($"{blmPath} is not in the linked or game packs");
+            blmBytes = packs.TryRead(blmPath) ?? throw new FileNotFoundException($"{blmPath} is not in the mod or game packs");
             source = Path.GetFileName(packs.FindOwner(blmPath)?.SourcePath ?? "packs");
         }
         var map = BattleLocations.Read(blmBytes);
@@ -90,7 +90,7 @@ public sealed class CampaignBattleWorkspace
                           $"{map.Width}x{map.Height}: settlements are not on the battle grid. The battle terrain (catchments and tile map) " +
                           "has to be resized to the campaign map before its battles can be checked here.");
         }
-        else notes.Add($"{esfPath} was not found in the linked or game packs: no region list.");
+        else notes.Add($"{esfPath} was not found in the mod or game packs: no region list.");
 
         HashSet<string>? vanillaRegions = null;
         if (vanilla?.TryRead(esfPath) is { } vesf)
@@ -118,7 +118,6 @@ public sealed class CampaignBattleWorkspace
 
         var dbRoots = new List<string>();
         if (mod is not null) dbRoots.Add(Path.Combine(mod.Root, "db"));
-        dbRoots.Add(paths.DbTsvRoot);
 
         var ws = new CampaignBattleWorkspace
         {
@@ -171,7 +170,7 @@ public sealed class CampaignBattleWorkspace
     {
         var problems = new List<string>();
         if (folder.Length == 0) return problems;
-        if (!Redirects.FolderExists(folder)) problems.Add($"'{folder}' is not a battle map in the linked or game packs");
+        if (!Redirects.FolderExists(folder)) problems.Add($"'{folder}' is not a battle map in the mod or game packs");
         var want = BattlesTable.TypeForList(listKey);
         if (KnownBattles.TryGetValue(BattlesTable.MapPath(folder), out var type) && type != want)
             problems.Add($"'{folder}' is a {type} map but {listKey} battles are {want}");
@@ -208,12 +207,12 @@ public sealed class CampaignBattleWorkspace
     /// schema): import the TSV from <see cref="SaveLoose"/> with RPFM.</summary>
     public void ExportPack(string packPath)
     {
-        // a new pack of our own: the folder must be writable and the file must not be a linked (source) pack. The
+        // a new pack of our own: the folder must be writable and the file must not be a mod (source) pack. The
         // guard's "any .pack is read-only" rule is for existing source packs, so check the folder, not the file.
         var full = Path.GetFullPath(packPath);
         SourceGuard.EnsureWritable(Path.GetDirectoryName(full)!, Paths);
         if (Paths.ModPacks.Any(p => string.Equals(Path.GetFullPath(p), full, StringComparison.OrdinalIgnoreCase)))
-            throw new UnauthorizedAccessException($"Refusing to write: {packPath} is a linked pack (read-only).");
+            throw new UnauthorizedAccessException($"Refusing to write: {packPath} is a mod pack (read-only).");
         var bytes = Map.Write();
         PackWriter.Write(packPath, [new PackWriter.Source(BlmPackPath, bytes.Length, s => s.Write(bytes))]);
     }

@@ -20,7 +20,7 @@ byte-identical) and every batch can be undone.
 - Recommended order: prop_checkpoint -> edits -> preview_props (look at it) -> rebuild_props. global_props.bin only
   changes when rebuild_props runs; prop_rollback undoes everything since a checkpoint.
 
-Tile-map editing (the *_tiles* / tile_* tools) paints the kit's campaign tile_map.png hex by hex. Hexes are
+Tile-map editing (the *_tiles* / tile_* tools) paints the Terry project's tile_map.png hex by hex. Hexes are
 [col, row], row 0 = south; tile sets are names from list_tile_sets (or "#rrggbb"). Each batch is validated on the
 changed hexes: an edit that introduces a blocking issue is NOT written (allow_warnings / force override).
 - Recommended order: tile_checkpoint -> paint/erase/draw/fill (dry_run first if unsure) -> preview_tiles ->
@@ -138,12 +138,12 @@ def build_project(project: str, segments: list[str] | None = None, steps: list[s
     """Run an AtlasWH3 project's build (.atlaswh3), exactly as the app's Build window does.
 
     project: path to the .atlaswh3 file (e.g. research/main190/main190.atlaswh3).
-    segments: subset of validate, compile, custom, pack, install; default = the project's enabled segments
-              (pack / install only when the profile enables them).
+    segments: subset of validate, compile, custom, pack; default = the project's enabled segments
+              (pack only when the profile ticks it). Pack writes the compiled files into the project's pack in place.
     steps: native compile steps to run instead of the profile's.
     custom_steps: only these custom steps (by name), instead of every enabled one.
     out_dir / pack_output: override the profile's compile output folder / pack file (e.g. a scratch test).
-    Returns the build report: per item (validate, compile:<step>, custom:<name>, pack, install) status
+    Returns the build report: per item (validate, compile:<step>, custom:<name>, pack) status
     (ok / warning / failed / blocked / skipped / cancelled), seconds, problems, notes; plus the log file path.
     """
     args = ["build", "--project", os.path.abspath(project), "--json"]

@@ -189,7 +189,7 @@ public sealed partial class SceneWindow : Window
         var regions = new CheckBox
         {
             Content = "Regions", Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 2, 0),
-            ToolTip = "Region mask from the kit's map.hex (a colour per land region, dark borders) and each region's city (its main settlement slot); hover to read the region",
+            ToolTip = "Region mask from the Assembly Kit's map.hex (a colour per land region, dark borders) and each region's city (its main settlement slot); hover to read the region",
         };
         regions.Click += (_, _) =>
         {
@@ -452,7 +452,7 @@ public sealed partial class SceneWindow : Window
         {
             await SyncDevastated();
             Status(map is null ? $"Devastated map: {error ?? $"no campaigns row with terrain_location {_paths.MapName} names a terrain_location_devastate"}."
-                : $"The db names {map} as {_paths.MapName}'s devastated map, but the kit has no {TerryOf(map)}", error: true);
+                : $"The db names {map} as {_paths.MapName}'s devastated map, but the Assembly Kit has no {TerryOf(map)}", error: true);
             return;
         }
         await Switch(TerryOf(map));

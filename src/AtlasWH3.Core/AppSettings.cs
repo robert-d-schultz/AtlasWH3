@@ -17,17 +17,12 @@ public sealed class AppSettings
     public string GameFolder { get; set; } = "";
     /// <summary>Default assembly kit; empty = &lt;game&gt;\assembly_kit.</summary>
     public string AssemblyKit { get; set; } = "";
-    public string DbTsvFolder { get; set; } = "";
-    public string CompiledRoot { get; set; } = "";
-    public string OutputFolder { get; set; } = "";
-    public string CacheFolder { get; set; } = "";
-    /// <summary>Default tile map source (kit, file or pack) when no project sets one; null = the kit.</summary>
-    public Campaign.TileMapCheck.TileMapSource? TileMap { get; set; }
-    /// <summary>The map the Start screen opens editors on; empty = <see cref="MapCatalog.DefaultMap"/>.</summary>
+    /// <summary>Where AtlasWH3 keeps its own data (output\, cache\); empty = %LocalAppData%\AtlasWH3.</summary>
+    public string DataFolder { get; set; } = "";
+    /// <summary>The project (.atlaswh3) the Start screen opens editors on; empty = none: the kit's <see cref="MapName"/>.</summary>
+    public string CurrentProject { get; set; } = "";
+    /// <summary>The map the Start screen opens editors on without a project; empty = <see cref="MapCatalog.DefaultMap"/>.</summary>
     public string MapName { get; set; } = "";
-    /// <summary>Mod packs linked as read-only sources (compiled map files, DB tables, assets), highest priority first.
-    /// Never written: edits go to the assembly kit or the output folder.</summary>
-    public List<string> LinkedPacks { get; set; } = [];
     public List<string> RecentProjects { get; set; } = [];
     public bool DeveloperMode { get; set; }
     /// <summary>Windows whose walkthrough was finished or skipped (keys such as "start", "scene"); it starts by itself
@@ -91,19 +86,6 @@ public sealed class AppSettings
 
     /// <summary>Every walkthrough starts again the next time its window opens.</summary>
     public void ResetTours() => ToursSeen.Clear();
-
-    /// <summary>Adds a pack to <see cref="LinkedPacks"/> (full path, no duplicates); false when it was already linked.</summary>
-    public bool LinkPack(string packPath)
-    {
-        packPath = Path.GetFullPath(packPath);
-        if (!packPath.EndsWith(".pack", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException($"{packPath} is not a .pack file");
-        if (LinkedPacks.Any(p => p.Equals(packPath, StringComparison.OrdinalIgnoreCase))) return false;
-        LinkedPacks.Add(packPath);
-        return true;
-    }
-
-    public bool UnlinkPack(string packPath) =>
-        LinkedPacks.RemoveAll(p => p.Equals(Path.GetFullPath(packPath), StringComparison.OrdinalIgnoreCase)) > 0;
 
     public void AddRecentProject(string path)
     {

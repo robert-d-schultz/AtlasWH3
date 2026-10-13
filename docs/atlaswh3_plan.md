@@ -544,7 +544,7 @@ battle terrain, CAIME's and the game's files beside the map, and Old World ships
   deleted river's model, an area no longer on the map), even when it writes none. IEE: rivers alone drop the pack's
   206 stale river model files. A profile's extra replace folders drop only where the build put files; compressed base
   entries are copied as they are.
-- Default with a linked mod pack (`new-project --pack`, the GUI's linked packs): merge into a copy beside the project,
+- Default with a mod pack (`new-project --pack`, or the pack picked in the GUI's New project): merge into a copy beside the project,
   then Install (backup, copy-then-swap, refused while `Warhammer3.exe` runs).
 IEE end to end (`build --segments validate,compile,pack`, scratch output): 513 s, of which the merge into a copy of the
 3.1 GB pack 5 s (2,203 kept, 11,014 replaced, 412 added, 208 dropped). RPFM opens it; against the shipped pack only the

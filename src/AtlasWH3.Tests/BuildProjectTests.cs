@@ -21,14 +21,14 @@ public class BuildProjectTests : IDisposable
             {
               // comment
               "map": "my_map",
-              "assemblyKit": "K:\\kit",
+              "assemblyKit": "X:\\old_kit",
               "build": { "output": "{project}\\out", "pack": { "output": "{out}\\{map}.pack" }, },
             }
             """);
         var project = BuildProject.Load(file);
-        var paths = project.ToPaths(new ProjectPaths { GameDataDir = @"G:\data" });
+        var paths = project.ToPaths(new ProjectPaths { GameDataDir = @"G:\data", AssemblyKitRoot = @"K:\kit" });
         Assert.Equal("my_map", paths.MapName);
-        Assert.Equal(@"K:\kit", paths.AssemblyKitRoot);
+        Assert.Equal(@"K:\kit", paths.AssemblyKitRoot);   // an older project's "assemblyKit" is ignored: Settings' kit
         Assert.Equal(Path.Combine(_dir, "out"), project.OutputDir(paths));
         Assert.Equal(Path.Combine(_dir, "out", "my_map.pack"), project.PackOutput(paths));   // an older project's "pack"
         Assert.Equal(@"K:\kit\x my_map G:\data", project.Expand("{ak}\\x {map} {game}", paths));
@@ -41,42 +41,70 @@ public class BuildProjectTests : IDisposable
         BuildProject.CreateDefault("m").Save(file);
         var loaded = BuildProject.Load(file);
         Assert.Equal("m", loaded.Map);
-        var pack = Assert.Single(loaded.Build.Packs);
-        Assert.Equal(PackMode.New, pack.Mode);
-        Assert.Equal(PackContent.CompiledSource, Assert.Single(pack.Contents).Source);
-        Assert.False(loaded.Build.Install.Enabled);
+        Assert.Equal(@"{project}\{map}.pack", loaded.Build.PackFile);
+        Assert.True(loaded.Build.WritePack);
+        Assert.True(loaded.Build.BackupPack);
     }
 
     [Fact]
-    public void DefaultProjectWithModPackMergesIntoACopyAndInstalls()
+    public void DefaultProjectWritesIntoTheModPack()
     {
         var project = BuildProject.CreateDefault("cr_oldworld_map_1", modPacks: [@"G:\data\!cr_oldworld_campaign.pack"]);
-        var pack = Assert.Single(project.Build.Packs);
-        Assert.Equal(PackMode.Merge, pack.Mode);
-        Assert.Equal(@"G:\data\!cr_oldworld_campaign.pack", pack.Base);
-        Assert.Equal(@"{project}\!cr_oldworld_campaign.pack", pack.Output);
-        Assert.True(project.Build.Install.Enabled);
-        var paths = project.ToPaths(new ProjectPaths());
-        Assert.Empty(pack.ReplaceDirs);   // the steps' own files (river models, pieces) are dropped without settings
-        Assert.Equal("cr_oldworld_map_devastate_1", project.Expand("{devastated}", paths));
-        project.Build.DevastatedMap = "other_devastate";
-        Assert.Equal("other_devastate", project.Expand("{devastated}", paths));
+        Assert.Equal(@"G:\data\!cr_oldworld_campaign.pack", project.Build.PackFile);
+        Assert.Empty(project.ModPacks);   // the pack is read first anyway
     }
 
     [Fact]
-    public void PackTakesTheCompiledFilesSplitsThemAndInstalls()
+    public void AnOlderProjectsPacksAndInstallBecomeItsPackFile()
+    {
+        var file = Path.Combine(_dir, "old.atlaswh3");
+        File.WriteAllText(file, """
+            {
+              "map": "m",
+              "modPacks": ["{game}\\!mod.pack", "{game}\\other.pack"],
+              "build": {
+                "customSteps": [{ "name": "after", "runAt": "afterInstall", "command": "x" }],
+                "packs": [{ "mode": "merge", "base": "{game}\\!mod.pack", "output": "{project}\\!mod.pack",
+                            "contents": [{ "source": "{compiled}" }], "exclude": [] }],
+                "install": { "enabled": true, "backup": false }
+              }
+            }
+            """);
+        var project = BuildProject.Load(file);
+        Assert.Equal(@"{game}\!mod.pack", project.Build.PackFile);   // where Install put it
+        Assert.False(project.Build.BackupPack);
+        Assert.True(project.Build.WritePack);
+        Assert.Equal([@"{game}\other.pack"], project.ModPacks);
+        Assert.Equal(CustomStepStage.AfterPack, Assert.Single(project.Build.CustomSteps).RunAt);
+
+        File.WriteAllText(file, """
+            { "map": "m", "build": { "packs": [{ "output": "{project}\\main.pack" }, { "output": "{project}\\devastate.pack" }],
+                                     "install": { "enabled": true } } }
+            """);
+        project = BuildProject.Load(file);
+        Assert.Equal(@"{game}\main.pack", project.Build.PackFile);   // Old World's two packs
+        Assert.Equal(@"{game}\devastate.pack", project.Build.PiecesPackFile);
+
+        File.WriteAllText(file, """{ "map": "m", "build": { "packs": [{ "enabled": false, "output": "{project}\\m.pack" }] } }""");
+        project = BuildProject.Load(file);
+        Assert.Equal(@"{project}\m.pack", project.Build.PackFile);   // not installed: its output
+        Assert.False(project.Build.WritePack);
+        project.Save();
+        Assert.DoesNotContain("\"packs\"", File.ReadAllText(file));
+    }
+
+    [Fact]
+    public void PackWritesTheCompiledFilesIntoThePackInPlace_AfterABackup()
     {
         var output = Path.Combine(_dir, "out");
         var paths = new ProjectPaths
         {
             MapName = "m", CacheRoot = Path.Combine(_dir, "cache"), OutputRoot = Path.Combine(_dir, "app"), GameDataDir = Path.Combine(_dir, "data"),
         };
-        Directory.CreateDirectory(paths.GameDataDir);
         Write(output, "terrain/campaigns/m/a.bin", "a");
         Write(output, "terrain/campaigns/m/pieces/event_1/mask", "piece");
         Write(output, "terrain/campaigns/m_devastate_1/event_tiles", "tiles");
         Write(output, "terrain/campaigns/m_devastate_1/global_props_devastation_chaos.bin", "BOB's by-product");
-        Write(output, "campaign_maps/m/m_lookup.bmp", "CAIME's input");
         var manifestFile = BuildManifest.FileFor(paths, "m", output);
         var manifest = BuildManifest.Load(manifestFile, output);
         manifest.Set("heightmaps", [Path.Combine(output, @"terrain\campaigns\m\a.bin"), Path.Combine(paths.CacheRoot, "elsewhere.bin")]);
@@ -84,27 +112,79 @@ public class BuildProjectTests : IDisposable
                                             Path.Combine(output, @"terrain\campaigns\m_devastate_1\event_tiles")]);
         manifest.Save(manifestFile);
 
+        var src = Path.Combine(_dir, "src");
+        Write(src, "db/keep", "the mod's DB");
+        Write(src, "terrain/campaigns/m/a.bin", "old a");
+        var target = Path.Combine(paths.GameDataDir, "!mod.pack");
+        PackBuilder.New(target, PackBuilder.FromFolder(src));
+
         var project = new BuildProject { Map = "m" };
         project.Build.Output = output;
-        project.Build.Packs =
-        [
-            new PackSettings { Output = Path.Combine(_dir, "main.pack"), Contents = [new PackContent { Source = PackContent.CompiledSource }],
-                               Exclude = ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"] },
-            new PackSettings { Output = Path.Combine(_dir, "devastate.pack"),
-                               Contents = [new PackContent { Source = PackContent.CompiledSource, Path = "terrain/campaigns/{map}/pieces" },
-                                           new PackContent { Source = PackContent.CompiledSource, Path = "terrain/campaigns/{devastated}" }] },
-        ];
-        project.Build.Install.Enabled = true;
-        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack, BuildSegment.Install } });
+        project.Build.PackFile = target;
+        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
 
         Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
-        Assert.Equal([@"terrain\campaigns\m\a.bin"], PackFile.Open(Path.Combine(paths.GameDataDir, "main.pack")).Entries.Keys);
-        Assert.Equal([@"terrain\campaigns\m\pieces\event_1\mask", @"terrain\campaigns\m_devastate_1\event_tiles"],
-                     PackFile.Open(Path.Combine(paths.GameDataDir, "devastate.pack")).Entries.Keys.OrderBy(k => k.Length));
+        var pack = PackFile.Open(target);
+        Assert.Equal([@"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\pieces\event_1\mask", @"terrain\campaigns\m_devastate_1\event_tiles"],
+                     pack.Entries.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal("a", System.Text.Encoding.UTF8.GetString(pack.TryRead("terrain/campaigns/m/a.bin")!));
+        var backup = PackFile.Open(Path.Combine(paths.OutputRoot, "pack_backups", "!mod.pack"));
+        Assert.Equal("old a", System.Text.Encoding.UTF8.GetString(backup.TryRead("terrain/campaigns/m/a.bin")!));
+        Assert.False(File.Exists(target + ".tmp"));
+
+        // no pack there yet: a new one with the build's files only
+        project.Build.PackFile = Path.Combine(_dir, "new.pack");
+        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
+        Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
+        Assert.Equal(3, PackFile.Open(project.Build.PackFile).Entries.Count);
     }
 
     [Fact]
-    public void MergeDropsTheStepsStaleFilesEvenWhenTheyWroteNone()
+    public void ThePiecesPackTakesBothFoldersPieces_TheMainPackTheRest()
+    {
+        var output = Path.Combine(_dir, "out");
+        var paths = new ProjectPaths { MapName = "m", CacheRoot = Path.Combine(_dir, "cache"), OutputRoot = Path.Combine(_dir, "app") };
+        Write(output, "terrain/campaigns/m/a.bin", "a");
+        Write(output, "terrain/campaigns/m/event_tiles", "the map's event tiles: main pack");
+        Write(output, "terrain/campaigns/m/pieces/event_1/mask", "piece");
+        Write(output, "terrain/campaigns/m_devastate_1/event_tiles", "tiles");
+        Write(output, "terrain/campaigns/m_devastate_1/pieces/event_1/mask", "devastated piece");
+        Write(output, "campaign_maps/m/x.bin", "x");
+        var manifestFile = BuildManifest.FileFor(paths, "m", output);
+        var manifest = BuildManifest.Load(manifestFile, output);
+        manifest.Set("heightmaps", [Path.Combine(output, @"terrain\campaigns\m\a.bin"), Path.Combine(output, @"campaign_maps\m\x.bin")]);
+        manifest.Set("devastation_pieces", [Path.Combine(output, @"terrain\campaigns\m\event_tiles"), Path.Combine(output, @"terrain\campaigns\m\pieces"),
+                                            Path.Combine(output, @"terrain\campaigns\m_devastate_1")],
+                     [Path.Combine(output, @"terrain\campaigns\m\pieces\event_"), Path.Combine(output, @"terrain\campaigns\m_devastate_1\pieces\event_")]);
+        manifest.Save(manifestFile);
+
+        // the main pack still has an old piece: it is not the main pack's to drop
+        var src = Path.Combine(_dir, "src");
+        Write(src, "terrain/campaigns/m/pieces/event_9/mask", "left alone");
+        Write(src, "db/keep", "keep");
+        var main = Path.Combine(_dir, "main.pack");
+        PackBuilder.New(main, PackBuilder.FromFolder(src));
+        var src2 = Path.Combine(_dir, "src2");
+        Write(src2, "terrain/campaigns/m_devastate_1/pieces/event_9/mask", "a deleted event area");
+        var piecesPack = Path.Combine(_dir, "devastate.pack");
+        PackBuilder.New(piecesPack, PackBuilder.FromFolder(src2));
+
+        var project = new BuildProject { Map = "m" };
+        project.Build.Output = output;
+        project.Build.PackFile = main;
+        project.Build.PiecesPackFile = piecesPack;
+        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
+
+        Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
+        Assert.Equal([@"campaign_maps\m\x.bin", @"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\event_tiles", @"terrain\campaigns\m\pieces\event_9\mask"],
+                     PackFile.Open(main).Entries.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal([@"terrain\campaigns\m\pieces\event_1\mask", @"terrain\campaigns\m_devastate_1\event_tiles", @"terrain\campaigns\m_devastate_1\pieces\event_1\mask"],
+                     PackFile.Open(piecesPack).Entries.Keys.Order(StringComparer.Ordinal));
+        Assert.True(File.Exists(Path.Combine(paths.OutputRoot, "pack_backups", "devastate.pack")));
+    }
+
+    [Fact]
+    public void PackDropsTheStepsStaleFilesEvenWhenTheyWroteNone()
     {
         var output = Path.Combine(_dir, "out");
         var paths = new ProjectPaths { MapName = "m", CacheRoot = Path.Combine(_dir, "cache"), OutputRoot = Path.Combine(_dir, "app") };
@@ -120,23 +200,21 @@ public class BuildProjectTests : IDisposable
         Write(src, "terrain/campaigns/m/models/river_123.wsmodel", "deleted river");
         Write(src, "terrain/campaigns/m/models/river_123.wsmodel.rigid_model_v2", "deleted river");
         Write(src, "terrain/campaigns/m/models/hand_made.wsmodel", "not the build's");
-        Write(src, "terrain/campaigns/m/pieces/event_ff0000/mask", "goes to the other pack");
+        Write(src, "terrain/campaigns/m/pieces/event_ff0000/mask", "a deleted event area");
         Write(src, "db/keep", "keep");
-        var basePack = Path.Combine(_dir, "base.pack");
-        PackBuilder.New(basePack, PackBuilder.FromFolder(src));
+        var target = Path.Combine(_dir, "mod.pack");
+        PackBuilder.New(target, PackBuilder.FromFolder(src));
 
         var project = new BuildProject { Map = "m" };
         project.Build.Output = output;
-        project.Build.Packs =
-        [
-            new PackSettings { Mode = PackMode.Merge, Base = basePack, Output = Path.Combine(_dir, "out.pack"),
-                               Contents = [new PackContent { Source = PackContent.CompiledSource }], Exclude = ["terrain/campaigns/{map}/pieces/"] },
-        ];
+        project.Build.PackFile = target;
+        project.Build.BackupPack = false;
         var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
 
         Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
-        Assert.Equal([@"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\models\hand_made.wsmodel", @"terrain\campaigns\m\pieces\event_ff0000\mask"],
-                     PackFile.Open(Path.Combine(_dir, "out.pack")).Entries.Keys.Order());
+        Assert.Equal([@"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\models\hand_made.wsmodel"],
+                     PackFile.Open(target).Entries.Keys.Order());
+        Assert.False(Directory.Exists(Path.Combine(paths.OutputRoot, "pack_backups")));
     }
 
     [Fact]
@@ -210,40 +288,19 @@ public class BuildProjectTests : IDisposable
     }
 
     [Fact]
-    public void CleanOnlyDeletesFoldersInsideTheMapsFolder()
+    public void OutputDefaultsToAtlasWH3sFolder_AndTheOldWorkingDataDefaultIsDropped()
     {
-        var (project, paths) = CompileProject();
-        var mapOut = Path.Combine(project.OutputDir(paths), "terrain", "campaigns", "m");
-        Write(mapOut, "pieces/event_1/mask", "x");
-        Write(mapOut + "_devastate_1", "keep", "x");
-        project.Build.Clean = [".", "", @"..\m_devastate_1", "pieces"];
-        new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
-        Assert.False(Directory.Exists(Path.Combine(mapOut, "pieces")));
-        Assert.True(Directory.Exists(mapOut));
-        Assert.True(File.Exists(Path.Combine(mapOut + "_devastate_1", "keep")));
-    }
+        var paths = new ProjectPaths { MapName = "m", OutputRoot = Path.Combine(_dir, "output") };
+        var project = BuildProject.CreateDefault("m");
+        Assert.Equal(Path.Combine(_dir, "output", "compiled", "m"), project.OutputDir(paths));
 
-    [Fact]
-    public void BackupNeverDeletesTheProjectOrTheSources()
-    {
-        var (project, paths) = CompileProject();
-        project.Build.Backup = "{project}";
-        var report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
-        Assert.Equal("failed", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
-        Assert.True(File.Exists(project.FilePath));
-
-        project.Build.Backup = "{project}\\backups";   // its own folder beside the project: fine
-        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
-        Assert.Equal("ok", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
-        Assert.True(File.Exists(Path.Combine(_dir, "project", "backups", "raw_terrain", "m.terry")));
-        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
-        Assert.Equal("ok", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);   // rolled over its own copy
-
-        Write(Path.Combine(_dir, "elsewhere"), "data.pack", "x");   // a folder that is not a backup: never deleted
-        project.Build.Backup = Path.Combine(_dir, "elsewhere");
-        report = new BuildRunner(project, paths).Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Compile }, Steps = ["lookup"] });
-        Assert.Equal("failed", Assert.Single(report.Items, i => i.Id == "compile:backup").Status);
-        Assert.True(File.Exists(Path.Combine(_dir, "elsewhere", "data.pack")));
+        var file = Path.Combine(_dir, "old.atlaswh3");
+        project.Build.Output = @"{ak}\working_data";   // what new projects used to write
+        project.Save(file);
+        Assert.Equal("", BuildProject.Load(file).Build.Output);
+        project.Build.Output = "{project}\\out";        // a folder of its own is kept
+        project.Save(file);
+        Assert.Equal("{project}\\out", BuildProject.Load(file).Build.Output);
     }
 
     /// <summary>A project in its own folder over an empty kit with map m (its .terry only), output beside it.</summary>

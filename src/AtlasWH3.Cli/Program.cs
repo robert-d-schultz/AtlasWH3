@@ -77,7 +77,7 @@ static void Help()
     Console.WriteLine();
     Console.WriteLine("Build");
     Console.WriteLine("  new-project <file.atlaswh3>              a project with the default build profile (from --map, --ak, --pack)");
-    Console.WriteLine("  build --project <file.atlaswh3> [--segments validate,compile,custom,pack,install] [--steps a,b]");
+    Console.WriteLine("  build --project <file.atlaswh3> [--segments validate,compile,custom,pack] [--steps a,b]");
     Console.WriteLine("        [--custom name,..] [--out <dir>] [--pack-output <file>] [--json]");
     Console.WriteLine("                                           a project's build, as the app's Build window runs it");
     Console.WriteLine("  build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--patch-mask fitted|vanilla]");
@@ -90,7 +90,6 @@ static void Help()
     Console.WriteLine("  hlp-spd [--in <dir>] [--out <dir>] [--compare <dir>] [--only hlp|spd]");
     Console.WriteLine("                                           hlp_data.esf and spd_data.esf from pathfinding.ppd and map_data.esf");
     Console.WriteLine("                                           (the map's mod pack's, from --pack; --in: a folder of loose ones)");
-    Console.WriteLine("  setup [--db <dir>] [--compiled <dir>] [--maps]   first-run data from the game install");
     Console.WriteLine();
     Console.WriteLine("Packs");
     Console.WriteLine("  make-pack <root folder> <out.pack> [--exclude substring]..");
@@ -120,7 +119,7 @@ static void Help()
     Console.WriteLine("  esf-roundtrip <file.esf>.. | trees-roundtrip | find-textures | gp-model-box <rigid_model_v2>");
     Console.WriteLine($"  {string.Join(" | ", Gp27Commands.Names)} | {string.Join(" | ", NormalCommands.Names)}");
     Console.WriteLine();
-    Console.WriteLine("Global options: --ak <assembly kit root>  --map <map name>  --root <compiled root>  --pack <mod pack> (repeatable)");
+    Console.WriteLine("Global options: --ak <assembly kit root>  --map <map name>  --pack <mod pack> (repeatable)");
     Console.WriteLine("help | version");
 }
 
@@ -330,9 +329,14 @@ static string[] TakeOption(string[] a, string name, out string? value)
     return a.Take(i).Concat(a.Skip(i + 2)).ToArray();
 }
 
+/// <summary>The map's compiled file from the --pack mod packs, then the game's packs.</summary>
+static byte[] MapFile(ProjectPaths paths, string internalPath) =>
+    GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks).TryRead(internalPath)
+    ?? throw new FileNotFoundException($"{internalPath} is not in the mod packs or the game's packs");
+
 static void TreesRoundtrip(ProjectPaths paths)
 {
-    var original = File.ReadAllBytes(paths.TreeList);
+    var original = MapFile(paths, $"campaign_maps/{paths.MapName}/display/trees/trees.campaign_tree_list");
     var rewritten = CampaignTreeList.Read(original).ToBytes();
     Console.WriteLine(original.AsSpan().SequenceEqual(rewritten)
         ? $"OK: byte-identical ({original.Length:N0} bytes)"
@@ -341,8 +345,8 @@ static void TreesRoundtrip(ProjectPaths paths)
 
 static void FindTextures(ProjectPaths paths)
 {
-    var arrays = TextureArrays.Load(paths.TextureArraysXml);
-    var set = PackSet.OpenVanilla(paths.GameDataDir, n => n.StartsWith("terrain", StringComparison.OrdinalIgnoreCase) || n.StartsWith("data", StringComparison.OrdinalIgnoreCase));
+    var arrays = TextureArrays.Parse(MapFile(paths, $"terrain/campaigns/{paths.MapName}/global_map/texture_arrays.xml"));
+    var set = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
     foreach (var g in arrays.Groups)
     {
         var owner = set.FindOwner(g.BaseColour);

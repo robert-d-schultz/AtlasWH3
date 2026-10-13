@@ -81,7 +81,7 @@ public sealed class GroundHeight
             ? MapDataBounds.Read(Formats.Esf.EsfTree.Read(mapData.Data)).Width : null);
         if (width is null) { why = "the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(paths, mapName, "map_data.esf"); return null; }
 
-        var packs = Directory.Exists(paths.GameDataDir) ? GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks) : null;
+        var packs = Directory.Exists(paths.GameDataDir) ? GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks) : null;
         if (scene && packs is null) { why = "no game data folder for the props' height patches"; return null; }
         var patches = scene ? TreeHeightField.LoadPatches(project, packs!, []) : [];
 

@@ -102,7 +102,7 @@ public sealed class LookupStep : ICampaignBuildStep
     /// map's mod packs and the vanilla db packs, a higher-priority pack winning.</summary>
     private static Dictionary<string, uint> RegionColours(CampaignBuildContext ctx)
     {
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks,
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks,
             n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
         var colours = new Dictionary<string, uint>(StringComparer.Ordinal);
         foreach (var (t, row) in DbBinaryTable.PackRows(packs, "regions_tables"))

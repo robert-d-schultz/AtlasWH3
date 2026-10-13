@@ -22,7 +22,7 @@ public sealed partial class SceneWindow
         tabs.Items.Add(new TabItem
         {
             Header = "Terrain & trees", Content = TerrainTools,
-            ToolTip = "Edit the kit's land / sea height maps and the CampaignTree map (brushes, fills, undo, save)",
+            ToolTip = "Edit the Terry project's land / sea height maps and the CampaignTree map (brushes, fills, undo, save)",
         }.Spot("scene.terrainTab"));
         tabs.Items.Add(new TabItem { Header = "Props", Content = PropTools }.Card("scene.props.add").Spot("scene.propsTab"));
         tabs.SelectionChanged += (_, e) =>

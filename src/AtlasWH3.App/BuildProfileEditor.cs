@@ -6,6 +6,7 @@ using System.Windows.Data;
 using AtlasWH3.Core;
 using AtlasWH3.Core.Build;
 using AtlasWH3.Core.Campaign;
+using AtlasWH3.Core.Campaign.TileMapCheck;
 using Microsoft.Win32;
 
 namespace AtlasWH3.App;
@@ -19,12 +20,6 @@ public sealed class BuildProfileEditor : ScrollViewer
     private readonly Func<ProjectPaths> _paths;
     private readonly Action _changed;
     private readonly ObservableCollection<CustomStep> _custom;
-    private ObservableCollection<PackContent> _contents = [];
-    /// <summary>The pack shown under Pack (an index into Build.Packs).</summary>
-    private int _pack;
-    private readonly ComboBox _packCombo = new() { MinWidth = 280 };
-    private readonly ContentControl _packForm = new();
-    private bool _refreshingPacks;
 
     public BuildProfileEditor(BuildProject project, Func<ProjectPaths> paths, Action changed)
     {
@@ -45,51 +40,154 @@ public sealed class BuildProfileEditor : ScrollViewer
         form.Children.Add(Theme.Header("Project", 4).Card("profile.header.project"));
         form.Children.Add(Field("Name", () => _project.Name, v => _project.Name = v, key: "profile.name"));
         form.Children.Add(Field("Map", () => _project.Map, v => _project.Map = v, key: "profile.map"));
-        form.Children.Add(Field("Assembly kit", () => _project.AssemblyKit, v => _project.AssemblyKit = v, Browse.Folder, "profile.kit"));
-        form.Children.Add(Field("Game data", () => _project.GameData, v => _project.GameData = v, Browse.Folder, "profile.gameData"));
-        form.Children.Add(Field("Mod packs", () => string.Join("; ", _project.ModPacks), v => _project.ModPacks = Split(v, ';'),
-                                key: "profile.modPacks"));
 
-        form.Children.Add(Theme.Header("Tile map source").Card("profile.header.tileMap"));
-        var tileMap = new TileMapSourcePanel(_project.TileMap, _paths);
-        tileMap.Changed += () => { _project.TileMap = tileMap.StoredValue; _changed(); };
-        form.Children.Add(tileMap);
+        form.Children.Add(Theme.Header("Pack").Card("profile.header.pack"));
+        form.Children.Add(Check("Back up the pack before each build", () => b.BackupPack, v => b.BackupPack = v, "profile.backupPack"));
+        form.Children.Add(Field("Pack file", () => _project.PackOutput(_paths()) ?? "", v => b.PackFile = v, Browse.SaveFile, "profile.packFile"));
+        form.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 2, 0, 6),
+            Text = "Your campaign's pack. The build writes the compiled map into it: its own files are replaced, everything else " +
+                   "(DB, scripts, map_data.esf, pathfinding.ppd) is kept.",
+        });
+        form.Children.Add(Field("Pieces pack (optional)", () => _project.PiecesPackOutput(_paths()) ?? "", v => b.PiecesPackFile = v,
+                                Browse.SaveFile, "profile.piecesPackFile"));
+        form.Children.Add(new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 2, 0, 6),
+            Text = "Only for a campaign that ships its event-area pieces in a pack of their own, like Old World: the map's " +
+                   "and the devastated map's pieces go there instead. Empty: everything goes into the pack above.",
+        });
+        form.Children.Add(ListField("Other mod packs", "profile.modPacks", () => _project.ModPacks, v => _project.ModPacks = v, ordered: true, entry: null,
+            ("Add…", () =>
+            {
+                var game = _paths().GameDataDir;
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Other mod packs the map uses (only read)", Filter = "Pack files (*.pack)|*.pack", Multiselect = true,
+                    InitialDirectory = Directory.Exists(game) ? game : "",
+                };
+                return dlg.ShowDialog() == true ? dlg.FileNames : [];
+            })));
 
         form.Children.Add(Theme.Header("Compile").Card("profile.header.compile"));
-        form.Children.Add(Field("Output folder", () => b.Output, v => b.Output = v, Browse.Folder, "profile.output"));
-        form.Children.Add(Field("Accepted tile-map errors", () => string.Join(", ", b.AcceptTileMap), v => b.AcceptTileMap = Split(v, ','),
-                                key: "profile.acceptTileMap"));
+        var output = Row("Compiled files", "profile.output");
+        var outputPath = new TextBlock { Text = _project.OutputDir(_paths()), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(outputPath, 1);
+        output.Children.Add(outputPath);
+        form.Children.Add(output);
+        form.Children.Add(AcceptedErrors(b));
         form.Children.Add(Combo("Patch mask", Enum.GetValues<PatchMaskMode>(), () => b.PatchMask, v => b.PatchMask = v, "profile.patchMask"));
-        form.Children.Add(Field("Lookup: regions past 1024", () => string.Join(", ", b.LookupLast), v => b.LookupLast = Split(v, ','),
-                                key: "profile.lookupLast"));
-        form.Children.Add(Field("Devastated project", () => b.DevastatedMap, v => b.DevastatedMap = v.Trim(), key: "profile.devastatedMap"));
-        form.Children.Add(Field("Delete before compile", () => string.Join(", ", b.Clean), v => b.Clean = Split(v, ','),
-                                key: "profile.clean"));
-        form.Children.Add(Field("Terrain backup folder", () => b.Backup, v => b.Backup = v, Browse.Folder, "profile.backup"));
+        form.Children.Add(ListField("Lookup: regions past 1024", "profile.lookupLast", () => b.LookupLast, v => b.LookupLast = v, ordered: false,
+            entry: new TextBox { ToolTip = "A region key, e.g. wh3_main_combi_region_altdorf" },
+            ("Add file…", () =>
+            {
+                var dlg = new OpenFileDialog { Title = "Text files of region keys (one per line)", Filter = "Text files (*.txt)|*.txt|All files|*.*", Multiselect = true };
+                return dlg.ShowDialog() == true ? dlg.FileNames : [];
+            })));
 
-        form.Children.Add(Theme.Header("Custom steps").Card("profile.header.custom"));
+        form.Children.Add(Theme.Header("Custom steps (advanced)").Card("profile.header.custom"));
         form.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 0, 0, 6),
             Text = "External commands run as part of the build (python scripts, CAIME, an RPFM startpos build…). Tokens in command, arguments and " +
-                   "working folder: {project} {ak} {map} {game} {out} {pack}. They also get ATLASWH3_AK, ATLASWH3_MAP, ATLASWH3_OUT, ATLASWH3_GAME, " +
-                   "ATLASWH3_PACK, ATLASWH3_PROJECT and ATLASWH3_CLI as environment variables.",
+                   "working folder: {project} (the project's folder), {ak} (the Assembly Kit), {map}, {game} (the game's data folder), " +
+                   "{out} (the compiled files) and {pack} (the pack file). They also get ATLASWH3_AK, ATLASWH3_MAP, ATLASWH3_OUT, " +
+                   "ATLASWH3_GAME, ATLASWH3_PACK, ATLASWH3_PROJECT and ATLASWH3_CLI as environment variables.",
         });
         form.Children.Add(CustomGrid());
-
-        form.Children.Add(Theme.Header("Pack").Card("profile.header.pack"));
-        form.Children.Add(PackPicker());
-        form.Children.Add(_packForm);
-        ShowPack(0);
-
-        form.Children.Add(Theme.Header("Install").Card("profile.header.install"));
-        form.Children.Add(Check("Keep a backup of the pack being replaced", () => b.Install.Backup, v => b.Install.Backup = v, "profile.installBackup"));
-        form.Children.Add(new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
-            Text = "Install copies each output pack into the game's data folder (skipped when it is already there). It refuses while the game is running.",
-        });
         return form;
+    }
+
+    // ------------------------------------------------------------------ lists
+
+    /// <summary>An editable list: its items, the <paramref name="adds"/> buttons (each returns the items to add), an
+    /// optional <paramref name="entry"/> box with its own Add, Remove, and Up / Down when <paramref name="ordered"/>.</summary>
+    private UIElement ListField(string label, string key, Func<List<string>> get, Action<List<string>> set, bool ordered, TextBox? entry,
+                                params (string Text, Func<IEnumerable<string>> Add)[] adds)
+    {
+        var grid = Row(label, key);
+        grid.Children.OfType<TextBlock>().First().VerticalAlignment = VerticalAlignment.Top;
+        var list = new ListBox { MinHeight = 48, MaxHeight = 150 };
+        foreach (var item in get()) list.Items.Add(item);
+        void Commit() { set(list.Items.OfType<string>().ToList()); _changed(); }
+        void AddItems(IEnumerable<string> items)
+        {
+            foreach (var item in items.Select(i => i.Trim()).Where(i => i.Length > 0))
+                if (!list.Items.OfType<string>().Contains(item, StringComparer.OrdinalIgnoreCase)) list.Items.Add(item);
+            Commit();
+        }
+        var buttons = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        Button B(string text, Action click)
+        {
+            var b = new Button { Content = text, Padding = new Thickness(10, 1, 10, 1), Margin = new Thickness(0, 0, 4, 0) };
+            b.Click += (_, _) => click();
+            buttons.Children.Add(b);
+            return b;
+        }
+        if (entry is not null)
+        {
+            entry.MinWidth = 260;
+            entry.Margin = new Thickness(0, 0, 4, 0);
+            buttons.Children.Add(entry);
+            void AddEntry() { AddItems([entry.Text]); entry.Clear(); }
+            entry.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) AddEntry(); };
+            B("Add", AddEntry);
+        }
+        foreach (var (text, add) in adds) B(text, () => AddItems(add()));
+        B("Remove", () => { if (list.SelectedItem is { } item) { list.Items.Remove(item); Commit(); } });
+        if (ordered)
+        {
+            void Move(int delta)
+            {
+                var i = list.SelectedIndex;
+                if (i < 0 || i + delta < 0 || i + delta >= list.Items.Count) return;
+                var item = list.Items[i];
+                list.Items.RemoveAt(i);
+                list.Items.Insert(i + delta, item);
+                list.SelectedIndex = i + delta;
+                Commit();
+            }
+            B("Up", () => Move(-1));
+            B("Down", () => Move(1));
+        }
+        var panel = new StackPanel { Children = { list, buttons } };
+        Grid.SetColumn(panel, 1);
+        grid.Children.Add(panel);
+        return grid;
+    }
+
+    /// <summary>The tile-map errors the build may go ahead with, one tick box each.</summary>
+    private UIElement AcceptedErrors(BuildProfile b)
+    {
+        var grid = Row("Accepted tile-map errors", "profile.acceptTileMap");
+        grid.Children.OfType<TextBlock>().First().VerticalAlignment = VerticalAlignment.Top;
+        var panel = new StackPanel();
+        var codes = TileMapValidator.ErrorCodes.ToList();
+        foreach (var other in b.AcceptTileMap.Where(c => codes.All(k => k.Code != c)))
+            codes.Add((other, "No longer reported by the tile map check."));
+        foreach (var (code, meaning) in codes)
+        {
+            var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            text.Inlines.Add(meaning);
+            text.Inlines.Add(new System.Windows.Documents.Run("   " + code) { Foreground = Theme.Brush("DimText"), FontSize = 11 });
+            var box = new CheckBox { Content = text, IsChecked = b.AcceptTileMap.Contains(code), Margin = new Thickness(0, 2, 0, 2) };
+            box.Click += (_, _) =>
+            {
+                b.AcceptTileMap.Remove(code);
+                if (box.IsChecked == true) b.AcceptTileMap.Add(code);
+                _changed();
+            };
+            panel.Children.Add(box);
+        }
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Ticked: the build goes ahead when the tile map has this. Only tick what you know the game tolerates.",
+            TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), FontSize = 11, Margin = new Thickness(0, 2, 0, 0),
+        });
+        Grid.SetColumn(panel, 1);
+        grid.Children.Add(panel);
+        return grid;
     }
 
     // ------------------------------------------------------------------ grids
@@ -103,7 +201,7 @@ public sealed class BuildProfileEditor : ScrollViewer
         };
         grid.Columns.Add(new DataGridCheckBoxColumn { Header = ColumnHeader("On", "profile.custom.on"), Binding = new Binding(nameof(CustomStep.Enabled)) });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Name", "profile.custom.name"), Binding = new Binding(nameof(CustomStep.Name)), Width = 140 });
-        grid.Columns.Add(new DataGridComboBoxColumn { Header = ColumnHeader("Runs", "profile.custom.runs"), ItemsSource = Enum.GetValues<CustomStepStage>(), SelectedItemBinding = new Binding(nameof(CustomStep.RunAt)), Width = 110 });
+        grid.Columns.Add(new DataGridComboBoxColumn { Header = ColumnHeader("Runs", "profile.custom.runs"), ItemsSource = Enum.GetValues<CustomStepStage>().Where(s => s != CustomStepStage.AfterInstall).ToList(), SelectedItemBinding = new Binding(nameof(CustomStep.RunAt)), Width = 110 });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Command", "profile.custom.command"), Binding = new Binding(nameof(CustomStep.Command)), Width = 110 });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Arguments", "profile.custom.arguments"), Binding = new Binding(nameof(CustomStep.Arguments)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Working folder", "profile.custom.workingDir"), Binding = new Binding(nameof(CustomStep.WorkingDir)), Width = 130 });
@@ -133,107 +231,6 @@ public sealed class BuildProfileEditor : ScrollViewer
             _project.Build.CustomSteps = [.. _custom];
             _changed();
         }).Card("profile.custom.browse"));
-        return new StackPanel { Children = { grid, buttons } };
-    }
-
-    // ------------------------------------------------------------------ packs
-
-    private UIElement PackPicker()
-    {
-        var grid = Row("Packs", "profile.packs");
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        _packCombo.SelectionChanged += (_, _) =>
-        {
-            if (!_refreshingPacks && _packCombo.SelectedIndex >= 0 && _packCombo.SelectedIndex != _pack) ShowPack(_packCombo.SelectedIndex);
-        };
-        panel.Children.Add(_packCombo);
-        panel.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add pack", (_, _) =>
-        {
-            var packs = _project.Build.Packs;
-            packs.Add(new PackSettings { Output = packs.Count == 0 ? "{project}\\{map}.pack" : $"{{project}}\\{{map}}_{packs.Count + 1}.pack" });
-            _changed();
-            ShowPack(packs.Count - 1);
-        }).Card("profile.packs.add"));
-        panel.Children.Add(Theme.IconButton(Theme.Glyph.Delete, "Remove pack", (_, _) =>
-        {
-            var packs = _project.Build.Packs;
-            if (_pack >= packs.Count) return;
-            packs.RemoveAt(_pack);
-            _changed();
-            ShowPack(Math.Max(0, _pack - 1));
-        }).Card("profile.packs.remove"));
-        Grid.SetColumn(panel, 1);
-        grid.Children.Add(panel);
-        return grid;
-    }
-
-    /// <summary>Shows pack <paramref name="index"/>'s settings (or a hint when the project has none).</summary>
-    private void ShowPack(int index)
-    {
-        var packs = _project.Build.Packs;
-        _pack = Math.Clamp(index, 0, Math.Max(0, packs.Count - 1));
-        RefreshPackCombo();
-        _packForm.Content = packs.Count == 0
-            ? new TextBlock { Text = "No pack: the build stops after Compile. Add pack to make one.", Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 4, 0, 4) }
-            : PackForm(packs[_pack]);
-    }
-
-    private void RefreshPackCombo()
-    {
-        _refreshingPacks = true;
-        _packCombo.ItemsSource = _project.Build.Packs.Select((p, i) =>
-            $"{i + 1}. {(p.Name.Length > 0 ? p.Name : p.Output.Length > 0 ? Path.GetFileName(p.Output) : "(no output)")}{(p.Enabled ? "" : " (off)")}").ToList();
-        _packCombo.SelectedIndex = _project.Build.Packs.Count > 0 ? _pack : -1;
-        _refreshingPacks = false;
-    }
-
-    private UIElement PackForm(PackSettings pack)
-    {
-        var form = new StackPanel();
-        form.Children.Add(Check("Build this pack", () => pack.Enabled, v => { pack.Enabled = v; RefreshPackCombo(); }, "profile.packEnabled"));
-        form.Children.Add(Field("Name", () => pack.Name, v => { pack.Name = v; RefreshPackCombo(); }, key: "profile.packName"));
-        form.Children.Add(Combo("Pack mode", Enum.GetValues<PackMode>(), () => pack.Mode, v => pack.Mode = v, "profile.packMode"));
-        form.Children.Add(Field("Output pack", () => pack.Output, v => { pack.Output = v; RefreshPackCombo(); }, Browse.SaveFile, "profile.packOutput"));
-        form.Children.Add(Field("Merge base", () => pack.Base, v => pack.Base = v, Browse.File, "profile.packBase"));
-        form.Children.Add(Field("Replace folders", () => string.Join(", ", pack.ReplaceDirs), v => pack.ReplaceDirs = Split(v, ','),
-                                key: "profile.replaceDirs"));
-        form.Children.Add(Field("Leave out", () => string.Join(", ", pack.Exclude), v => pack.Exclude = Split(v, ','), key: "profile.packExclude"));
-        form.Children.Add(new TextBlock { Text = "Contents (later rows win for the same pack path)", Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 8, 0, 4) }.Card("profile.contents"));
-        form.Children.Add(ContentsGrid(pack));
-        return form;
-    }
-
-    private UIElement ContentsGrid(PackSettings pack)
-    {
-        _contents = new ObservableCollection<PackContent>(pack.Contents);
-        _contents.CollectionChanged += (_, _) => { pack.Contents = [.. _contents]; _changed(); };
-        var grid = new DataGrid
-        {
-            ItemsSource = _contents, AutoGenerateColumns = false, CanUserAddRows = false, MinHeight = 90, MaxHeight = 240,
-            HeadersVisibility = DataGridHeadersVisibility.Column, SelectionMode = DataGridSelectionMode.Single,
-        };
-        grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Source (file or folder on disk, or {compiled})", "profile.contents.source"), Binding = new Binding(nameof(PackContent.Source)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Path in pack", "profile.contents.path"), Binding = new Binding(nameof(PackContent.Path)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-        grid.Columns.Add(new DataGridCheckBoxColumn { Header = ColumnHeader("Optional", "profile.contents.optional"), Binding = new Binding(nameof(PackContent.Optional)) });
-        grid.CellEditEnding += (_, _) => Dispatcher.BeginInvoke(() => { pack.Contents = [.. _contents]; _changed(); });
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-        buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add folder…", (_, _) =>
-        {
-            var dlg = new OpenFolderDialog();
-            if (dlg.ShowDialog() == true) _contents.Add(new PackContent { Source = dlg.FolderName, Path = "" });
-        }).Card("profile.contents.addFolder"));
-        buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add file…", (_, _) =>
-        {
-            var dlg = new OpenFileDialog();
-            if (dlg.ShowDialog() == true) _contents.Add(new PackContent { Source = dlg.FileName, Path = Path.GetFileName(dlg.FileName) });
-        }).Card("profile.contents.addFile"));
-        buttons.Children.Add(Theme.IconButton(Theme.Glyph.Delete, "Remove", (_, _) => { if (grid.SelectedItem is PackContent c) _contents.Remove(c); }).Card("profile.contents.remove"));
-        buttons.Children.Add(Theme.IconButton(Theme.Glyph.Build, "Default contents", (_, _) =>
-        {
-            _contents.Clear();
-            foreach (var c in BuildProject.CreateDefault(_project.Map).Build.Packs[0].Contents) _contents.Add(c);
-        }).Card("profile.contents.default"));
         return new StackPanel { Children = { grid, buttons } };
     }
 
@@ -274,7 +271,11 @@ public sealed class BuildProfileEditor : ScrollViewer
                 {
                     Browse.Folder => new OpenFolderDialog() is var f && f.ShowDialog() == true ? f.FolderName : null,
                     Browse.File => new OpenFileDialog() is var o && o.ShowDialog() == true ? o.FileName : null,
-                    _ => new SaveFileDialog { Filter = "Pack (*.pack)|*.pack|All files|*.*" } is var s && s.ShowDialog() == true ? s.FileName : null,
+                    _ => new SaveFileDialog
+                    {
+                        Filter = "Pack (*.pack)|*.pack|All files|*.*", OverwritePrompt = false,
+                        InitialDirectory = Directory.Exists(_paths().GameDataDir) ? _paths().GameDataDir : "",
+                    } is var s && s.ShowDialog() == true ? s.FileName : null,
                 };
                 if (picked is null) return;
                 box.Text = picked;

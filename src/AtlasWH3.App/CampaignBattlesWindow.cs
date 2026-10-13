@@ -15,7 +15,7 @@ namespace AtlasWH3.App;
 
 /// <summary>
 /// The Campaign battles workspace: the catchment areas of the campaign-battle terrain (battle_locations_map.bin) on a
-/// map, each region's settlement battle with a status and a one-click fix, and redirects to battle maps. Reads the linked
+/// map, each region's settlement battle with a status and a one-click fix, and redirects to battle maps. Reads the mod
 /// packs, then the game's; saves to the output folder, a new mod pack or the kit's working_data, never to the packs.
 /// </summary>
 public sealed class CampaignBattlesWindow : Window
@@ -93,13 +93,13 @@ public sealed class CampaignBattlesWindow : Window
         var dock = new DockPanel();
         var menu = new Menu().Spot("battles.menu");
         var file = new MenuItem { Header = "_File" };
-        file.Items.Add(StandardMenus.Item("_Reload from packs", () => Reload(null), tooltip: "Reads battle_locations_map.bin again from the linked packs, then the game's."));
+        file.Items.Add(StandardMenus.Item("_Reload from packs", () => Reload(null), tooltip: "Reads battle_locations_map.bin again from the mod packs, then the game's."));
         file.Items.Add(StandardMenus.Item("_Open catchment file (.bin)…", OpenBinFile, tooltip: "Edit a loose battle_locations_map.bin instead of the pack copy."));
         file.Items.Add(StandardMenus.Item("_Mod data folder…", PickModData, tooltip: "An RPFM extract of your mod (db\\ and text\\db\\): region names and suggested kinds."));
         file.Items.Add(new Separator());
         file.Items.Add(StandardMenus.Item("_Save to output folder", () => Save(), "Ctrl+S", "Writes battle_locations_map.bin and any needed battles_tables rows under the output folder."));
         file.Items.Add(StandardMenus.Item("_Export mod pack…", ExportPack, tooltip: "A new .pack with the edited battle_locations_map.bin."));
-        file.Items.Add(StandardMenus.Item("Write to _kit (working_data)", WriteToKit, tooltip: "Copies the file into the assembly kit's working_data, where its pack step picks it up. The old file is backed up."));
+        file.Items.Add(StandardMenus.Item("Write to the Assembly _Kit (working_data)", WriteToKit, tooltip: "Copies the file into the Assembly Kit's working_data, where its pack step picks it up. The old file is backed up."));
         file.Items.Add(StandardMenus.Item("Open output _folder", () => OpenFolder(OutputDir)));
         file.Items.Add(new Separator());
         file.Items.Add(StandardMenus.Item("_Close", Close));
@@ -740,7 +740,7 @@ public sealed class CampaignBattlesWindow : Window
     {
         if (_ws is null) return;
         var target = Path.Combine(_paths.AkWorkingDir, "terrain", "battles", _ws.TerrainFolder, "battle_locations_map.bin");
-        if (MessageBox.Show(this, $"Write the catchments to\n{target}?\n\nAn existing file is backed up to the output folder first.", "Write to kit",
+        if (MessageBox.Show(this, $"Write the catchments to\n{target}?\n\nAn existing file is backed up to the output folder first.", "Write to the Assembly Kit",
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
         try
         {
@@ -748,7 +748,7 @@ public sealed class CampaignBattlesWindow : Window
             Save();
             _status.Text = $"Wrote {path}.";
         }
-        catch (Exception ex) { ErrorDialog.Show(this, "Write to kit failed.", ex); }
+        catch (Exception ex) { ErrorDialog.Show(this, "Write to the Assembly Kit failed.", ex); }
     }
 
     private bool ConfirmDiscard()

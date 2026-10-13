@@ -6,7 +6,7 @@ public static partial class InfoCards
     private static readonly Entry[] BattleCards =
     [
         new("start.battles", "Campaign battles",
-            "Checks every settlement of the selected map has a battle location and the right battle map, and fixes the catchment areas. Reads your linked packs."),
+            "Checks every settlement of the selected map has a battle location and the right battle map, and fixes the catchment areas. Reads your mod packs."),
 
         // ---- left: lists and view
         new("battles.lists", "Catchment lists",
@@ -32,7 +32,7 @@ public static partial class InfoCards
         new("battles.area.redirect", "Battle redirection",
             "A battle-map folder under terrain\\battles\\ that battles here load instead of the composed terrain. Leave it empty for the normal terrain."),
         new("battles.area.pick", "Pick a battle map",
-            "Choose from the battle-map folders in your linked and game packs."),
+            "Choose from the battle-map folders in your mod and game packs."),
         new("battles.area.noRow", "No battles_tables row",
             "Tick when the battle map's own pack already ships its battles_tables row; Save then writes no row for this folder. Greyed out when a row is already known."),
         new("battles.area.check", "Redirect check",

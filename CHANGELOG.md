@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+- Settings: the game data cache, DB tables, output and cache folders are one **AtlasWH3 data** folder
+  (`%LocalAppData%\AtlasWH3`), shown with Open and a discouraged Move… (settings `dataFolder`; the four old fields are
+  no longer read). The game and assembly kit boxes show the paths found through Steam (`<game>\assembly_kit`) instead
+  of grey placeholders, and the kit follows the game folder until you pick another.
+- Settings is down to the folders, developer mode and walkthroughs. A map's mod packs live only in its project:
+  - **Start page:** a **Project** picker. The editors open on the project's map and mod packs; without one, on a map
+    from the Assembly Kit with the game's own packs only. Settings `currentProject`; `linkedPacks` and `tileMap`
+    are no longer read.
+  - **New project** asks for the mod pack the map ships in (it used to take the linked packs).
+  - The Start page has no assembly kit dropdown (the kit is the one in Settings) and lists maps by name; a remembered
+    map the kit lacks says so ("missing: the assembly kit has no <map>.terry").
+  - Build all, Run selected and Pack only (and F5) are disabled until a project is open.
+- Project settings hold only what Terry's project doesn't:
+  - Gone: **Assembly kit** and **Game data** (Settings has them; the CLI keeps `--ak`), **Tile map source** (the
+    build and the tile map editor use the Terry project's `tile_map.png`; the CLI's `--tilemap` still edits another
+    file), **Delete before compile** (rivers and devastation_pieces already clear their own old files) and **Terrain
+    backup folder** (the build never writes the Terry project).
+  - **Compiled files** go to `%LocalAppData%\AtlasWH3\output\compiled\<map>`, shown in full; the Assembly Kit's
+    `working_data` is no longer the default (older projects' `{ak}\working_data` is dropped on load; another
+    `output` is kept).
+  - **Other mod packs** and **Lookup: regions past 1024** are lists; **Accepted tile-map errors** is a tick box per
+    error, each saying what it means.
+  - The UI says Terry project or Assembly Kit, not "kit".
+  - Custom steps moved to the bottom, marked advanced.
+  - **Devastated project** is gone: the build uses the devastated map the DB names
+    (`campaigns.terrain_location_devastate`, from the project's packs and the game's), as the Scene editor does,
+    instead of guessing it from the map's name (`cr_combi_expanded_map_1` → `cr_combi_expanded_map_devastate_1`). The `{devastated}` token is gone; the CLI keeps `--devastated`.
+- **One pack.** A project names its campaign's `.pack` (`packFile`), and Pack writes the compiled files into it in
+  place: the build's files replaced, the rest kept (DB, scripts, map_data.esf, pathfinding.ppd), a backup copy kept
+  first (`backupPack`), refused while the game runs; a missing pack is created. The pack is also read first. Install,
+  output pack, merge base, contents (`{compiled}`), replace folders and leave-out are gone, as is the `install`
+  segment (`afterInstall` custom steps run after Pack). An optional **pieces pack** (`piecesPackFile`) takes the event-area pieces (the map's `pieces\` and the
+  devastated map's folder) for a campaign that ships them separately, like Old World's
+  `!cr_oldworld_campaign_devastate.pack`. Older projects' `packs` and `install` become `packFile` (and a second
+  pack `piecesPackFile`) on load.
+- Removed **Prepare game data** and the CLI `setup` command: nothing copies game files out of the packs any more. The
+  Scene editor, Campaign battles and the CLI's `trees-roundtrip` / `find-textures` read the mod and game packs
+  directly. `--root` and a project's `compiledRoot` are gone; the `vanilla\` and `db\` folders in
+  `%LocalAppData%\AtlasWH3` can be deleted.
+- Removed the hidden Atlas3K terrain painter (`--painter`), the only reader of those copies.
+
 ## 1.0.0 (2026-10-13)
 
 The first release of AtlasWH3: a Total War: WARHAMMER III campaign map builds from the Assembly Kit's sources in

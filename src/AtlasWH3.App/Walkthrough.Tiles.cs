@@ -21,7 +21,7 @@ public static partial class Walkthroughs
         new("tiles.errorsTab", "Errors (F8)",
             "Lists every tile error on the whole map with a checked fix for each. Select one to see it, press Enter to apply the fix, N for the next."),
         new("tiles.file", "File menu",
-            "Save, reload from disk, and Tile map source to pick which tile_map.png you edit (the kit's, a loose file or one in a pack)."),
+            "Save, reload from disk, and Tile map source to pick which tile_map.png you edit (the Terry project's, a loose file or one in a pack)."),
         new("tiles.status", "Status bar",
             "The hex under the mouse and what the last action did."),
     ]);

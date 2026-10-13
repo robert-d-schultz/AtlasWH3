@@ -3,7 +3,7 @@
 **Build Total War: WARHAMMER III campaign maps without BOB.**
 
 AtlasWH3 compiles a campaign map from your Assembly Kit sources (the Terry project, its layers and maps) in one run,
-then packs it into your mod and installs it. It does everything BOB's campaign actions do, plus the AI pathfinding
+then writes it into your mod's pack. It does everything BOB's campaign actions do, plus the AI pathfinding
 data the game would otherwise have to build, and it runs headless from the command line as well as from a window.
 
 - **One run instead of ten actions.** A full IEE build takes about 5 minutes on a 4-core machine. A BOB reprocess of
@@ -30,7 +30,7 @@ data the game would otherwise have to build, and it runs headless from the comma
 | `camera_heightmap` | `camera_heightmap.png` | Generate Camera Height Map |
 | `hlp_spd` | `hlp_data.esf`, `spd_data.esf` | the game's own generation during a startpos build |
 
-Independent steps run in parallel. Every step reads the kit's sources and the game and mod packs directly, so
+Independent steps run in parallel. Every step reads the Terry project and the game and mod packs directly, so
 nothing has to be installed between steps.
 
 **How close to BOB:** the logic map, shroud heights, tile list, masks, piece textures and river models (but for two
@@ -44,7 +44,7 @@ where the game's pathfinder has a bug). Each step's record, with every remaining
 **Where it differs on purpose:** `patch_mask.dds` covers the whole map (BOB's misses a band in the north). Props go
 into quadtree cells by their models' real bounds (BOB uses a 2 × 2 × 2 cube for any model not loose in the kit).
 Region lookups can move regions past the 1024 palette entries the game reads. Cultures come from the packs'
-`prefab_types`, so a mod's own cultures get their own buckets (BOB read the kit's vanilla table). Props get their
+`prefab_types`, so a mod's own cultures get their own buckets (BOB read the Assembly Kit's vanilla table). Props get their
 regions from `map_data.esf`, the file the game reads. `full_height_map.dds` uses AtlasWH3's own BC6H encoder, with
 about half the error of BOB's.
 
@@ -52,12 +52,12 @@ about half the error of BOB's.
 
 - Windows 10 or 11, x64.
 - Total War: WARHAMMER III and its Assembly Kit, with your map's Terry project in `raw_data\terrain\campaigns\<map>`.
-- Your mod's `.pack`, linked. The build reads CAIME's `map_data.esf` and `pathfinding.ppd` from its
-  `campaign_maps\<map>\`, and the mod's DB tables, models and textures; and it merges the build into a copy of it.
-  (A vanilla map needs no mod pack: its files are in the game's packs.)
-- CAIME's region lookup `.bmp`, in the kit's `raw_data\EmpireDesignData\campaign_maps\<map>` (a copy CAIME writes
+- Your campaign's `.pack`, set as the project's pack. The build reads CAIME's `map_data.esf` and `pathfinding.ppd`
+  from its `campaign_maps\<map>\`, and the mod's DB tables, models and textures; then it writes the compiled map into
+  it. (A vanilla map needs none: the build makes a new pack.)
+- CAIME's region lookup `.bmp`, in the Assembly Kit's `raw_data\EmpireDesignData\campaign_maps\<map>` (a copy CAIME writes
   to `working_data` is not read).
-- Optional: the map's devastated project, `<map without _1>_devastate_1` beside it (or named in the project), for the
+- Optional: the map's devastated project, the one the DB names (`campaigns.terrain_location_devastate`), for the
   devastated pieces.
 
 ## Install
@@ -69,15 +69,17 @@ The download is unsigned, so Windows SmartScreen may warn on the first start (Mo
 
 ## Quick start
 
-**Back up first.** A new project builds into the kit's `working_data`, as BOB does, and Install replaces your mod's
-pack in the game's `data` folder. Back up the pack, or give the project its own output folder (below).
+**The build writes into your mod's pack** in the game's `data` folder, keeping one copy of it as it was
+(`%LocalAppData%\AtlasWH3\output\pack_backups`). The compiled files go to `%LocalAppData%\AtlasWH3\output\compiled\<map>`;
+the Assembly Kit's `working_data` is not touched.
 
 ### In the app
 
-1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install), and link your
-   mod's pack.
-2. **Start page:** pick the kit and the map.
-3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*, save it, then *Build all* (F7).
+1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install).
+2. **Start page:** pick the map from the kit (Project: *No project*).
+3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*, save it, pick the mod pack the map ships in (or Cancel for a
+   pack of its own), then *Build all* (F7).
+4. **Start page:** pick the project under *Project*. The editors then open on its map, mod packs and tile map source.
 
 The Build window shows each step's progress, time and notes, and keeps a log of every build in
 `%LocalAppData%\AtlasWH3\output\build_logs`.
@@ -89,49 +91,42 @@ AtlasWH3.Cli new-project iee.atlaswh3 --map cr_combi_expanded_map_1 --pack "D:\.
 AtlasWH3.Cli build --project iee.atlaswh3
 ```
 
-- `--segments validate,compile,pack` builds and packs without installing.
+- `--segments validate,compile` builds without writing the pack.
 - `--steps tile_list,global_map` compiles only those steps.
 - `--json` prints the report as JSON.
 - `AtlasWH3.Cli help` lists every command.
 
 ### The project file
 
-A project (`.atlaswh3`, JSON) holds one map's build. This one, based on IEE's, compiles into a folder beside the
-project, merges the result into a copy of the mod's pack there, and installs that copy. Settings left out keep their
-defaults.
+A project (`.atlaswh3`, JSON) holds one map's build: what the Terry project doesn't. This one is IEE's: the build
+writes into the mod's own pack in the game's data folder. Settings left out keep their defaults; the Assembly Kit and
+the game are the ones in Settings (or the CLI's `--ak`).
 
 ```json
 {
   "name": "IEE",
   "map": "cr_combi_expanded_map_1",
-  "modPacks": ["{game}\\!cr_immortal_empires_expanded.pack"],
   "build": {
-    "output": "{project}\\out",
-    "packs": [
-      {
-        "mode": "merge",
-        "base": "{game}\\!cr_immortal_empires_expanded.pack",
-        "output": "{project}\\!cr_immortal_empires_expanded.pack",
-        "contents": [{ "source": "{compiled}" }]
-      }
-    ],
-    "install": { "enabled": true }
+    "packFile": "{game}\\!cr_immortal_empires_expanded.pack"
   }
 }
 ```
 
-- **Segments:** a build runs Validate, Compile, Pack and Install, in that order, and stops at the first failure.
+- **Segments:** a build runs Validate, Compile and Pack, in that order, and stops at the first failure.
   `customSteps` adds your own commands before or after any of them (a startpos build, a script).
-- **Tokens:** `{project}`, `{game}` (the data folder), `{ak}`, `{map}`, `{devastated}`, `{out}` and `{pack}` expand
+- **Tokens:** `{project}`, `{game}` (the data folder), `{ak}`, `{map}`, `{out}` and `{pack}` expand
   in paths. Relative paths are relative to the project file.
-- **Pack:** `{compiled}` means the files this build wrote, nothing else from `working_data`. A merge keeps everything
-  else in the base pack (DB, scripts, battle maps) and drops river models and pieces the build no longer makes. A map
-  can ship in several packs; `exclude` and a content `path` split it (see
-  [`docs/native_campaign_build.md`](docs/native_campaign_build.md#project-build-pack-and-install)).
-- **Install** refuses while the game runs, swaps the pack in through a temporary file, and keeps one backup of the
-  pack it replaces in `%LocalAppData%\AtlasWH3\output\pack_backups` (`"backup": false` turns that off).
+- **Pack:** writes the files this build made into `packFile` and keeps everything else in it (DB, scripts, battle
+  maps, CAIME's files); river models and pieces the build no longer makes are dropped. A pack that doesn't exist yet
+  is created. It refuses while the game runs, writes beside the pack and swaps it in, and first keeps one copy of the
+  pack in `%LocalAppData%\AtlasWH3\output\pack_backups` (`"backupPack": false` turns that off). `piecesPackFile` (optional)
+  takes the event-area pieces instead, for a campaign that ships them in a pack of their own (Old World). `modPacks`
+  lists other packs the map reads (only read). Projects made before this keep working: their `packs` and `install` become
+  `packFile` on load.
 - **Map settings:** `acceptTileMap` (tile-map check codes to build through), `patchMask` (`fitted`, or `vanilla` for
-  BOB's), `lookupLast` (regions to move past palette entry 1024), `devastatedMap` (a name, or `none`).
+  BOB's), `lookupLast` (regions to move past palette entry 1024).
+- **Output:** `output` (or the CLI's `--out`) compiles into another folder; by default it is
+  `%LocalAppData%\AtlasWH3\output\compiled\<map>`.
 
 ## Limits
 
@@ -170,7 +165,7 @@ powershell -ExecutionPolicy Bypass -File tools\publish.ps1
 | Project | Contents |
 |---|---|
 | `AtlasWH3.Formats` | Readers and writers: packs, DB, Terry, map.hex, tiles, BMD v27, ESF, DDS / BC6H, RMV2 |
-| `AtlasWH3.Core` | The build steps, projects, pack and install, the editors' model |
+| `AtlasWH3.Core` | The build steps, projects and packing, the editors' model |
 | `AtlasWH3.Cli` | `AtlasWH3.Cli.exe` |
 | `AtlasWH3.App` | `AtlasWH3.exe` (WPF, Direct3D 11) |
 | `AtlasWH3.Tests` | xUnit |

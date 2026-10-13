@@ -22,9 +22,18 @@ public sealed class TextureArrays
     /// <summary>No groups (battle terrain has no global blend).</summary>
     public static TextureArrays Empty { get; } = new([]);
 
-    public static TextureArrays Load(string path)
+    public static TextureArrays Load(string path) => FromXml(XDocument.Load(path));
+
+    /// <summary>A texture_arrays.xml read straight out of a pack.</summary>
+    public static TextureArrays Parse(byte[] xml)
     {
-        var root = XDocument.Load(path).Root!;
+        using var stream = new MemoryStream(xml);
+        return FromXml(XDocument.Load(stream));
+    }
+
+    private static TextureArrays FromXml(XDocument doc)
+    {
+        var root = doc.Root!;
         var names = root.Element("group_array")?.Elements("group").Select(e => e.Value.Trim()).ToList() ?? [];
         var colours = root.Element("base_colour_array")?.Elements("texture").Select(e => e.Value.Trim()).ToList() ?? [];
         var materials = root.Element("material_map_array")?.Elements("texture").Select(e => e.Value.Trim()).ToList() ?? [];

@@ -6,16 +6,16 @@ using AtlasWH3.Core.Campaign.TileMapCheck;
 namespace AtlasWH3.Core.Build;
 
 /// <summary>Build segments, in run order.</summary>
-public enum BuildSegment { Validate, Compile, Custom, Pack, Install }
+public enum BuildSegment { Validate, Compile, Custom, Pack }
 
 /// <summary>
 /// Runs a <see cref="BuildProject"/>'s build: Validate → custom "beforeCompile" → Compile (native steps) → "afterCompile"
-/// → Pack → "afterPack" → Install → "afterInstall". Stops at the first failure. Used by the GUI's Build window, the CLI
+/// → Pack (the compiled files into the project's pack) → "afterPack". Stops at the first failure. Used by the GUI's Build window, the CLI
 /// <c>build</c> command and the MCP <c>build_project</c> tool.
 /// </summary>
 public sealed class BuildRunner
 {
-    /// <summary>Item ids: <c>validate</c>, <c>compile:&lt;step&gt;</c>, <c>custom:&lt;name&gt;</c>, <c>pack</c>, <c>install</c>.</summary>
+    /// <summary>Item ids: <c>validate</c>, <c>compile:&lt;step&gt;</c>, <c>custom:&lt;name&gt;</c>, <c>pack</c>.</summary>
     public sealed record Event(string Id, EventKind Kind, string? Message = null, ItemResult? Result = null);
     public enum EventKind { Started, Log, Finished }
 
@@ -66,8 +66,7 @@ public sealed class BuildRunner
         var profile = _project.Build;
         bool Want(BuildSegment s) => request.Segments?.Contains(s) ?? s switch
         {
-            BuildSegment.Pack => profile.Packs.Any(p => p.Enabled),
-            BuildSegment.Install => profile.Install.Enabled,
+            BuildSegment.Pack => profile.WritePack,
             _ => true,
         };
 
@@ -83,8 +82,6 @@ public sealed class BuildRunner
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.AfterCompile, request);
             if (ok && Want(BuildSegment.Pack)) ok = Pack();
             if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.AfterPack, request);
-            if (ok && Want(BuildSegment.Install)) ok = Install();
-            if (ok && Want(BuildSegment.Custom)) ok = RunCustom(CustomStepStage.AfterInstall, request);
             var report = new Report(_project.Name, _project.Map, sw.Elapsed.TotalSeconds, ok && !_cancel.IsCancellationRequested, _items, logFile);
             Write("", $"{(report.Succeeded ? "build succeeded" : _cancel.IsCancellationRequested ? "build cancelled" : "build FAILED")} in {sw.Elapsed.TotalSeconds:F1} s");
             File.WriteAllText(Path.ChangeExtension(logFile, ".json"), JsonSerializer.Serialize(report, BuildProject.Json));
@@ -108,51 +105,22 @@ public sealed class BuildRunner
             problems.AddRange(step.CheckInputs(ctx).Select(p => $"{name}: {p}"));
         }
         _cancel.ThrowIfCancellationRequested();
-        if (selected.Contains("tile_list") && File.Exists(Path.Combine(_paths.AkTerrainDir, "tile_map.png")))
+        if (selected.Contains("tile_list") && File.Exists(_paths.TileMapPng))
         {
             var report = TileMapValidator.Run(_paths, new() { Log = m => Log("validate", m) });
             foreach (var f in report.Findings.Where(f => f.Severity == TileMapFinding.Warning).Take(20))
                 notes.Add($"{WarningPrefix}tile map {f.Code}: {f.Message}");
             foreach (var f in report.Findings.Where(f => f.Severity == TileMapFinding.Error))
                 if (_project.Build.AcceptTileMap.Contains(f.Code)) notes.Add($"accepted tile map {f.Code}: {f.Message}");
-                else problems.Add($"tile map {f.Code}: {f.Message} (fix it, or accept the code in the build profile)");
+                else problems.Add($"tile map {f.Code}: {f.Message} (fix it, or tick it under Project settings > Accepted tile-map errors)");
         }
         return (problems, 0);
     });
-
-    /// <summary>The backup's folders: the kit's raw terrain and the compiled terrain.</summary>
-    private static readonly HashSet<string> BackupFolders = new(["raw_terrain", "working_terrain"], StringComparer.OrdinalIgnoreCase);
 
     private bool Compile(IReadOnlyList<string>? steps)
     {
         var selected = SelectedSteps(steps);
         var outDir = _project.OutputDir(_paths);
-        var terrainOut = Path.Combine(outDir, "terrain", "campaigns", _project.Map);
-
-        if (_project.Build.Backup.Length > 0 && !Item("compile:backup", _ =>
-        {
-            var backup = _project.Resolve(_project.Build.Backup, _paths);
-            // the rolling copy is deleted first: never a folder that holds the sources, the output or the project
-            string[] sources = [_paths.AkTerrainDir, terrainOut];
-            if (sources.Any(s => IsUnder(s, backup) || IsUnder(backup, s)) || IsUnder(_project.Folder, backup))
-                return ([$"backup folder {backup} holds, or is inside, the kit's terrain, the output or the project; pick its own folder"], 0);
-            // and only a folder that holds nothing but an earlier backup (the game's data, another map's sources: kept)
-            if (Directory.Exists(backup) && Directory.EnumerateFileSystemEntries(backup)
-                    .FirstOrDefault(e => !(Directory.Exists(e) && BackupFolders.Contains(Path.GetFileName(e)))) is { } other)
-                return ([$"backup folder {backup} holds {Path.GetFileName(other)}, not only an earlier backup ({string.Join(", ", BackupFolders)}); pick its own folder"], 0);
-            if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
-            CopyDir(_paths.AkTerrainDir, Path.Combine(backup, "raw_terrain"));
-            if (Directory.Exists(terrainOut)) CopyDir(terrainOut, Path.Combine(backup, "working_terrain"));
-            Log("compile:backup", $"terrain backup in {backup}");
-            return ([], 0);
-        })) return false;
-
-        foreach (var c in _project.Build.Clean)
-        {
-            var dir = Path.GetFullPath(Path.Combine(terrainOut, c));
-            if (!IsUnder(dir, terrainOut) || PathEquals(dir, terrainOut)) continue;   // only folders inside the map's folder
-            if (Directory.Exists(dir)) { Directory.Delete(dir, recursive: true); Write("compile", $"cleaned {dir}"); }
-        }
 
         var ctx = Context();
         var manifestFile = BuildManifest.FileFor(_paths, _project.Map, outDir);
@@ -244,118 +212,85 @@ public sealed class BuildRunner
         return ([$"exit code {proc.ExitCode}"], 0);
     }
 
-    /// <summary>Every enabled pack, in order (one item; each pack's summary is a note).</summary>
+    /// <summary>Writes the compiled files into the project's pack, and the event-area pieces into the pieces pack when
+    /// the project has one (<see cref="BuildProfile.PiecesPackFile"/>).</summary>
     private bool Pack() => Item("pack", notes =>
     {
-        var packs = _project.Build.Packs.Where(p => p.Enabled).ToList();
-        if (packs.Count == 0) return (["no pack set (Project settings → Pack)"], 0);
+        if (_project.PackOutput(_paths) is not { } target) return (["no pack set (Project settings > Pack)"], 0);
+        var piecesTarget = _project.PiecesPackOutput(_paths);
         var outDir = _project.OutputDir(_paths);
-        BuildManifest? manifest = null;
-        BuildManifest Manifest() => manifest ??= BuildManifest.Load(BuildManifest.FileFor(_paths, _project.Map, outDir), outDir);
-        var total = 0;
-        foreach (var settings in packs)
+        var manifest = BuildManifest.Load(BuildManifest.FileFor(_paths, _project.Map, outDir), outDir);
+        if (manifest.Steps.Count == 0) return ([$"nothing compiled into {manifest.Output} yet; run Compile first"], 0);
+        var files = new Dictionary<string, (string Rel, string Disk)>();
+        var problems = new List<string>();
+        foreach (var rel in manifest.Files)
         {
-            _cancel.ThrowIfCancellationRequested();
-            var (problems, files) = PackOne(settings, Manifest, notes);
-            if (problems.Count > 0) return (problems, total);
-            total += files;
+            var disk = Path.Combine(manifest.Output, rel.Replace('/', '\\'));
+            if (File.Exists(disk)) files[Formats.Packs.PackFile.Normalize(rel)] = (rel, disk);
+            else problems.Add($"compiled file {disk} is gone; run Compile again");
         }
-        return ([], total);
+        if (problems.Count > 0) return (problems.Take(20).ToList(), 0);
+        if (files.Count == 0) return (["nothing to pack"], 0);
+        if (GameRunning() && new[] { target, piecesTarget }.Any(t => t is not null && IsInGameData(t)))
+            return ([$"{GameProcess}.exe is running; close the game to write {Path.GetFileName(target)}"], 0);
+
+        var owned = manifest.Owned.ToList();
+        if (piecesTarget is null) return ([], WritePack(target, files, owned, notes));
+        var pieces = files.Where(f => IsPieces(f.Value.Rel)).ToDictionary();
+        var main = files.Where(f => !IsPieces(f.Value.Rel)).ToDictionary();
+        var written = WritePack(target, main, owned.Where(o => !IsPieces(o)), notes);
+        if (pieces.Count == 0) { notes.Add($"{WarningPrefix}no event-area pieces to write into {Path.GetFileName(piecesTarget)}"); return ([], written); }
+        return ([], written + WritePack(piecesTarget, pieces, owned.Where(IsPieces), notes));
     });
 
-    private (List<string> Problems, int Files) PackOne(PackSettings settings, Func<BuildManifest> manifest, List<string> notes)
+    /// <summary>The event-area pieces: the map's pieces\ and everything in the devastated map's folder (the compiled
+    /// output's other terrain\campaigns folder).</summary>
+    private bool IsPieces(string rel)
     {
-        if (settings.Output.Length == 0) return ([$"{PackName(settings)}: no output pack set"], 0);
-        var output = _project.Resolve(settings.Output, _paths);
-        var name = PackName(settings);
-        if (IsInGameData(output) && GameRunning()) return ([$"{GameProcess}.exe is running; close the game to write {Path.GetFileName(output)}"], 0);
+        var parts = rel.Replace('\\', '/').Split('/');
+        if (parts.Length < 4 || !parts[0].Equals("terrain", StringComparison.OrdinalIgnoreCase)
+            || !parts[1].Equals("campaigns", StringComparison.OrdinalIgnoreCase)) return false;
+        return !parts[2].Equals(_project.Map, StringComparison.OrdinalIgnoreCase) || parts[3].Equals("pieces", StringComparison.OrdinalIgnoreCase);
+    }
 
-        var problems = new List<string>();
-        var files = new Dictionary<string, (string Rel, string Disk)>();
-        var owned = new List<string>();   // the compiled steps' own prefixes this pack takes
-        foreach (var c in settings.Contents)
-        {
-            if (c.Source == PackContent.CompiledSource)
-            {
-                var m = manifest();
-                var under = _project.Expand(c.Path, _paths).Replace('\\', '/').Trim('/');
-                var picked = m.Files.Where(f => under.Length == 0 || f.StartsWith(under + "/", StringComparison.OrdinalIgnoreCase)).ToList();
-                owned.AddRange(m.Owned.Where(o => under.Length == 0 || o.StartsWith(under + "/", StringComparison.OrdinalIgnoreCase)));
-                if (m.Steps.Count == 0) problems.Add($"{name}: nothing compiled into {m.Output} yet; run Compile first");
-                else if (picked.Count == 0) (c.Optional ? notes : problems).Add($"{(c.Optional ? WarningPrefix : "")}{name}: no compiled files under {under}/");
-                foreach (var rel in picked)
-                {
-                    var disk = Path.Combine(m.Output, rel.Replace('/', '\\'));
-                    if (File.Exists(disk)) files[Formats.Packs.PackFile.Normalize(rel)] = (rel, disk);
-                    else problems.Add($"{name}: compiled file {disk} is gone; run Compile again");
-                }
-                continue;
-            }
-            var source = _project.Resolve(c.Source, _paths);
-            foreach (var (key, f) in PackBuilder.Collect([(source, _project.Expand(c.Path, _paths))], missing =>
-                         (c.Optional ? notes : problems).Add($"{(c.Optional ? WarningPrefix : "")}{name}: missing {missing}")))
-                files[key] = f;
-        }
-        var excluded = settings.Exclude.Select(x => Formats.Packs.PackFile.Normalize(_project.Expand(x, _paths).Replace('\\', '/').Trim()))
-            .Where(x => x.Length > 0).ToList();
-        bool Excluded(string key) => excluded.Any(x => x.EndsWith('\\') ? key.StartsWith(x, StringComparison.Ordinal) : key == x);
-        foreach (var key in files.Keys.Where(Excluded).ToList())
-            files.Remove(key);
-        owned.RemoveAll(o => Excluded(Formats.Packs.PackFile.Normalize(o)));
-        if (problems.Count > 0) return (problems.Take(20).ToList(), 0);
-        if (files.Count == 0) return ([$"{name}: nothing to pack"], 0);
+    /// <summary>Merges <paramref name="files"/> into <paramref name="target"/> (its other files kept, the steps' stale
+    /// <paramref name="owned"/> files dropped), or makes a new pack when there is none yet. Written beside it and swapped
+    /// in, after the backup. Returns the pack's file count.</summary>
+    private int WritePack(string target, IReadOnlyDictionary<string, (string Rel, string Disk)> files, IEnumerable<string> owned, List<string> notes)
+    {
         _cancel.ThrowIfCancellationRequested();
-
+        var name = Path.GetFileName(target);
+        // written beside the target, then swapped, so a failed write never leaves a half pack
+        var temp = target + ".tmp";
         PackBuilder.Summary summary;
-        if (settings.Mode == PackMode.Merge)
+        if (File.Exists(target))
         {
-            var basePack = settings.Base.Length > 0 ? _project.Resolve(settings.Base, _paths) : output;
-            if (!File.Exists(basePack)) return ([$"{name}: merge base pack {basePack} not found"], 0);
-            Log("pack", $"merging {files.Count} files into {Path.GetFileName(basePack)} -> {output}");
-            summary = PackBuilder.Merge(basePack, output, files, settings.ReplaceDirs.Select(d => _project.Expand(d, _paths)), owned);
+            if (_project.Build.BackupPack)
+            {
+                var backupDir = Path.Combine(_paths.OutputRoot, "pack_backups");
+                Directory.CreateDirectory(backupDir);
+                var backup = Path.Combine(backupDir, name);   // one rolling copy per pack name
+                File.Copy(target, backup, overwrite: true);
+                notes.Add($"{name} as it was: {backup}");
+            }
+            Log("pack", $"writing {files.Count} files into {target}");
+            summary = PackBuilder.Merge(target, temp, files, owned: owned);
             notes.Add($"{name}: {summary.Kept} kept, {summary.Replaced} replaced, {summary.Added} added, {summary.Dropped} stale dropped");
         }
         else
         {
-            Log("pack", $"packing {files.Count} files -> {output}");
-            summary = PackBuilder.New(output, files);
+            Log("pack", $"new pack {target} with {files.Count} files");
+            summary = PackBuilder.New(temp, files);
         }
-        notes.Add($"{output}: {summary.Files} files, {summary.Bytes / 1048576.0:F1} MB");
-        return (summary.Verified ? [] : [$"{name}: re-read check failed: files missing from the written pack"], summary.Files);
-    }
-
-    private string PackName(PackSettings settings) =>
-        settings.Name.Length > 0 ? settings.Name : settings.Output.Length > 0 ? Path.GetFileName(_project.Expand(settings.Output, _paths)) : "pack";
-
-    /// <summary>Copies every enabled pack that is not already there into the game's data folder.</summary>
-    private bool Install() => Item("install", notes =>
-    {
-        var packs = _project.Build.Packs.Where(p => p.Enabled && p.Output.Length > 0).Select(p => _project.Resolve(p.Output, _paths)).ToList();
-        if (packs.Count == 0) return (["no pack to install (Project settings → Pack)"], 0);
-        if (!Directory.Exists(_paths.GameDataDir)) return ([$"game data folder {_paths.GameDataDir} not found"], 0);
-        if (packs.FirstOrDefault(p => !File.Exists(p)) is { } absent) return ([$"no pack to install ({absent}); run Pack first"], 0);
-        var copies = packs.Where(p => !IsInGameData(p)).ToList();
-        foreach (var p in packs.Except(copies)) notes.Add($"{Path.GetFileName(p)} is already in the game's data folder");
-        if (copies.Count > 0 && GameRunning()) return ([$"{GameProcess}.exe is running; close the game to install"], 0);
-        foreach (var pack in copies)
+        if (!summary.Verified)
         {
-            _cancel.ThrowIfCancellationRequested();
-            var target = Path.Combine(_paths.GameDataDir, Path.GetFileName(pack));
-            if (File.Exists(target) && _project.Build.Install.Backup)
-            {
-                var backupDir = Path.Combine(_paths.OutputRoot, "pack_backups");
-                Directory.CreateDirectory(backupDir);
-                var backup = Path.Combine(backupDir, Path.GetFileName(target));   // one rolling copy per pack name
-                File.Copy(target, backup, overwrite: true);
-                notes.Add($"previous {Path.GetFileName(target)} backed up to {backup}");
-            }
-            // copied beside the target, then swapped, so a failed copy never leaves a half pack in the data folder
-            File.Copy(pack, target + ".tmp", overwrite: true);
-            File.Move(target + ".tmp", target, overwrite: true);
-            Log("install", $"installed {target}");
+            File.Delete(temp);
+            throw new InvalidDataException($"re-read check failed: files missing from the written pack; {name} was not changed");
         }
-        return ([], copies.Count);
-    });
+        File.Move(temp, target, overwrite: true);
+        notes.Add($"{target}: {summary.Files} files, {summary.Bytes / 1048576.0:F1} MB");
+        return summary.Files;
+    }
 
     // ------------------------------------------------------------------ helpers
 
@@ -395,7 +330,6 @@ public sealed class BuildRunner
         AcceptedTileMapIssues = _project.Build.AcceptTileMap.ToHashSet(),
         PatchMask = _project.Build.PatchMask,
         LookupLastRegions = _project.Build.LookupLast.Select(e => LookupStep.IsFile(e) ? _project.Resolve(e, _paths) : e).ToList(),
-        DevastatedMap = CampaignBuildContext.DevastatedSetting(_project.Build.DevastatedMap),
         Cancel = _cancel,
     };
 
@@ -436,16 +370,6 @@ public sealed class BuildRunner
     {
         var here = AppContext.BaseDirectory;
         return new[] { Path.Combine(here, "AtlasWH3.Cli.exe") }.FirstOrDefault(File.Exists);
-    }
-
-    private static void CopyDir(string from, string to)
-    {
-        foreach (var f in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
-        {
-            var dest = Path.Combine(to, Path.GetRelativePath(from, f));
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.Copy(f, dest, overwrite: true);
-        }
     }
 
     /// <summary>A note as a log line: "warning: …" as is, else "note: …".</summary>

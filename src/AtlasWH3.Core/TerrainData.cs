@@ -33,23 +33,6 @@ public sealed class TerrainData
         Coords = coords;
     }
 
-    public static TerrainData LoadVanilla(ProjectPaths paths)
-    {
-        var height = TerrainDds.ReadL16(paths.HeightMapDds);
-        var sea = TerrainDds.ReadL16(paths.SeaHeightMapDds);
-        var (group, extra) = TerrainDds.ReadBlend(paths.BlendDds);
-        return new TerrainData(height, sea, group, extra, TextureArrays.Load(paths.TextureArraysXml), CoordsFor(paths));
-    }
-
-    /// <summary>World size from the tree list header (the map's own extents); vanilla's if there is no tree list.</summary>
-    public static WorldCoords CoordsFor(ProjectPaths paths)
-    {
-        if (!File.Exists(paths.TreeList)) return WorldCoords.Vanilla3K;
-        using var reader = new BinaryReader(File.OpenRead(paths.TreeList));
-        reader.BaseStream.Position = 12;
-        return new WorldCoords(reader.ReadSingle(), reader.ReadSingle());
-    }
-
     /// <summary>Water surface at an lf pixel (sea raster is half resolution).</summary>
     public ushort SeaAt(int lfX, int lfY) =>
         SeaHeight.GetClamped(lfX * SeaHeight.Width / Width, lfY * SeaHeight.Height / HeightPx);

@@ -29,7 +29,7 @@ namespace AtlasWH3.Core.Campaign;
 ///    changes from run to run (two runs of the same IEE sources: 268 files differ in order alone), so parity is content;
 ///  - rivers: the cwb_campaign_river_lava rivers whose position is in the area (<see cref="Wh3GlobalPropsBuilder.BuildPieceRivers"/>);
 ///  - event_vfx (the main map's folder): <see cref="EventVfx"/>.
-/// The devastated project (&lt;map&gt;_devastate_1 in raw_data, <see cref="CampaignBuildContext.DevastatedMap"/>) is an input,
+/// The devastated project (the one the db names, in raw_data: <see cref="DevastatedMapName"/>) is an input,
 /// not a second campaign: its heightmaps, tile list, trees, global map and masks are built into the cache (no fake
 /// campaign_maps folder; map_data.esf is the main map's; full_height_map only where the pieces cut it), and its pieces,
 /// event_tiles, event_trees and event_area_mask.dds go into terrain\campaigns\&lt;map&gt;_devastate_1, which is all that
@@ -65,7 +65,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         var db = new Lazy<CampaignTileDatabase>(() => TileMapValidator.LoadDatabase(ctx.Paths));
         CampaignTileDatabase TileDb() => db.Value;
         // one pack set per project: the two read their objects in parallel
-        PackSet Packs() => GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        PackSet Packs() => GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
 
         string? Compiled(string root, string relative) =>
             Path.Combine(root, relative) is var path && File.Exists(path) ? path : null;
@@ -113,7 +113,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         }
 
         if (devastated is null)
-            notes.Add($"no devastated project ({TerryFileOf(ctx, DevastatedName(ctx.MapName))}): only the main map's pieces");
+            notes.Add($"{NoDevastatedProject(ctx)}: only the main map's pieces");
         else
         {
             notes.AddRange(devastatedNotes);
@@ -149,7 +149,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
     {
         var project = TerryProject.Load(TerryFileOf(ctx, devastated));
         var build = DevastatedCache(ctx, devastated);
-        var sub = new CampaignBuildContext(ctx.Paths with { MapName = devastated, TileMap = TileMapSource.Kit }, build,
+        var sub = new CampaignBuildContext(ctx.Paths with { MapName = devastated }, build,
                                            m => ctx.Log($"{devastated}: {m}"))
         {
             Cancel = ctx.Cancel, AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, PatchMask = ctx.PatchMask,
@@ -199,16 +199,23 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
         return lines;
     }
 
-    /// <summary>The devastated project: <see cref="CampaignBuildContext.DevastatedMap"/>, else
-    /// &lt;map without _1&gt;_devastate_1 when its .terry exists.</summary>
+    /// <summary>The steps that build or read the devastated project (the pipeline looks it up once for them).</summary>
+    public static readonly IReadOnlySet<string> UsersOfTheDevastatedMap =
+        new HashSet<string>(["devastated_tiles", "devastated_heights", "devastation_pieces", "environment"]);
+
+    /// <summary>The devastated project: the one the db names (<see cref="CampaignBuildContext.DevastatedMap"/>, else
+    /// <see cref="DevastatedFromDb"/>), when the Assembly Kit has its .terry.</summary>
     public static string? DevastatedMapName(CampaignBuildContext ctx)
     {
-        if (ctx.DevastatedMap is { } set) return set.Length == 0 ? null : set;
-        var name = DevastatedName(ctx.MapName);
-        return File.Exists(TerryFileOf(ctx, name)) ? name : null;
+        var name = ctx.DevastatedMap ?? DevastatedFromDb(ctx.Paths);
+        return string.IsNullOrEmpty(name) || !File.Exists(TerryFileOf(ctx, name)) ? null : name;
     }
 
-    public static string DevastatedName(string map) => (map.EndsWith("_1", StringComparison.Ordinal) ? map[..^2] : map) + "_devastate_1";
+    /// <summary>Why <see cref="DevastatedMapName"/> is null, for a note.</summary>
+    private static string NoDevastatedProject(CampaignBuildContext ctx) =>
+        (ctx.DevastatedMap ?? DevastatedFromDb(ctx.Paths)) is { Length: > 0 } named
+            ? $"the db names {named} as the devastated map, but the Assembly Kit has no {TerryFileOf(ctx, named)}"
+            : $"no devastated map: no campaigns row with terrain_location {ctx.MapName} names a terrain_location_devastate";
 
     /// <summary>The map's devastated terrain folder as the db names it (the linked mod packs, then the vanilla db packs):
     /// campaigns.terrain_location_devastate of the campaigns whose terrain_location is the map. The first row that names
@@ -217,7 +224,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
     public static string? DevastatedFromDb(ProjectPaths paths, List<string>? errors = null)
     {
         if (!Directory.Exists(paths.GameDataDir)) return null;
-        var packs = GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
         var named = Formats.Db.DbBinaryTable.PackRows(packs, "campaigns_tables")
             .Where(r => string.Equals(r.Table.Get(r.Row, "terrain_location") as string, paths.MapName, StringComparison.OrdinalIgnoreCase))
             .Select(r => (r.Table.Get(r.Row, "terrain_location_devastate") as string)?.Trim()).OfType<string>().Where(d => d.Length > 0)

@@ -317,7 +317,7 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
             var ctx = new CampaignBuildContext(TestKits.Paths(TestKits.Iee, TestKits.IeePack), target);
             Assert.Empty(new GlobalPropsStep().CheckInputs(ctx));
             new GlobalPropsStep().Run(ctx);
-            var mountainBucket = Wh3GlobalPropsBuilder.ReadCultures(GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks))
+            var mountainBucket = Wh3GlobalPropsBuilder.ReadCultures(GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks))
                 .FirstMountainBucket;
             Assert.Equal(1008, mountainBucket);
             var bobMountainBucket = GlobalPropsParity.BobMountainBucket(ctx.Paths.GameDataDir);

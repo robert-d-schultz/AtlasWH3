@@ -36,7 +36,7 @@ public sealed record TileMapCheckOptions
     public bool Simulate { get; init; }
     /// <summary>Progress messages from the simulation.</summary>
     public Action<string>? Log { get; init; }
-    /// <summary>Skip the checks of kit files other than the tile map and climate maps.</summary>
+    /// <summary>Skip the checks of Terry project files other than the tile map and climate maps.</summary>
     public bool TileMapOnly { get; init; }
     /// <summary>Write the simulated tile placements here (CSV: location,x,y,rotation,climate,layer).</summary>
     public string? SimulationCsv { get; init; }
@@ -73,11 +73,23 @@ public static class TileMapValidator
         _ => Area,
     };
 
+    /// <summary>The errors that stop a build, with what each means, for a project's accept list. file.missing and
+    /// file.format are left out: without a readable tile map there is nothing to build.</summary>
+    public static readonly IReadOnlyList<(string Code, string Meaning)> ErrorCodes =
+    [
+        ("palette.unknown", "Colours that are no tile set, tile or variation: those hexes get no tile."),
+        ("match.no_tile", "Spots no tile fits: see-through holes in game."),
+        ("layout.size", "The tile map is not 2W x (2H+1) pixels for a W x H hex grid."),
+        ("inputs.sizes", "The Terry project's height, blend or tree maps don't fit the tile map's size."),
+        ("climate.missing", "No climate_map.png next to the tile map."),
+        ("climate.size", "The climate map's size doesn't fit the tile map."),
+    ];
+
     public static string DefaultVanillaTileMap(ProjectPaths paths) =>
-        Path.Combine(Path.GetDirectoryName(paths.VanillaRoot)!, "3k_dlc07_main_map", "tile_map.png");
+        Path.Combine(Defaults.DataFolder, "3k_dlc07_main_map", "tile_map.png");
 
     public static string DefaultDatabaseDir(ProjectPaths paths) =>
-        Path.Combine(Path.GetDirectoryName(paths.VanillaRoot)!, "terrain", "tiles", "campaign", "_tile_database");
+        Path.Combine(Defaults.DataFolder, "terrain", "tiles", "campaign", "_tile_database");
 
     /// <summary>The campaign tile database: a loose folder if there is one, else the game packs (what BOB reads).</summary>
     public static CampaignTileDatabase LoadDatabase(ProjectPaths paths, string? databaseDir = null)
@@ -100,7 +112,7 @@ public static class TileMapValidator
     public static TileMapReport Run(ProjectPaths paths, TileMapCheckOptions? options = null, CampaignTileDatabase? db = null)
     {
         options ??= new TileMapCheckOptions();
-        var tileMapPath = options.TileMap ?? Path.Combine(paths.AkTerrainDir, "tile_map.png");
+        var tileMapPath = options.TileMap ?? paths.TileMapPng;
         var findings = new List<TileMapFinding>();
         void Add(string code, string severity, string message, IReadOnlyList<int[]>? hexes = null, int? count = null) =>
             findings.Add(new TileMapFinding(code, severity, message, count ?? hexes?.Count ?? 1,
@@ -157,7 +169,7 @@ public static class TileMapValidator
         return new TileMapReport(paths.MapName, tileMapPath, map.Width, map.Height, findings, simulation);
     }
 
-    /// <summary>The tile map's own folder when it holds a climate map, else the kit's map folder (a candidate tile map
+    /// <summary>The tile map's own folder when it holds a climate map, else the Terry project's folder (a candidate tile map
     /// checked from a scratch folder).</summary>
     private static string ClimateDirFor(ProjectPaths paths, string tileMapPath)
     {
@@ -210,7 +222,7 @@ public static class TileMapValidator
         return "not a PNG";
     }
 
-    // ---------------------------------------------------------------- kit files
+    // ---------------------------------------------------------------- Terry project files
 
     private static void CheckSizes(ProjectPaths paths, HexTileMap map, Action<string, string, string, IReadOnlyList<int[]>?, int?> add)
     {

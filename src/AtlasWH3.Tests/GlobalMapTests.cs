@@ -50,7 +50,7 @@ public class GlobalMapTests
         {
             var bob = CompiledFormatTests.Built(map, "global_map", "texture_arrays.xml");
             if (!File.Exists(bob) || !packs.All(File.Exists)) continue;
-            var set = GameSetup.OpenWithLinked(TestKits.Wh3GameData, packs);
+            var set = GameSetup.OpenWithMods(TestKits.Wh3GameData, packs);
             var prefix = PackFile.Normalize(AssetVariationDb.Folder + "/");
             var dbs = set.Packs.SelectMany(p => p.Entries.Keys).Distinct()
                 .Where(k => k.StartsWith(prefix, StringComparison.Ordinal) && k.EndsWith(".assetdb", StringComparison.Ordinal))

@@ -59,7 +59,7 @@ public sealed class TreesStep : ICampaignBuildStep
             notes.Add($"the {grid.Columns}x{grid.Rows} tree grid is {grid.WorldHeight} deep, map_data.esf says {bounds.Height}");
 
         ctx.Log("tree tables and height patches (packs)...");
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var db = TreeDatabase.FromPacks(packs);
         var colours = CampaignTreeGenerator.ReadTreeMap(map, palette, grid, EmptyIndex);
         ReportUnknownColours(colours, db, ctx.Paths.ModPacks, notes);

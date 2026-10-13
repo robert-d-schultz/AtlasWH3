@@ -8,7 +8,7 @@ using AtlasWH3.Core.Rendering;
 namespace AtlasWH3.App;
 
 /// <summary>
-/// Pan/zoom canvas for a campaign tile_map.png (same controls as <see cref="MapView"/>): right/middle drag pans, wheel
+/// Pan/zoom canvas for a campaign tile_map.png: right/middle drag pans, wheel
 /// zooms around the cursor, left button goes to the window's tool callbacks as hexes. View pixels are tile-map pixels
 /// (2×2 per hex, top row = north). Hex overlays: 1 = changed (white tint), 2 = warning (orange), 3 = blocking (red),
 /// 4 = pending stroke (cyan); error mode: 5 = error (red), 6 = warning (amber), 7 = hole (magenta).

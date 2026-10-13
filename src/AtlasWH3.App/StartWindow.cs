@@ -4,15 +4,19 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using AtlasWH3.Core;
 using AtlasWH3.Core.Build;
+using Microsoft.Win32;
 
 namespace AtlasWH3.App;
 
-/// <summary>The front door: pick the assembly kit and map, open an editor on it, build, or reopen a recent project.
-/// The kit and map are remembered in the settings; every editor opened here gets that map's paths.</summary>
+/// <summary>The front door: pick a project (or, without one, a kit map), open an editor on it, build, or reopen a recent
+/// project. The choice is remembered in the settings; every editor opened here gets its paths: the project's map, kit,
+/// mod packs and tile map source.</summary>
 public sealed class StartWindow : Window
 {
     private static StartWindow? _open;
     private ProjectPaths _paths;
+    /// <summary>The project the editors open on; null = the kit's map, the game's packs only.</summary>
+    private BuildProject? _project;
     private bool _rebuilding;
 
     public static void ShowSingle(ProjectPaths paths)
@@ -28,7 +32,7 @@ public sealed class StartWindow : Window
 
     public StartWindow(ProjectPaths paths)
     {
-        _paths = MapCatalog.WithSelection(paths, AppSettings.Current);
+        (_project, _paths) = Selection(paths);
         _open ??= this;
         Closed += (_, _) => { if (_open == this) _open = null; };
         Title = AppInfo.Title("Start");
@@ -59,7 +63,8 @@ public sealed class StartWindow : Window
         var dock = new DockPanel();
         var menu = new Menu().Spot("start.menu");
         var file = new MenuItem { Header = "_File" };
-        file.Items.Add(StandardMenus.Item("_Settings…", OpenSettings, tooltip: "Folders, linked packs, tile map source and developer mode."));
+        file.Items.Add(StandardMenus.Item("_Open project…", OpenProject, tooltip: "Open an AtlasWH3 project (.atlaswh3) for the editors."));
+        file.Items.Add(StandardMenus.Item("_Settings…", OpenSettings, tooltip: "Game and Assembly Kit folders, developer mode and walkthroughs."));
         file.Items.Add(new Separator());
         file.Items.Add(StandardMenus.Item("E_xit", ExitApp));
         menu.Items.Add(file);
@@ -85,15 +90,15 @@ public sealed class StartWindow : Window
         left.Children.Add(MapSelector());
 
         var tiles = new WrapPanel();
-        tiles.Children.Add(Tile(Theme.Glyph.Build, "Build", "Compile the map natively, run custom steps, pack and install.",
-                                () => BuildWindow.Show(this, _paths)).Spot("start.build"));
+        tiles.Children.Add(Tile(Theme.Glyph.Build, "Build", "Compile the map natively and write it into your campaign's pack.",
+                                () => BuildWindow.Show(this, _paths, _project?.FilePath)).Spot("start.build"));
         tiles.Children.Add(Tile(Theme.Glyph.Scene, "Scene editor (preview)", "Props, entities, prefabs and layers, in 2D and 3D.",
                                 () => new Scene.SceneWindow(_paths).Show()).Spot("start.scene"));
         tiles.Children.Add(Tile(Theme.Glyph.Tiles, "Tile map (preview)", "Paint the campaign tile map hex by hex, with live validation.",
                                 () => new CampaignTileWindow(_paths).Show()).Spot("start.tiles"));
         tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles (preview)", "Where battles start, settlement battle maps and redirects.",
                                 () => CampaignBattlesWindow.Open(this, _paths)).Card("start.battles"));
-        tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "Folders, linked mod packs, tile map source and game data.",
+        tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "The game and assembly kit folders, found through Steam.",
                                 OpenSettings).Card("start.settings").Spot("start.settingsTile"));
         left.Children.Add(tiles);
         Grid.SetColumn(left, 0);
@@ -113,9 +118,7 @@ public sealed class StartWindow : Window
             });
         foreach (var r in recent)
         {
-            string name;
-            try { name = BuildProject.Load(r) is var p && p.Name.Length > 0 ? p.Name : Path.GetFileNameWithoutExtension(r); }
-            catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException) { name = Path.GetFileNameWithoutExtension(r); }
+            var name = ProjectName(r);
             var b = new Button
             {
                 HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 2), Padding = new Thickness(10, 6, 10, 6),
@@ -138,11 +141,10 @@ public sealed class StartWindow : Window
         started.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
-            Text = "1. Check your game and assembly kit folders in File > Settings.\n" +
-                   "2. Edit the map in Terry, as for BOB.\n" +
-                   "3. Open Build (Ctrl+B), create a project for the map and press Build all.\n" +
-                   "Back up your mod pack and the kit's working_data before the first build: a new project builds into " +
-                   "working_data, as BOB does, and Install replaces the pack in the game's data folder.",
+            Text = "1. Make your map in the Assembly Kit's Terry editor. AtlasWH3 builds what you save there; it replaces BOB.\n" +
+                   "2. Open Build (Ctrl+B), create a project for the map, pick your campaign's pack, and press Build all: it " +
+                   "compiles the map and writes it into that pack (backing the pack up first).\n" +
+                   "3. Pick that project under Project, above, to open the editors on it.",
         });
         Grid.SetColumn(right, 2);
         grid.Children.Add(right);
@@ -151,7 +153,8 @@ public sealed class StartWindow : Window
         return dock;
     }
 
-    /// <summary>Kit and map pickers plus a line naming what the editors will open.</summary>
+    /// <summary>The project picker (and, without a project, the map picker) plus a line naming what the editors will
+    /// open. The assembly kit is the one in Settings.</summary>
     private UIElement MapSelector()
     {
         var box = new Border
@@ -166,43 +169,56 @@ public sealed class StartWindow : Window
         void Add(UIElement e, int row, int col) { Grid.SetRow(e, row); Grid.SetColumn(e, col); grid.Children.Add(e); }
         TextBlock Label(string t) => new() { Text = t, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 2, 10, 2) };
 
-        var kits = MapCatalog.Kits(Defaults.GameFolder).ToList();
-        if (!kits.Contains(_paths.AssemblyKitRoot, StringComparer.OrdinalIgnoreCase)) kits.Insert(0, _paths.AssemblyKitRoot);
-        var kit = new ComboBox { Margin = new Thickness(0, 2, 0, 2) }.Card("start.kit");
-        foreach (var k in kits) kit.Items.Add(new ComboBoxItem { Content = Path.GetFileName(k), Tag = k, ToolTip = k });
-        kit.SelectedItem = kit.Items.OfType<ComboBoxItem>().First(i => ((string)i.Tag).Equals(_paths.AssemblyKitRoot, StringComparison.OrdinalIgnoreCase));
-        Add(Label("Assembly kit"), 0, 0);
-        Add(kit, 0, 1);
+        var project = new ComboBox { Margin = new Thickness(0, 2, 0, 2) }.Card("start.project");
+        project.Items.Add(new ComboBoxItem { Content = "No project: a map from the assembly kit, game packs only", Tag = "" });
+        var projects = AppSettings.Current.RecentProjects.Where(File.Exists).ToList();
+        if (_project?.FilePath is { } current && !projects.Contains(current, StringComparer.OrdinalIgnoreCase)) projects.Insert(0, current);
+        foreach (var r in projects) project.Items.Add(new ComboBoxItem { Content = $"{ProjectName(r)}   ({Path.GetFileName(r)})", Tag = r, ToolTip = r });
+        project.SelectedItem = project.Items.OfType<ComboBoxItem>().FirstOrDefault(i => ((string)i.Tag).Equals(_project?.FilePath ?? "", StringComparison.OrdinalIgnoreCase))
+                               ?? project.Items[0];
+        project.SelectionChanged += (_, _) =>
+        {
+            if (_rebuilding || project.SelectedItem is not ComboBoxItem { Tag: string file }) return;
+            SelectProject(file.Length > 0 ? file : null);
+        };
+        var openProject = new Button { Content = "Open…", Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(6, 2, 0, 2), ToolTip = "Open a project (.atlaswh3)." };
+        openProject.Click += (_, _) => OpenProject();
+        var projectRow = new DockPanel();
+        DockPanel.SetDock(openProject, Dock.Right);
+        projectRow.Children.Add(openProject);
+        projectRow.Children.Add(project);
+        Add(Label("Project"), 0, 0);
+        Add(projectRow, 0, 1);
 
+        // with a project, the map is the project's: the line below names it
         var map = new ComboBox { Margin = new Thickness(0, 2, 0, 2) }.Card("start.map");
         map.Items.Add(new ComboBoxItem { Content = _paths.MapName, Tag = _paths.MapName });
         map.SelectedIndex = 0;
-        Add(Label("Map"), 1, 0);
-        Add(map, 1, 1);
+        if (_project is null)
+        {
+            Add(Label("Map"), 1, 0);
+            Add(map, 1, 1);
+        }
 
         var line = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 6, 0, 0) };
         line.Inlines.Add("Editors open ");
         line.Inlines.Add(new System.Windows.Documents.Run(_paths.MapName) { Foreground = Theme.Brush("Text"), FontWeight = FontWeights.SemiBold });
         line.Inlines.Add(" from ");
-        line.Inlines.Add(new System.Windows.Documents.Run(Path.GetFileName(_paths.AssemblyKitRoot)) { Foreground = Theme.Brush("Text"), FontWeight = FontWeights.SemiBold });
-        line.Inlines.Add(_paths.ModPacks.Count == 0 ? "   ·   no linked packs"
-            : $"   ·   {_paths.ModPacks.Count} linked pack(s), read-only: {string.Join(", ", _paths.ModPacks.Select(Path.GetFileName))}");
+        line.Inlines.Add(new System.Windows.Documents.Run(_paths.AssemblyKitRoot) { Foreground = Theme.Brush("Text"), FontWeight = FontWeights.SemiBold });
+        line.Inlines.Add(_project is null ? "   ·   the game's packs only"
+            : _paths.ModPacks.Count == 0 ? "   ·   no mod packs"
+            : $"   ·   mod packs (read-only): {string.Join(", ", _paths.ModPacks.Select(Path.GetFileName))}");
         var (cardTitle, cardText) = InfoCards.Get("start.selection");
-        line.Card(cardTitle, cardText + $"\nKit: {_paths.AssemblyKitRoot}\nCompiled cache: {_paths.TerrainDir}");
+        line.Card(cardTitle, cardText + $"\nKit: {_paths.AssemblyKitRoot}" + (_project?.FilePath is { } f ? $"\nProject: {f}" : ""));
         Add(line, 2, 1);
         box.Child = grid;
 
-        kit.SelectionChanged += (_, _) =>
-        {
-            if (_rebuilding || kit.SelectedItem is not ComboBoxItem { Tag: string root }) return;
-            Select(root, null);
-        };
         map.SelectionChanged += (_, _) =>
         {
             if (_rebuilding || map.SelectedItem is not ComboBoxItem { Tag: string name } || name == _paths.MapName) return;
-            Select(null, name);
+            SelectMap(name);
         };
-        _ = FillMapsAsync(map);
+        if (_project is null) _ = FillMapsAsync(map);
         return box;
     }
 
@@ -217,32 +233,24 @@ public sealed class StartWindow : Window
         try
         {
             map.Items.Clear();
-            foreach (var m in maps) map.Items.Add(new ComboBoxItem { Content = m.ToString(), Tag = m.Name });
+            foreach (var m in maps) map.Items.Add(new ComboBoxItem { Content = m.Name, Tag = m.Name });
             if (!maps.Any(m => m.Name.Equals(_paths.MapName, StringComparison.OrdinalIgnoreCase)))
-                map.Items.Insert(0, new ComboBoxItem { Content = $"{_paths.MapName}  (not in this kit or the linked packs)", Tag = _paths.MapName });
+                map.Items.Insert(0, new ComboBoxItem
+                {
+                    Content = $"{_paths.MapName}  (missing: the assembly kit has no {_paths.MapName}.terry)", Tag = _paths.MapName,
+                    ToolTip = Path.Combine(_paths.AkTerrainDir, _paths.MapName + ".terry"),
+                });
             map.SelectedItem = map.Items.OfType<ComboBoxItem>().First(i => ((string)i.Tag).Equals(_paths.MapName, StringComparison.OrdinalIgnoreCase));
         }
         finally { _rebuilding = false; }
     }
 
-    /// <summary>Switches the kit and/or map, remembers them and rebuilds the page (menus included) on the new paths.</summary>
-    private void Select(string? kit, string? map)
+    /// <summary>Switches the map, remembers it and rebuilds the page (menus included) on the new paths.</summary>
+    private void SelectMap(string map)
     {
         var s = AppSettings.Current;
-        if (kit is not null)
-        {
-            _paths = _paths with { AssemblyKitRoot = kit };
-            s.AssemblyKit = kit;
-            // keep the map when the new kit has it, else the kit's main map or its first one
-            var maps = MapCatalog.KitMaps(kit);
-            if (maps.Count > 0 && !maps.Contains(_paths.MapName, StringComparer.OrdinalIgnoreCase))
-                map = maps.FirstOrDefault(m => m == MapCatalog.DefaultMap) ?? maps[0];
-        }
-        if (map is not null)
-        {
-            _paths = _paths with { MapName = map };
-            s.MapName = map;
-        }
+        _paths = _paths with { MapName = map };
+        s.MapName = map;
         try { s.Save(); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ErrorDialog.Log("Could not save the map selection", e); }
         Rebuild();
@@ -262,17 +270,57 @@ public sealed class StartWindow : Window
     private void OpenSettings()
     {
         if (new SettingsWindow { Owner = this }.ShowDialog() != true) return;
-        // pick up the saved folders, map and linked packs
-        var s = AppSettings.Current;
-        _paths = _paths with
-        {
-            AssemblyKitRoot = Defaults.AssemblyKit,
-            MapName = s.MapName.Length > 0 ? s.MapName : _paths.MapName,
-            ModPacks = s.LinkedPacks.Where(File.Exists).ToList(),
-            VanillaRoot = Defaults.CompiledRoot, GameDataDir = Defaults.GameData, DbTsvRoot = Defaults.DbTsv,
-            OutputRoot = Defaults.Output, CacheRoot = Defaults.Cache, TileMap = Defaults.TileMap,
-        };
+        // pick up the saved folders
+        (_project, _paths) = Selection(new ProjectPaths());
         Rebuild();
+    }
+
+    private void OpenProject()
+    {
+        var dlg = new OpenFileDialog { Title = "Open a project", Filter = $"AtlasWH3 project (*{BuildProject.Extension})|*{BuildProject.Extension}" };
+        if (dlg.ShowDialog(this) == true) SelectProject(dlg.FileName);
+    }
+
+    /// <summary>Makes <paramref name="file"/> (null = none) the project the editors open on, remembers it and rebuilds the page.</summary>
+    private void SelectProject(string? file)
+    {
+        var s = AppSettings.Current;
+        s.CurrentProject = file is null ? "" : Path.GetFullPath(file);
+        if (file is not null) s.AddRecentProject(file);
+        try { s.Save(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ErrorDialog.Log("Could not save the project choice", e); }
+        (_project, _paths) = Selection(new ProjectPaths());
+        if (file is not null && _project is null) ErrorDialog.Show(this, $"Could not open {Path.GetFileName(file)}: see the log.", null);
+        Rebuild();
+    }
+
+    /// <summary>The remembered project and its paths; without one (or with a map or packs given on the command line), the
+    /// kit's remembered map on <paramref name="paths"/>.</summary>
+    private static (BuildProject?, ProjectPaths) Selection(ProjectPaths paths)
+    {
+        var s = AppSettings.Current;
+        if (paths.MapName == MapCatalog.DefaultMap && paths.ModPacks.Count == 0 && s.CurrentProject.Length > 0 && File.Exists(s.CurrentProject))
+        {
+            try
+            {
+                var project = BuildProject.Load(s.CurrentProject);
+                return (project, project.ToPaths(paths));
+            }
+            catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
+            {
+                ErrorDialog.Log($"Could not open the project {s.CurrentProject}", e);
+            }
+        }
+        return (null, MapCatalog.WithSelection(paths, s));
+    }
+
+    private static string ProjectName(string path)
+    {
+        try { return BuildProject.Load(path) is var p && p.Name.Length > 0 ? p.Name : Path.GetFileNameWithoutExtension(path); }
+        catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            return Path.GetFileNameWithoutExtension(path);
+        }
     }
 
     private static Button Tile(string glyph, string title, string text, Action open)
