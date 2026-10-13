@@ -39,7 +39,7 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
     {
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
-        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && TreesStep.MapData(ctx) is null)
+        else if (TerryProject.Load(ctx.TerryFile).WorldWidth is null && !GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf"))
             missing.Add("the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf") +
                         " to take the width from");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");

@@ -19,7 +19,7 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
     public static readonly string[] Inputs = ["pathfinding.ppd", "map_data.esf"];
 
     public IReadOnlyList<string> CheckInputs(CampaignBuildContext ctx) =>
-        Inputs.Where(f => GameSetup.CampaignMapFile(ctx.Paths, ctx.CampaignMapName, f) is null)
+        Inputs.Where(f => !GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, f))
               .Select(f => GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, f)).ToList();
 
     public StepResult Run(CampaignBuildContext ctx)

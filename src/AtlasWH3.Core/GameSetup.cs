@@ -182,11 +182,18 @@ public static partial class GameSetup
     public static (byte[] Data, string Pack)? CampaignMapFile(ProjectPaths paths, string map, string file)
     {
         var internalPath = $"campaign_maps/{map}/{file}";
+        return CampaignMapPack(paths, internalPath) is { } owner ? (owner.TryRead(internalPath)!, owner.SourcePath) : null;
+    }
+
+    /// <summary>Whether <see cref="CampaignMapFile"/> finds the file, from the packs' indexes only (nothing is read).</summary>
+    public static bool HasCampaignMapFile(ProjectPaths paths, string map, string file) =>
+        CampaignMapPack(paths, $"campaign_maps/{map}/{file}") is not null;
+
+    private static PackFile? CampaignMapPack(ProjectPaths paths, string internalPath)
+    {
         foreach (var path in paths.ModPacks.Where(File.Exists))
-            if (PackFile.Open(path).TryRead(internalPath) is { } data) return (data, path);
-        if (!Directory.Exists(paths.GameDataDir)) return null;
-        var owner = PackSet.OpenVanilla(paths.GameDataDir).FindOwner(internalPath);
-        return owner is null ? null : (owner.TryRead(internalPath)!, owner.SourcePath);
+            if (PackFile.Open(path) is var pack && pack.Contains(internalPath)) return pack;
+        return Directory.Exists(paths.GameDataDir) ? PackSet.OpenVanilla(paths.GameDataDir).FindOwner(internalPath) : null;
     }
 
     /// <summary>Where <see cref="CampaignMapFile"/> looks, for a missing-input message.</summary>

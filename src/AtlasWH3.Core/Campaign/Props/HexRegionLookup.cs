@@ -22,13 +22,14 @@ public sealed class HexRegionLookup
     /// <param name="region">Region index per hex (row-major, row 0 = south), -1 for none.</param>
     /// <param name="names">Region keys by index: land regions, then sea regions.</param>
     public HexRegionLookup(int width, int height, int[] region, IReadOnlyList<string> names, float minX, float minY, float maxX,
-                           MapHexFile? hex = null)
+                           float maxY, MapHexFile? hex = null)
     {
         Width = width;
         Height = height;
         _region = region;
         _names = names;
         Hex = hex;
+        MapBounds = (minX, minY, maxX, maxY);
         _minX = minX;
         _minY = minY;
         _maxX = maxX;
@@ -63,6 +64,8 @@ public sealed class HexRegionLookup
 
     public int Width { get; }
     public int Height { get; }
+    /// <summary>The map bounds the lookup is over: map_data.esf's (<see cref="EsfHeaderBounds"/>).</summary>
+    public (float MinX, float MinY, float MaxX, float MaxY) MapBounds { get; }
     /// <summary>The map.hex the lookup was made from (<see cref="ForMapHex"/>), else null.</summary>
     public MapHexFile? Hex { get; }
 
@@ -103,7 +106,7 @@ public sealed class HexRegionLookup
         var regions = new int[data.AreaMap.Length];
         for (var i = 0; i < regions.Length; i++)
             regions[i] = (data.AreaMap[i] & MapDataRegions.RegionMask) is var r && r < data.Regions.Count ? r : -1;
-        return new HexRegionLookup(data.Width, data.Height, regions, data.Regions.Select(r => r.Key).ToList(), b.MinX, b.MinY, b.MaxX);
+        return new HexRegionLookup(data.Width, data.Height, regions, data.Regions.Select(r => r.Key).ToList(), b.MinX, b.MinY, b.MaxX, b.MaxY);
     }
 
     /// <summary>The lookup from the kit's map.hex (the Scene editor's region overlay, which also needs its settlement
@@ -117,7 +120,7 @@ public sealed class HexRegionLookup
         var regions = new int[hex.Width * hex.Height];
         for (var r = 0; r < hex.Height; r++)
             for (var c = 0; c < hex.Width; c++) regions[r * hex.Width + c] = hex.RegionIndexAt(c, r);
-        return new HexRegionLookup(hex.Width, hex.Height, regions, [.. hex.LandRegions, .. hex.SeaRegions], b.MinX, b.MinY, b.MaxX, hex);
+        return new HexRegionLookup(hex.Width, hex.Height, regions, [.. hex.LandRegions, .. hex.SeaRegions], b.MinX, b.MinY, b.MaxX, b.MaxY, hex);
     }
 
     private static (MapDataRegions Data, (float MinX, float MinY, float MaxX, float MaxY) Bounds)? MapData(ProjectPaths paths, out string reason)

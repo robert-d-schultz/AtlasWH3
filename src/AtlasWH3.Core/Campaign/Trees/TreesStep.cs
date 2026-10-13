@@ -39,7 +39,7 @@ public sealed class TreesStep : ICampaignBuildStep
                 try { TerrainComposite.Inputs(project, map); }
                 catch (FileNotFoundException e) { missing.Add(e.Message); }
         }
-        if (MapData(ctx) is null) missing.Add(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf"));
+        if (!GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf")) missing.Add(GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf"));
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }

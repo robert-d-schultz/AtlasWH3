@@ -19,7 +19,8 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var missing = new List<string>();
         if (!File.Exists(ctx.TerryFile)) missing.Add($"missing {ctx.TerryFile}");
         if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir} (models and materials)");
-        if (HexRegionLookup.ForMap(ctx.Paths, out var why) is null) missing.Add($"no region lookup: {why}");
+        if (!GameSetup.HasCampaignMapFile(ctx.Paths, ctx.MapName, "map_data.esf"))
+            missing.Add("no region lookup: " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.MapName, "map_data.esf"));
         return missing;
     }
 
@@ -31,8 +32,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var project = TerryProject.Load(ctx.TerryFile);
         // the quadtree covers the map bounds of map_data.esf grown by the playable-areas row's quadtree_margin on every
         // side (CA's vanilla combi file and the user's GUI BOB runs: IEE -10..1078.11 x -10..758.57; 2026-10-10)
-        // (ForMap has read the same map_data.esf: it is there, with bounds)
-        var b = HexRegionLookup.EsfHeaderBounds(GameSetup.CampaignMapFile(ctx.Paths, ctx.MapName, "map_data.esf")!.Value.Data)!.Value;
+        var b = lookup.MapBounds;
         var (margin, marginFrom) = QuadtreeMargin(ctx);
         var root = (b.MinX - margin, b.MinY - margin, b.MaxX + margin, b.MaxY + margin);
         var prefabTypes = Wh3GlobalPropsBuilder.ReadCultures(packs);
