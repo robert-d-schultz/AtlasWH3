@@ -700,7 +700,8 @@ build comes first. The open items below stay as they are.
     - the hop table's lower triangle is the land-only hop count.
 - [x] 6.6 The step end to end, then the in-game check (the AI moves; no startpos crash). Done 2026-10-12 in the IEE
   pass ([`end_to_end.md`](end_to_end.md)).
-  - `hlp_spd` is a pipeline step now (runs by default; inputs from the build output, else the kit's working_data).
+  - `hlp_spd` is a pipeline step now (runs by default; pathfinding.ppd and map_data.esf from the map's mod pack, then
+    the game's packs).
   - IEE: 17 s through `build-campaign`.
   - Old World: 46 s and 3.8 GB peak (on the pack's inputs: the kit has no Old World `pathfinding.ppd`). The peak was
     8.8 GB before the faction path's blocked array was shared.

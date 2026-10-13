@@ -20,7 +20,7 @@ public sealed class LookupStep : ICampaignBuildStep
     {
         var missing = new List<string>();
         if (Sources(ctx).Count == 0)
-            missing.Add($"no *lookup*.bmp in {ctx.Paths.AkWorkingCampaignMapDir} or {ctx.Paths.AkDesignCampaignMapDir}");
+            missing.Add($"no *lookup*.bmp in {ctx.Paths.AkDesignCampaignMapDir}");
         try
         {
             if (RegionList(ctx.LookupLastRegions).Count > 0 && !Directory.Exists(ctx.Paths.GameDataDir))
@@ -111,12 +111,7 @@ public sealed class LookupStep : ICampaignBuildStep
         return colours;
     }
 
-    /// <summary>Lookup bitmaps by file name; the working_data copy wins over EmpireDesignData.</summary>
+    /// <summary>The lookup bitmaps in EmpireDesignData (never working_data's: CAIME writing them there is its bug).</summary>
     private static List<string> Sources(CampaignBuildContext ctx) =>
-        new[] { ctx.Paths.AkWorkingCampaignMapDir, ctx.Paths.AkDesignCampaignMapDir }
-            .Where(Directory.Exists)
-            .SelectMany(d => Directory.GetFiles(d, "*lookup*.bmp"))
-            .GroupBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
-            .ToList();
+        Directory.Exists(ctx.Paths.AkDesignCampaignMapDir) ? [.. Directory.GetFiles(ctx.Paths.AkDesignCampaignMapDir, "*lookup*.bmp")] : [];
 }

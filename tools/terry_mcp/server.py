@@ -685,9 +685,9 @@ def replay_tiles(from_seq: int = 1, to_seq: int | None = None, dry_run: bool = F
 @mcp.tool()
 def check_tile_holes(tile_list: str | None = None, since_seq: int = 0, limit: int = 40,
                      map_name: str | None = None, tile_map: str | None = None, ak_root: str | None = None) -> dict:
-    """After BOB Terrain / Tilemap: tile-map cells no tile_list.bin record covers (see-through holes), clustered,
-    edge vs suspect, and which clusters lie in hexes edited since seq `since_seq`. tile_list defaults to the kit's
-    working_data/terrain/campaigns/<map>/tile_list.bin."""
+    """After build_step tile_list: tile-map cells no tile_list.bin record covers (see-through holes), clustered,
+    edge vs suspect, and which clusters lie in hexes edited since seq `since_seq`. tile_list defaults to the default
+    build target's output/compiled/<map>/terrain/campaigns/<map>/tile_list.bin."""
     args = ["--since", str(since_seq), "--limit", str(limit)]
     if tile_list: args += ["--tile-list", tile_list]
     return _tiles("tiles-holes", map_name, ak_root, tile_map, *args)

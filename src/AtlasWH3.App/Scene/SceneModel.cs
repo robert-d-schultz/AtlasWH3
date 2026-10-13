@@ -102,8 +102,8 @@ public sealed class SceneModel
     }
 
     /// <summary>
-    /// Reads the map's compiled tile_list.bin (the --pack mod packs, kit working_data, the vanilla folder, then the game
-    /// packs) and the campaign
+    /// Reads the map's compiled tile_list.bin (the --pack mod packs, the vanilla folder, then the game packs) and the
+    /// campaign
     /// tile database (sizes, tile sets) into placements. tile_list.bin is a build output: after editing tile_map.png
     /// it shows the last build, not the edit.
     /// </summary>
@@ -117,12 +117,8 @@ public sealed class SceneModel
             string? source = null;
             if (FromModPacks(relative) is var (modBytes, modPack)) { list = AtlasWH3.Formats.Maps.TileList.Read(modBytes); source = modPack; }
             if (list is null)
-                foreach (var candidate in new[]
-                         {
-                             Path.Combine(_paths.AkWorkingDir, relative.Replace('/', Path.DirectorySeparatorChar)),
-                             Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)),
-                         })
-                    if (File.Exists(candidate)) { list = AtlasWH3.Formats.Maps.TileList.Read(candidate); source = candidate; break; }
+                if (Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)) is var candidate && File.Exists(candidate))
+                { list = AtlasWH3.Formats.Maps.TileList.Read(candidate); source = candidate; }
             if (list is null && Models.Source.TryRead(relative) is { } packed) { list = AtlasWH3.Formats.Maps.TileList.Read(packed); source = Models.Source.Locate(relative); }
             if (list is null) { TilesNote = "no tile_list.bin (build the map: Build > tile_list)"; return; }
 
@@ -563,7 +559,6 @@ public sealed class SceneModel
         }
         foreach (var candidate in new[]
                  {
-                     Path.Combine(_paths.AkWorkingDir, relative.Replace('/', Path.DirectorySeparatorChar)),
                      Path.Combine(_paths.VanillaRoot, relative.Replace('/', Path.DirectorySeparatorChar)),
                      (_paths with { MapName = map }).TextureArraysXml,
                  })

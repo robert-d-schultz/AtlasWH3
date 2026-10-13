@@ -52,7 +52,7 @@ public sealed class CampaignBuildContext
     public CampaignBuildContext(ProjectPaths paths, string? targetRoot = null, Action<string>? log = null)
     {
         Paths = paths;
-        TargetRoot = targetRoot ?? System.IO.Path.Combine(paths.OutputRoot, "compiled", paths.MapName);
+        TargetRoot = targetRoot ?? paths.BuildTarget;
         Log = log ?? (_ => { });
     }
 

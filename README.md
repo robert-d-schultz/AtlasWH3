@@ -55,8 +55,8 @@ about half the error of BOB's.
 - Your mod's `.pack`, linked. The build reads CAIME's `map_data.esf` and `pathfinding.ppd` from its
   `campaign_maps\<map>\`, and the mod's DB tables, models and textures; and it merges the build into a copy of it.
   (A vanilla map needs no mod pack: its files are in the game's packs.)
-- CAIME's region lookup `.bmp`, in the kit's `working_data\campaign_maps\<map>` or
-  `raw_data\EmpireDesignData\campaign_maps\<map>`.
+- CAIME's region lookup `.bmp`, in the kit's `raw_data\EmpireDesignData\campaign_maps\<map>` (a copy CAIME writes
+  to `working_data` is not read).
 - Optional: the map's devastated project, `<map without _1>_devastate_1` beside it (or named in the project), for the
   devastated pieces.
 
