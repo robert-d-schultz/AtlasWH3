@@ -2,11 +2,11 @@ using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Core;
 
-/// <summary>Where a campaign map was found: the vanilla game packs, an assembly kit's raw_data (a .terry), or a linked
-/// mod pack.</summary>
+/// <summary>Where a campaign map was found: the vanilla game packs, an assembly kit's raw_data (a .terry), or one of
+/// the mod packs.</summary>
 public enum MapOrigin { Vanilla, Kit, Pack }
 
-/// <summary>A campaign map and every place it was found (<see cref="Packs"/>: the linked packs that hold its compiled
+/// <summary>A campaign map and every place it was found (<see cref="Packs"/>: the mod packs that hold its compiled
 /// files).</summary>
 public sealed record MapEntry(string Name, IReadOnlySet<MapOrigin> Origins, IReadOnlyList<string> Packs)
 {
@@ -22,8 +22,8 @@ public sealed record MapEntry(string Name, IReadOnlySet<MapOrigin> Origins, IRea
 }
 
 /// <summary>
-/// Map discovery for the Start screen and "Prepare game data": the campaign maps of an assembly kit (folders under
-/// raw_data\terrain\campaigns holding a .terry), of linked mod packs (terrain\campaigns\&lt;map&gt;\ or
+/// Map discovery for the Start screen: the campaign maps of an assembly kit (folders under
+/// raw_data\terrain\campaigns holding a .terry), of mod packs (terrain\campaigns\&lt;map&gt;\ or
 /// campaign_maps\&lt;map&gt;\ entries) and of the vanilla packs. Packs are only read.
 /// </summary>
 public static class MapCatalog
@@ -69,7 +69,7 @@ public static class MapCatalog
     }
 
     /// <summary>
-    /// Every map from the kit, the linked packs and (when <paramref name="gameDataDir"/> is given) the vanilla packs,
+    /// Every map from the kit, the mod packs and (when <paramref name="gameDataDir"/> is given) the vanilla packs,
     /// merged by name. A pack that cannot be read is reported through <paramref name="log"/> and skipped.
     /// </summary>
     public static IReadOnlyList<MapEntry> All(string? assemblyKitRoot, IEnumerable<string> linkedPacks, string? gameDataDir = null,
@@ -108,17 +108,11 @@ public static class MapCatalog
             .ToList();
     }
 
-    /// <summary>The Start screen's paths: <paramref name="paths"/> with the remembered map, kit and linked packs
-    /// (<see cref="AppSettings.MapName"/>, <see cref="AppSettings.LinkedPacks"/>), keeping anything set on the command
-    /// line (a non-default map, <c>--pack</c>).</summary>
+    /// <summary>The Start screen's paths without a project: <paramref name="paths"/> with the remembered map
+    /// (<see cref="AppSettings.MapName"/>), keeping a non-default map set on the command line.</summary>
     public static ProjectPaths WithSelection(ProjectPaths paths, AppSettings settings)
     {
         if (!string.IsNullOrWhiteSpace(settings.MapName) && paths.MapName == DefaultMap) paths = paths with { MapName = settings.MapName.Trim() };
-        if (paths.ModPacks.Count == 0)
-        {
-            var linked = settings.LinkedPacks.Where(File.Exists).ToList();
-            if (linked.Count > 0) paths = paths with { ModPacks = linked };
-        }
         return paths;
     }
 }

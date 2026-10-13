@@ -28,7 +28,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
     {
         var sw = Stopwatch.StartNew();
         var lookup = HexRegionLookup.ForMap(ctx.Paths, out var why) ?? throw new InvalidOperationException(why);
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var project = TerryProject.Load(ctx.TerryFile);
         // the quadtree covers the map bounds of map_data.esf grown by the playable-areas row's quadtree_margin on every
         // side (CA's vanilla combi file and the user's GUI BOB runs: IEE -10..1078.11 x -10..758.57; 2026-10-10)
@@ -79,7 +79,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
     public static (float Margin, string From) QuadtreeMargin(CampaignBuildContext ctx)
     {
         if (!Directory.Exists(ctx.Paths.GameDataDir)) return (DefaultQuadtreeMargin, "no game data folder: default");
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
         foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_playable_areas_tables"))
             if (string.Equals((string?)t.Get(row, "mapname"), ctx.MapName, StringComparison.OrdinalIgnoreCase) &&
                 t.Get(row, "quadtree_margin") is { } m)

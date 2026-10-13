@@ -50,7 +50,7 @@ public sealed class GlobalMapStep : ICampaignBuildStep
         Directory.CreateDirectory(outDir);
 
         ctx.Log("texture groups...");
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var arrays = TextureArrays.FromAssetDbs(AssetDbs(packs, notes), out var problems);
         notes.AddRange(problems);
         if (arrays.Groups.Count == 0) throw new InvalidDataException("no campaign_base_colour texture groups in the packs' asset variation dbs");

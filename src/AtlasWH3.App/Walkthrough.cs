@@ -75,7 +75,7 @@ public static class Walkthrough
 
     /// <summary>Saves a PNG of every step of the window's tour into <paramref name="dir"/> (window and overlay rendered
     /// off-screen, no input sent; the Direct3D view renders black). For checking tour texts and placement:
-    /// <c>AtlasWH3.exe [--scene|--tile-editor|--painter|--build] --walkthrough-shots &lt;dir&gt;</c>.</summary>
+    /// <c>AtlasWH3.exe [--scene|--tile-editor|--build] --walkthrough-shots &lt;dir&gt;</c>.</summary>
     public static async Task ShotsAsync(Window window, string dir)
     {
         await Task.Delay(2500);   // the window's own loading

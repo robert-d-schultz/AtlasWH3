@@ -68,7 +68,7 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
             notes?.Add($"no game data folder ({paths.GameDataDir}); CA's default road and beach costs");
             return s;
         }
-        var packs = GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
         var campaigns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_playable_areas_tables"))
             if (string.Equals((string?)t.Get(row, "mapname"), paths.MapName, StringComparison.OrdinalIgnoreCase) && t.Get(row, "campaign_key") is string key)

@@ -95,7 +95,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     {
         var root = new StackPanel { Margin = new Thickness(8) };
         root.Children.Add(Theme.Header("Terrain & trees", 0));
-        root.Children.Add(Dim("Paints the kit sources (the .terry's Height, HeightSea and CampaignTree maps): you paint what the view shows, "
+        root.Children.Add(Dim("Paints the Terry project (the .terry's Height, HeightSea and CampaignTree maps): you paint what the view shows, "
                               + "and the change goes into the chosen layer. Left-drag paints in the 2D view; Alt+click picks the value or species "
                               + "under the cursor; [ and ] resize the brush; right/middle drag still pans."));
         root.Children.Add(_sources);
@@ -262,7 +262,7 @@ public sealed class TerrainToolsPanel : ScrollViewer, SceneView.ITool
     {
         if (!HasUnsaved) return true;
         var answer = Prompt.AskSave(owner, "Unsaved terrain edits",
-            "You have unsaved Terrain & trees edits in " + DirtyList() + ".\n\nSave them to the kit before leaving? "
+            "You have unsaved Terrain & trees edits in " + DirtyList() + ".\n\nSave them to the Terry project before leaving? "
             + "Don't save drops them; the files stay as they were at the last save. (Entity edits are already saved.)");
         if (answer == Prompt.SaveChoice.Cancel) return false;
         if (answer == Prompt.SaveChoice.Save) return Save();

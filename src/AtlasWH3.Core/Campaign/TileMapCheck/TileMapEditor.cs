@@ -9,8 +9,8 @@ using AtlasWH3.Formats.Maps;
 namespace AtlasWH3.Core.Campaign.TileMapCheck;
 
 /// <summary>
-/// Validated editing of a campaign tile_map.png (default: the kit's raw_data\terrain\campaigns\&lt;map&gt;\tile_map.png;
-/// <see cref="TileMapSource"/> can read it from another file or a pack and save to a chosen folder).
+/// Validated editing of a campaign tile_map.png (default: the Terry project's, in raw_data\terrain\campaigns\&lt;map&gt;;
+/// the CLI's --tilemap edits another file, e.g. a copy).
 /// A batch of <see cref="TileMapOps"/> ops is applied in memory, the changed hexes (+ ring) are checked with
 /// <see cref="TileMapValidator.CheckMap"/>, and only issues the edit introduced count: any new error blocks the write
 /// unless forced. Written batches are journaled (<see cref="FileJournal"/>, output\tile_edits\&lt;map&gt;) with their ops
@@ -28,54 +28,19 @@ public sealed class TileMapEditor
     {
         _paths = paths;
         _db = db;
-        Source = tileMapPath is null ? paths.TileMap : new TileMapSource { Kind = TileMapSourceKind.File, Path = tileMapPath };
-        TileMapPath = Path.GetFullPath(tileMapPath ?? Source.EditPath(paths));
+        TileMapPath = Path.GetFullPath(tileMapPath ?? paths.TileMapPng);
         Journal = new FileJournal(JournalDirFor(paths, TileMapPath));
     }
 
-    /// <summary>output\tile_edits\&lt;map&gt;, plus custom_&lt;hash&gt; for any tile map other than the kit's: one journal per
+    /// <summary>output\tile_edits\&lt;map&gt;, plus custom_&lt;hash&gt; for any tile map other than the Terry project's: one journal per
     /// save target.</summary>
     public static string JournalDirFor(ProjectPaths paths, string tileMapPath)
     {
         var dir = FileJournal.EditDir(paths, "tile_edits");
         var full = Path.GetFullPath(tileMapPath);
-        if (!full.Equals(Path.GetFullPath(Path.Combine(paths.AkTerrainDir, "tile_map.png")), StringComparison.OrdinalIgnoreCase))
+        if (!full.Equals(Path.GetFullPath(paths.TileMapPng), StringComparison.OrdinalIgnoreCase))
             dir = Path.Combine(dir, "custom_" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(full.ToLowerInvariant())))[..8].ToLowerInvariant());
         return dir;
-    }
-
-    /// <summary>Where the tile map is read from (<see cref="ProjectPaths.TileMap"/>, or a file passed in).</summary>
-    public TileMapSource Source { get; }
-
-    /// <summary>True when the save target needs seeding from the source: it is missing, or it was not seeded from this
-    /// source and differs from it. Always false when the source is the save target.</summary>
-    public bool NeedsSeed(out string reason)
-    {
-        reason = "";
-        if (!Source.SeparateTarget(_paths)) return false;
-        if (!File.Exists(TileMapPath)) { reason = $"{TileMapPath} does not exist yet"; return true; }
-        if (Source.SeededFromThis(Journal.Dir, _paths)) return false;
-        var same = FileJournal.Hash(Source.Read(_paths)) == FileJournal.Hash(File.ReadAllBytes(TileMapPath));
-        if (same) { Source.WriteSeedMarker(Journal.Dir, _paths, File.ReadAllBytes(TileMapPath)); return false; }
-        reason = $"{TileMapPath} differs from {Source.Describe(_paths)}";
-        return true;
-    }
-
-    /// <summary>Copies the source (e.g. a pack entry) to the save target as one journaled batch (undoable) and records
-    /// the seed. The pack is only read.</summary>
-    public int SeedFromSource()
-    {
-        var bytes = Source.Read(_paths);
-        Directory.CreateDirectory(Path.GetDirectoryName(TileMapPath)!);
-        var seq = Journal.Commit([(TileMapPath, p => File.WriteAllBytes(p, bytes))], "load " + Source.Describe(_paths));
-        try { Load(); }
-        catch (Exception e) when (e is InvalidDataException or IOException)
-        {
-            Journal.Undo(1, force: true);
-            throw;
-        }
-        Source.WriteSeedMarker(Journal.Dir, _paths, bytes);
-        return seq;
     }
 
     public string TileMapPath { get; }
@@ -237,7 +202,7 @@ public sealed class TileMapEditor
     /// Runs <see cref="TileMatchSimulator"/> (the port of BOB's Tilemap; whole map, ~1-3 min) on the tile map, or on
     /// <paramref name="map"/> (unsaved edits), and splits the hexes that would get no tile into those in edited hexes
     /// (journaled after <paramref name="sinceSeq"/>, plus <paramref name="extraEdited"/>) and the rest. Climates come from
-    /// the climate map next to the tile map, else the kit's.
+    /// the climate map next to the tile map, else the Terry project's.
     /// </summary>
     public SimulationResult Simulate(HexTileMap? map = null, IEnumerable<(int Col, int Row)>? extraEdited = null, int sinceSeq = 0)
     {
@@ -252,7 +217,7 @@ public sealed class TileMapEditor
     }
 
     /// <summary>Per-pixel climate indices for <paramref name="map"/> (the tile map's size): from the climate map next to
-    /// the tile map, else the kit's. For <see cref="TileMatchSimulator"/> and hole-checked fixes.</summary>
+    /// the tile map, else the Terry project's. For <see cref="TileMatchSimulator"/> and hole-checked fixes.</summary>
     public byte[] Climate(HexTileMap map)
     {
         var own = Path.GetDirectoryName(TileMapPath)!;

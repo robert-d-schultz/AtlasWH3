@@ -38,7 +38,7 @@ and measured on the fixtures:
   heightmap from the installed pack; the step reads the sources, so that round trip is gone too.
 - **use_alt_lf** is the byte after barbarian, which follows the links: v5 tiles have one more byte in front of the
   two, v6+ end with geometry_blend_edge_left/top/right/bottom (+1 byte in v9). Set on the 20 sea tiles (and
-  sea_coastx1_straight).
+  sea_coast\1x1_straight).
 - **tile_mask.dds:** L8, one byte per tile-map point, rows from the south. Each tile on the point (both layers) adds 16
   (land) or 32 (use_alt_lf), nothing when its set is exclude_from_global_mesh (roads, cliffs, coasts); no tile = 64.
 - **Matching:** Atlas3K's `TileMatchSimulator` with two WH3 changes, read off `EDITOR_TILE_MAP::scan_for_tiles`
@@ -508,37 +508,26 @@ Before the first two fixes, about 900 IEE blocks decoded to values in the hundre
 
 - **Output location:** `build-campaign` writes to `%LocalAppData%\AtlasWH3\output\compiled\<map>\` by default, laid out
   like `working_data`: `terrain\campaigns\<map>\…` and `campaign_maps\<map>\…`. A project's output is its
-  `build.output` (default the kit's `working_data`, as BOB).
+  `build.output` (default the same folder).
 - **Step order:** steps run in dependency order, and independent steps run in parallel. IEE's whole build takes about
   5 minutes on a 4-core machine ([`end_to_end.md`](end_to_end.md)).
 
-## Project build: pack and install
+## Project build: pack
 
-`AtlasWH3.Cli build --project <map>.atlaswh3` (or the Build window) runs Validate → Compile → Pack → Install.
-`new-project <file> --map <map> --pack <the mod's pack>` makes a project that merges the build into a copy of that pack
-and installs it. Pack contents:
-- `{compiled}`: the files the steps wrote (the build manifest, `%LocalAppData%\AtlasWH3\cache\builds`), at their
-  paths under the output; with a `path`, only that pack folder. Nothing else in working_data is packed.
-- a file or folder on disk, as before.
+`AtlasWH3.Cli build --project <map>.atlaswh3` (or the Build window) runs Validate → Compile → Pack.
+`new-project <file> --map <map> --pack <the mod's pack>` makes a project that writes into that pack. Pack takes the
+files the steps wrote (the build manifest, `%LocalAppData%\AtlasWH3\cache\builds`), at their paths under the output,
+and nothing else in the output folder. It merges them into the project's `packFile`, keeping the pack's other files,
+or creates the pack when there is none yet. It writes beside the pack and swaps it in, refuses while the game runs,
+and first keeps one copy of the pack (`backupPack`).
 
-A step's own files are cleared out of the base pack: `rivers` owns `models\river_*` (named by entity id, as BOB's, so a
-deleted or re-made river leaves a stale model), `devastation_pieces` owns both folders' `pieces\event_*`. A merge drops
-every base file under those that the build did not write, also when it wrote none, unless the pack leaves the folder
-out (`exclude`).
+A step's own files are cleared out of the pack: `rivers` owns `models\river_*` (named by entity id, as BOB's, so a
+deleted or re-made river leaves a stale model), `devastation_pieces` owns both folders' `pieces\event_*`. The merge
+drops every pack file under those that the build did not write, also when it wrote none.
 
-Old World's two packs, as shipped:
-
-```json
-"packs": [
-  { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign.pack", "output": "{project}\\!cr_oldworld_campaign.pack",
-    "contents": [{ "source": "{compiled}" }],
-    "exclude": ["terrain/campaigns/{map}/pieces/", "terrain/campaigns/{devastated}/"] },
-  { "mode": "merge", "base": "{game}\\!cr_oldworld_campaign_devastate.pack", "output": "{project}\\!cr_oldworld_campaign_devastate.pack",
-    "contents": [{ "source": "{compiled}", "path": "terrain/campaigns/{map}/pieces" },
-                 { "source": "{compiled}", "path": "terrain/campaigns/{devastated}" }] }
-]
-```
-
-The main folder's `event_tiles`, `event_trees` and `event_vfx` then go to the first pack. The shipped
-`!cr_oldworld_campaign.pack` has none of them, an oversight (the user, 2026-10-10): the build fixes it.
+Old World ships its event-area pieces in a second pack (`!cr_oldworld_campaign_devastate.pack`): set it as the
+project's `piecesPackFile`. The map's `pieces\` and everything in the devastated map's folder then go there, the
+rest into `packFile` (the main folder's `event_tiles`, `event_trees` and `event_vfx` too; the shipped
+`!cr_oldworld_campaign.pack` has none of them, an oversight the build fixes). Projects made before this with two
+`packs` get both on load.
 

@@ -175,7 +175,7 @@ public sealed partial class SceneWindow
     private async Task<GroundHeight> GroundAsync()
     {
         var model = _model;
-        var kit = GroundHeight.FromFunc("kit Height map", model.GroundY);
+        var kit = GroundHeight.FromFunc("Terry Height map", model.GroundY);
         if (PropTools.Ground == PropToolsPanel.GroundSource.KitHeight) return kit;
         var (built, _) = await BuiltGroundAsync(model, PropTools.Ground);
         return built ?? kit;
@@ -200,14 +200,14 @@ public sealed partial class SceneWindow
     }
 
     private static string GroundName(GroundHeight g) =>
-        !g.IsBuilt ? "kit Height" : g.Description.StartsWith("scene", StringComparison.Ordinal) ? "scene height" : "full_logic_map";
+        !g.IsBuilt ? "Terry Height" : g.Description.StartsWith("scene", StringComparison.Ordinal) ? "scene height" : "full_logic_map";
 
     private async Task UpdateGroundNote()
     {
         var model = _model;
         if (PropTools.Ground == PropToolsPanel.GroundSource.KitHeight)
         {
-            PropTools.SetGroundNote(model.Terrain is null ? "This project has no Height map." : "Kit Height map: current edits, no height patches (mountains) or tile detail.");
+            PropTools.SetGroundNote(model.Terrain is null ? "This project has no Height map." : "Terry Height map: current edits, no height patches (mountains) or tile detail.");
             return;
         }
         PropTools.SetGroundNote("Loading the built terrain (full_logic_map, height patches) …");
@@ -215,7 +215,7 @@ public sealed partial class SceneWindow
         if (!ReferenceEquals(model, _model)) return;
         PropTools.SetGroundNote(g is not null
             ? "Using " + g.Description + (why.Length > 0 ? "; " + why : "") + ". Rebuild the map after height edits to update it."
-            : why + ". Using the kit Height map instead.");
+            : why + ". Using the Terry Height map instead.");
     }
 
     /// <summary>Bounds min y and the LF-offset share of a model (0, 0 when it cannot be loaded).</summary>

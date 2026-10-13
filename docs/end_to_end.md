@@ -1,5 +1,8 @@
 # IEE end to end
 
+(The run below used the 1.0 project format: a merged copy of the pack, then Install. A project now writes into its
+pack in place; the same project file converts on load.)
+
 The first full run of AtlasWH3 into the game: build IEE (`cr_combi_expanded_map_1`) from the kit, merge the result
 into `!cr_immortal_empires_expanded.pack`, install it, and do the in-game checks of plan §7 (every step's "Left: the
 in-game check", 3.1–3.10, 4.1–4.5 and 6.6) in one pass.
@@ -10,7 +13,7 @@ in-game check", 3.1–3.10, 4.1–4.5 and 6.6) in one pass.
 - map `cr_combi_expanded_map_1`; the devastated project `cr_combi_expanded_map_devastate_1` is found by name;
 - mod pack and merge base: `{game}\!cr_immortal_empires_expanded.pack` (the data folder's, read at build time, so
   edits made to it in RPFM before the run are kept);
-- output `{project}\out`: the kit's `working_data` (BOB's outputs) is not touched;
+- output `{project}\out`: the Assembly Kit's `working_data` (BOB's outputs) is not touched;
 - the merged pack is written to `{project}\!cr_immortal_empires_expanded.pack`, then Install copies it into `data`;
 - Install's own backup is **off** (the user backs the pack up; C: has about 6 GB free, and the backup is 3 GB). Set
   `build.install.backup` to `true` to keep a copy in `%LocalAppData%\AtlasWH3\output\pack_backups`.

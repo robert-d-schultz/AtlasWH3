@@ -6,9 +6,9 @@ using AtlasWH3.Core.Campaign.TileMapCheck;
 using AtlasWH3.Formats.Maps;
 
 /// <summary>
-/// tiles-* commands: validated editing of the kit's campaign tile_map.png (see <see cref="TileMapEditor"/>).
+/// tiles-* commands: validated editing of the Terry project's tile_map.png (see <see cref="TileMapEditor"/>).
 /// Every command prints JSON (the terry MCP server wraps them); errors print {"error": ...} and exit 1.
-/// <c>--tilemap &lt;png&gt;</c> edits another tile map (a copy) instead of the kit's.
+/// <c>--tilemap &lt;png&gt;</c> edits another tile map (a copy) instead of the Terry project's.
 /// </summary>
 static class TileCommands
 {
@@ -165,7 +165,7 @@ static class TileCommands
             ["errors"] = findings.Count(f => f.Severity == TileMapFinding.Error),
             ["warnings"] = findings.Count(f => f.Severity == TileMapFinding.Warning),
             ["findings"] = Findings(findings, true),
-            ["note"] = "validate-tilemap checks the kit inputs around the tile map too",
+            ["note"] = "validate-tilemap checks the Terry project's other maps around the tile map too",
         };
     }
 
@@ -322,7 +322,7 @@ static class TileCommands
                                      climate: verify ? editor.Climate(map) : null).ToList();
         if (region is null)
         {
-            // whole-map problems (layout, climate, kit inputs) come from the full validator
+            // whole-map problems (layout, climate, the Terry project's other maps) come from the full validator
             var report = TileMapValidator.Run(paths, new TileMapCheckOptions { TileMap = editor.TileMapPath }, editor.Database);
             errors.AddRange(report.Findings.Where(f => f.Severity != TileMapFinding.Info && f.AllHexes.Count == 0)
                 .Select(f => new TileError(f.Code, f.Severity, -1, -1, f.Message, TileErrors.AdviceFor(f.Code), null)));

@@ -48,7 +48,6 @@ public static class TileErrors
         "palette.unused_set" => "Use a tile set CA's map uses (its tiles are tested).",
         "pattern.unseen" => "Reshape the coast / river here to a layout CA's map uses (often one hex of sea, coast or river).",
         HoleCode => "Simplify the shapes here: BOB has no tile for this spot (smooth the coast, straighten the river or road).",
-        "layout.mesh_columns" => "Pad the map width to a multiple of 4 hexes, or accept layout.mesh_columns in the build profile.",
         "layout.size" => "The image must be 2W x (2H+1) pixels for a W x H hex grid.",
         "layout.filler" => "Make the filler pixels black (top row of even columns, bottom row of odd columns).",
         "climate.size" or "climate.missing" => "Give the map a climate_map.png the size of the tile map (and climate_map_g.png, 4x).",

@@ -5,10 +5,8 @@ using System.Text.Json;
 namespace AtlasWH3.Core.Build;
 
 /// <summary>
-/// The files the last Compile of each step wrote into a build output, so Pack can take exactly the build's own files
-/// (<see cref="PackContent.CompiledSource"/>). The default output is the kit's working_data, which also holds CAIME's
-/// inputs and BOB's by-products (the devastated folder's full rasters and global_props_devastation_*), none of which
-/// ship. Kept in the app cache, one file per map and output folder; a step that fails keeps its previous entry.
+/// The files the last Compile of each step wrote into a build output, so Pack takes exactly the build's own files. An
+/// output can hold others (a working_data also has CAIME's inputs and BOB's by-products, none of which ship). Kept in the app cache, one file per map and output folder; a step that fails keeps its previous entry.
 /// </summary>
 public sealed class BuildManifest
 {

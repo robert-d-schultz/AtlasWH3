@@ -54,7 +54,7 @@ static class DbCommands
     }
 
     private static PackSet Packs(ProjectPaths paths) =>
-        GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
 
     private static IEnumerable<(string File, PackFile Owner)> TableFiles(PackSet packs, string table)
     {

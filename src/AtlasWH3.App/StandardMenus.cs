@@ -107,7 +107,7 @@ public static class StandardMenus
         else MessageBox.Show($"{Path.GetFileName(path)} is not in this build ({AppContext.BaseDirectory}).", AppInfo.Product);
     }
 
-    private static void OpenFolder(string path)
+    internal static void OpenFolder(string path)
     {
         Directory.CreateDirectory(path);
         Process.Start("explorer.exe", $"\"{path}\"");

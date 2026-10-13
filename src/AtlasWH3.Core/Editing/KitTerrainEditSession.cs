@@ -21,7 +21,7 @@ public readonly record struct WorldRaster(int Width, int Height, double WorldW, 
 
 /// <summary>
 /// One height-brush stroke on a float raster in world units (a composited Height or HeightSea map): Begin → Dab* → End,
-/// with the same cosine falloff as the Terrain painter's <see cref="HeightBrush"/>, plus Set-to-value. Radius in pixels
+/// with the same cosine falloff as <see cref="HeightBrush"/>, plus Set-to-value. Radius in pixels
 /// of the raster it paints.
 /// </summary>
 public sealed class KitHeightBrush

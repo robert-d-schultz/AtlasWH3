@@ -81,7 +81,7 @@ public class CampaignTreeGeneratorTests
         var (map, pack) = Fixtures[0];
         var logic = CompiledFormatTests.Built(map, "full_logic_map.compressed_map");
         if (!Have(map, pack) || !File.Exists(logic)) return;
-        var packs = GameSetup.OpenWithLinked(TestKits.Wh3GameData, [ModPack(pack)]);
+        var packs = GameSetup.OpenWithMods(TestKits.Wh3GameData, [ModPack(pack)]);
         var notes = new List<string>();
         var project = TerryProject.Load(Terry(map));
         var field = new TreeHeightField(CompressedMap.Read(logic), project.WorldWidth!.Value, TreeHeightField.LoadPatches(project, packs, notes));
@@ -106,7 +106,7 @@ public class CampaignTreeGeneratorTests
         var logic = CompiledFormatTests.Built(map, "full_logic_map.compressed_map");
         if (!Have(map, pack) || !File.Exists(logic)) return;
         var project = TerryProject.Load(Terry(map));
-        var packs = GameSetup.OpenWithLinked(TestKits.Wh3GameData, [ModPack(pack)]);
+        var packs = GameSetup.OpenWithMods(TestKits.Wh3GameData, [ModPack(pack)]);
         var field = new TreeHeightField(CompressedMap.Read(logic), project.WorldWidth!.Value, TreeHeightField.LoadPatches(project, packs, []));
         var list = Generate(map, pack, (_, _, x, z) => field.Height(x, z));
         Assert.Equal(File.ReadAllBytes(TreeList(map)), list.ToBytes());
@@ -126,7 +126,7 @@ public class CampaignTreeGeneratorTests
         var project = TerryProject.Load(Terry(map));
         var (treeMap, palette) = TerrainComposite.Indexed(project, "CampaignTree");
         var grid = HexGrid.ForTreeMap(treeMap.Width, treeMap.Height, MapDataBounds.Read(MapData(map)).Width);
-        var db = TreeDatabase.FromPacks(GameSetup.OpenWithLinked(TestKits.Wh3GameData, [ModPack(pack)],
+        var db = TreeDatabase.FromPacks(GameSetup.OpenWithMods(TestKits.Wh3GameData, [ModPack(pack)],
             n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase)));
         return CampaignTreeGenerator.Generate(CampaignTreeGenerator.ReadTreeMap(treeMap, palette!, grid, TreesStep.EmptyIndex), grid, db, height);
     }

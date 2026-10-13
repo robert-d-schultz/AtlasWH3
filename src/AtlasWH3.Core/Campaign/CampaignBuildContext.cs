@@ -40,9 +40,9 @@ public sealed class CampaignBuildContext
     /// one): a step that can do another's work itself does it when that one is not selected.</summary>
     public IReadOnlySet<string>? SelectedSteps { get; init; }
 
-    /// <summary>devastation_pieces step: the devastated project whose pieces go into terrain\campaigns\&lt;it&gt;\pieces
-    /// (its raw_data folder next to the map's). Null: &lt;map without _1&gt;_devastate_1 when that project exists;
-    /// empty: none.</summary>
+    /// <summary>The devastated project whose pieces go into terrain\campaigns\&lt;it&gt;\pieces (its raw_data folder next
+    /// to the map's). Null: the one the db names (<see cref="DevastationPiecesStep.DevastatedFromDb"/>); empty: none.
+    /// The CLI's --devastated sets it.</summary>
     public string? DevastatedMap { get; init; }
 
     /// <summary><see cref="DevastatedMap"/> from a setting: empty = automatic (null), "none" = none ("").</summary>

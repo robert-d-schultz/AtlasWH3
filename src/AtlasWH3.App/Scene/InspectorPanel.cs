@@ -213,7 +213,7 @@ public sealed class InspectorPanel : ScrollViewer
                 Foreground = Label, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
             });
         if (schema is { Count: 0 })
-            panel.Children.Add(new TextBlock { Text = "Fields unknown: this component never appears in the kit.", Foreground = Brushes.Orange, FontSize = 11 });
+            panel.Children.Add(new TextBlock { Text = "Fields unknown: this component never appears in the Assembly Kit.", Foreground = Brushes.Orange, FontSize = 11 });
 
         return new Expander
         {

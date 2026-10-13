@@ -52,7 +52,7 @@ public readonly record struct RegionKind(RegionKindType Type, char Letter = 'a',
 /// <summary>
 /// Redirect targets per <see cref="RegionKind"/> and the embedded-centre check: a redirected settlement battle loads
 /// terrain\battles\&lt;folder&gt;\, and a folder whose tile_list.bin does not embed its centre prefab loads with a hole in
-/// the middle. Folders are read through <paramref name="readGameFile"/> (linked packs, then vanilla).
+/// the middle. Folders are read through <paramref name="readGameFile"/> (mod packs, then vanilla).
 /// </summary>
 public sealed class RedirectCatalog(Func<string, byte[]?> readGameFile)
 {
@@ -105,7 +105,7 @@ public sealed class RedirectCatalog(Func<string, byte[]?> readGameFile)
         var (ok, why) = _embed.GetOrAdd(folder, f =>
         {
             var bytes = readGameFile($"terrain/battles/{f}/tile_list.bin");
-            if (bytes is null) return (false, $"battle map folder '{f}' was not found in the linked or game packs");
+            if (bytes is null) return (false, $"battle map folder '{f}' was not found in the mod or game packs");
             var text = Encoding.Latin1.GetString(bytes);
             return text.Contains("settlement_cities") || text.Contains("settlement_ports") || text.Contains("resource\\")
                 ? (true, "")
@@ -216,7 +216,7 @@ public static class BattlesTable
     public static string MapPath(string folder) => $"terrain\\battles\\{folder}\\";
 
     /// <summary>A row for <paramref name="folder"/>; unique_id is a stable positive FNV-1a hash of the key. Both
-    /// <c>specification</c> and <c>map_path</c> hold terrainattles\&lt;folder&gt;\: custom battles read specification
+    /// <c>specification</c> and <c>map_path</c> hold terrain\battles\&lt;folder&gt;\: custom battles read specification
     /// (most vanilla rows fill only that), the redirect proven in game used map_path.</summary>
     public static string[] Row(string folder, string type, string? key = null, int teamSize = 4)
     {

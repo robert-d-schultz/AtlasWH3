@@ -81,38 +81,18 @@ public class MapCatalogTests
     }
 
     [Fact]
-    public void Link_and_unlink_packs_without_duplicates()
+    public void WithSelection_applies_the_remembered_map()
     {
-        var s = new AppSettings();
-        var pack = Path.Combine(Path.GetTempPath(), "x", "mod.pack");
-        Assert.True(s.LinkPack(pack));
-        Assert.False(s.LinkPack(pack.ToUpperInvariant()));
-        Assert.Equal([Path.GetFullPath(pack)], s.LinkedPacks);
-        Assert.Throws<ArgumentException>(() => s.LinkPack(Path.Combine(Path.GetTempPath(), "mod.zip")));
-        Assert.True(s.UnlinkPack(pack));
-        Assert.Empty(s.LinkedPacks);
-    }
+        var s = new AppSettings { MapName = TestKits.Iee };
+        var paths = MapCatalog.WithSelection(new ProjectPaths(), s);
+        Assert.Equal(TestKits.Iee, paths.MapName);
+        Assert.Empty(paths.ModPacks);
 
-    [Fact]
-    public void WithSelection_applies_remembered_map_and_existing_linked_packs()
-    {
-        var dir = Temp();
-        try
-        {
-            var pack = Path.Combine(dir, "mod.pack");
-            File.WriteAllBytes(pack, []);
-            var s = new AppSettings { MapName = TestKits.Iee, LinkedPacks = [pack, Path.Combine(dir, "gone.pack")] };
-            var paths = MapCatalog.WithSelection(new ProjectPaths(), s);
-            Assert.Equal(TestKits.Iee, paths.MapName);
-            Assert.Equal([pack], paths.ModPacks);
-
-            // a map or packs given on the command line win
-            var cli = new ProjectPaths { MapName = "cli_map", ModPacks = ["cli.pack"] };
-            var kept = MapCatalog.WithSelection(cli, s);
-            Assert.Equal("cli_map", kept.MapName);
-            Assert.Equal(["cli.pack"], kept.ModPacks);
-        }
-        finally { Directory.Delete(dir, true); }
+        // a map given on the command line wins
+        var cli = new ProjectPaths { MapName = "cli_map", ModPacks = ["cli.pack"] };
+        var kept = MapCatalog.WithSelection(cli, s);
+        Assert.Equal("cli_map", kept.MapName);
+        Assert.Equal(["cli.pack"], kept.ModPacks);
     }
 }
 
@@ -136,7 +116,7 @@ public class SourceGuardTests
     [Theory]
     [InlineData(@"C:\Games\Warhammer III\assembly_kit\raw_data\terrain\campaigns\x\x.terry")]
     [InlineData(@"C:\Games\Warhammer III\data_backup\file.dds")]
-    [InlineData(@"C:\Users\me\AppData\Local\AtlasWH3\vanilla")]
+    [InlineData(@"C:\Users\me\AppData\Local\AtlasWH3\output")]
     [InlineData("")]
     public void Allows_kit_output_and_cache(string path)
     {
@@ -150,15 +130,5 @@ public class SourceGuardTests
         var paths = new ProjectPaths { GameDataDir = Data, ModPacks = [@"D:\mods\linked.pack"] };
         Assert.Throws<UnauthorizedAccessException>(() => SourceGuard.EnsureWritable(Path.Combine(Data, "x.txt"), paths));
         SourceGuard.EnsureWritable(paths.AkTerrainDir, paths);
-    }
-
-    [Fact]
-    public void Prepare_refuses_a_cache_inside_the_game_data_folder()
-    {
-        var data = Path.Combine(Path.GetTempPath(), "atlaswh3_guard_" + Guid.NewGuid().ToString("N"), "data");
-        Assert.Throws<UnauthorizedAccessException>(() =>
-            GameSetup.ExtractCompiledMap(data, "any_map", Path.Combine(data, "cache"), []));
-        Assert.Throws<UnauthorizedAccessException>(() => GameSetup.ExtractDbTables(data, Path.Combine(data, "db"), []));
-        Assert.False(Directory.Exists(data));
     }
 }

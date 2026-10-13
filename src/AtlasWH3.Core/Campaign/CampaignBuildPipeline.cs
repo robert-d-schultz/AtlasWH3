@@ -45,6 +45,10 @@ public sealed class CampaignBuildPipeline
     {
         var steps = stepNames is null ? AllSteps.ToList() : stepNames.Select(Find).Distinct().ToList();
         var selected = steps.Select(s => s.Name).ToHashSet();
+        // the devastated map the db names, looked up once for the steps that use it ("" = none)
+        var devastated = ctx.DevastatedMap;
+        if (devastated is null && selected.Overlaps(DevastationPiecesStep.UsersOfTheDevastatedMap))
+            devastated = DevastationPiecesStep.DevastatedFromDb(ctx.Paths) ?? "";
         var outcomes = new ConcurrentDictionary<string, StepOutcome>();
         var tasks = new Dictionary<string, Task>();
 
@@ -82,7 +86,7 @@ public sealed class CampaignBuildPipeline
                     AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
                     PatchMask = ctx.PatchMask, CampaignMapName = ctx.CampaignMapName, HeightMapBlocks = ctx.HeightMapBlocks,
                     HeightMapReference = ctx.HeightMapReference, SelectedSteps = selected,
-                    DevastatedMap = ctx.DevastatedMap, LookupLastRegions = ctx.LookupLastRegions,
+                    DevastatedMap = devastated, LookupLastRegions = ctx.LookupLastRegions,
                 };
                 var problems = step.CheckInputs(stepCtx);
                 if (problems.Count > 0)

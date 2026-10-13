@@ -269,10 +269,10 @@ static class Gp27Commands
     }
 
     /// <summary>gp27-model &lt;model path&gt;... [--pack p]: the box and flags the global_props builder derives (game packs plus
-    /// the linked mod packs), and the RMV2's per-LOD mesh header bounds.</summary>
+    /// the mod packs), and the RMV2's per-LOD mesh header bounds.</summary>
     private static int ModelBox(ProjectPaths paths, string[] models)
     {
-        var packs = AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks);
+        var packs = AtlasWH3.Core.GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
         var b = new AtlasWH3.Core.Campaign.Props.Wh3GlobalPropsBuilder(packs, new AtlasWH3.Formats.Terry.PrefabLibrary(".", "campaign"),
             new([], 0), "", (0, 0, 1, 1), (_, _) => "");   // model boxes only: no cultures, no buckets
         foreach (var m in models)
@@ -299,11 +299,11 @@ static class Gp27Commands
         return 0;
     }
 
-    /// <summary>gp27-cat &lt;pack path&gt; [--pack p] [--out file]: a file from the game and linked packs, as UTF-8 text (or
+    /// <summary>gp27-cat &lt;pack path&gt; [--pack p] [--out file]: a file from the game and mod packs, as UTF-8 text (or
     /// saved as is).</summary>
     private static int Cat(ProjectPaths paths, string[] a)
     {
-        var packs = AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks);
+        var packs = AtlasWH3.Core.GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
         var bytes = packs.TryRead(a[0].ToLowerInvariant());
         if (bytes is not null && a.SkipWhile(x => x != "--out").Skip(1).FirstOrDefault() is { } outFile)
         {
@@ -404,7 +404,7 @@ static class Gp27Commands
         }
         Console.WriteLine($"common bucket bodies that differ: {bodies:N0} ({orderOnly:N0} only in record order, {other:N0} otherwise)");
         foreach (var e in orderEx) Console.WriteLine($"      {e}");
-        var nativeMountains = Wh3GlobalPropsBuilder.ReadCultures(AtlasWH3.Core.GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks))
+        var nativeMountains = Wh3GlobalPropsBuilder.ReadCultures(AtlasWH3.Core.GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks))
             .FirstMountainBucket;
         var bobMountains = GlobalPropsParity.BobMountainBucket(paths.GameDataDir);
         Console.WriteLine($"one-prop buckets from: native {nativeMountains} (the packs' prefab_types), BOB {bobMountains} (vanilla's)");

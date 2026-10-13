@@ -27,7 +27,7 @@ public sealed partial class CampaignTileWindow : Window
     private sealed record Stroke(JsonNode Op, Dictionary<(int Col, int Row), uint[]> Old);
 
     private ProjectPaths _paths;
-    private string? _tileMapPath;
+    private readonly string? _tileMapPath;
     private TileMapEditor? _editor;
     private CampaignTileDatabase? _db;
     private HexTileMap? _disk;
@@ -91,7 +91,6 @@ public sealed partial class CampaignTileWindow : Window
         file.Items.Add(Gesture(Item("_Save", (_, _) => Save(false)), "Ctrl+S"));
         file.Items.Add(Item("Save _anyway (ignore issues)", (_, _) => Save(true)));
         file.Items.Add(Item("_Reload from disk (drop unsaved edits)", async (_, _) => await LoadAsync()));
-        file.Items.Add(Item("Tile map s_ource…", async (_, _) => await ChooseSourceAsync()));
         file.Items.Add(new Separator());
         file.Items.Add(Item("_Close", (_, _) => Close()));
         var edit = new MenuItem { Header = "_Edit" };
@@ -184,7 +183,6 @@ public sealed partial class CampaignTileWindow : Window
         try
         {
             var editor = _editor ?? new TileMapEditor(_paths, _tileMapPath);
-            if (!await SeedAsync(editor)) { _status.Text = $"Not loaded: {editor.TileMapPath}"; return; }
             var (disk, db) = await Task.Run(() => (editor.Load(), _db ?? editor.Database));
             _editor = editor;
             _db = db;
@@ -199,8 +197,7 @@ public sealed partial class CampaignTileWindow : Window
             FillPalette();
             RefreshHistory();
             RefreshIssues();
-            _status.Text = $"{editor.TileMapPath}   {disk.Width} x {disk.Height} hexes" +
-                           (editor.Source.SeparateTarget(_paths) ? $"   (source {editor.Source.Describe(_paths)})" : "");
+            _status.Text = $"{editor.TileMapPath}   {disk.Width} x {disk.Height} hexes";
             if (_startInErrorMode) { _startInErrorMode = false; _tabs.SelectedIndex = 1; }
             else if (_errorMode) FindErrors();
         }
@@ -209,40 +206,6 @@ public sealed partial class CampaignTileWindow : Window
             _status.Text = "Cannot load: " + ex.Message;
             MessageBox.Show(this, ex.Message, Title);
         }
-    }
-
-    /// <summary>A pack (or a file saved elsewhere) is copied to the save target first, as one undoable journal step;
-    /// asks before replacing a target that differs from the source.</summary>
-    private async Task<bool> SeedAsync(TileMapEditor editor)
-    {
-        if (await Task.Run(() => editor.NeedsSeed(out var r) ? r : null) is not { } reason) return true;
-        var exists = File.Exists(editor.TileMapPath);
-        var ask = exists
-            ? $"{reason}.\n\nCopy the source over it? (Undo last saved batch restores it.)\n\nNo = edit the existing file as it is."
-            : $"{reason}.\n\nCopy {editor.Source.Describe(_paths)} there to start editing? The source is only read.";
-        var answer = MessageBox.Show(this, ask, Title, exists ? MessageBoxButton.YesNoCancel : MessageBoxButton.OKCancel);
-        if (answer is MessageBoxResult.Cancel) return false;
-        if (answer is MessageBoxResult.No) return true;
-        await Task.Run(editor.SeedFromSource);
-        return true;
-    }
-
-    private async Task ChooseSourceAsync()
-    {
-        var dlg = new TileMapSourceDialog(_editor?.Source ?? _paths.TileMap, _paths) { Owner = this };
-        if (dlg.ShowDialog() != true || dlg.Result is null) return;
-        if (_strokes.Count > 0 && MessageBox.Show(this, "Drop the unsaved tile edits and switch the tile map source?", Title, MessageBoxButton.OKCancel) != MessageBoxResult.OK) return;
-        _strokes.Clear();
-        _paths = _paths with { TileMap = dlg.Result };
-        _tileMapPath = null;
-        _editor = null;
-        if (dlg.MakeDefault)
-        {
-            AppSettings.Current.TileMap = dlg.Result.IsKit ? null : dlg.Result;
-            try { AppSettings.Current.Save(); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ErrorDialog.Show(this, "Could not save the settings.", e); }
-        }
-        await LoadAsync();
     }
 
     private void FillPalette()

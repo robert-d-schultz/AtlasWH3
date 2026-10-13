@@ -32,9 +32,7 @@ public sealed class TileListStep : ICampaignBuildStep
                 catch (FileNotFoundException e) { missing.Add(e.Message); }
             }
         }
-        string tileMap;
-        try { tileMap = TileMapInput(ctx, out _); }
-        catch (Exception e) when (e is IOException or InvalidDataException) { missing.Add($"tile map ({ctx.Paths.TileMap.Describe(ctx.Paths)}): {e.Message}"); return missing; }
+        var tileMap = ctx.Paths.TileMapPng;
         if (!File.Exists(tileMap)) missing.Add($"missing {tileMap}");
         if (missing.Count > 0) return missing;
         missing.AddRange(TileMapValidator.Run(ctx.Paths, new TileMapCheckOptions { TileMap = tileMap, TileMapOnly = true }).Findings
@@ -43,19 +41,12 @@ public sealed class TileListStep : ICampaignBuildStep
         return missing;
     }
 
-    /// <summary>The tile_map.png to build from (<see cref="ProjectPaths.TileMap"/>): a pack entry is extracted to
-    /// &lt;target&gt;\_atlaswh3_inputs\&lt;map&gt; first.</summary>
-    private static string TileMapInput(CampaignBuildContext ctx, out string note) =>
-        ctx.Paths.TileMap.BuildInput(ctx.Paths, Path.Combine(ctx.TargetRoot, "_atlaswh3_inputs", ctx.MapName), out note);
-
     public StepResult Run(CampaignBuildContext ctx)
     {
         var sw = Stopwatch.StartNew();
         var notes = new List<string>();
         var db = TileMapValidator.LoadDatabase(ctx.Paths);
-        var tileMapPath = TileMapInput(ctx, out var source);
-        ctx.Log(source);
-        notes.Add(source);
+        var tileMapPath = ctx.Paths.TileMapPng;
         var map = HexTileMap.Read(tileMapPath);
         ctx.Log("placing tiles...");
         var sim = new TileMatchSimulator(db) { Log = ctx.Log, Cancel = ctx.Cancel }

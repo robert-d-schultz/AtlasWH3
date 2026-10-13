@@ -63,7 +63,7 @@ public sealed class CameraHeightmapStep : ICampaignBuildStep
         var worldWidth = project.WorldWidth ?? MapDataBounds.Read(Formats.Esf.EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
 
         ctx.Log("height patches (packs)...");
-        var packs = GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var patches = TreeHeightField.LoadPatches(project, packs, notes, camera: true);
         var field = new TreeHeightField(CompressedMap.Read(logicPath), worldWidth, patches);
         ctx.Cancel.ThrowIfCancellationRequested();

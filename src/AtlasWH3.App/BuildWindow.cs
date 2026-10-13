@@ -14,7 +14,7 @@ namespace AtlasWH3.App;
 
 /// <summary>
 /// Builds a map project (<c>.atlaswh3</c>): Build all runs every ticked segment (Validate, custom steps, Compile's native
-/// steps, Pack, Install) in order; Run selected runs only the highlighted row; Pack only re-packs the last output.
+/// steps, Pack) in order; Run selected runs only the highlighted row; Pack only re-packs the last output.
 /// Status and logs update live; Cancel stops at the next check. The ticks are the project's build profile (saved
 /// with it); the Profile tab edits the rest. Same <see cref="BuildRunner"/> as the CLI <c>build</c> command.
 /// </summary>
@@ -207,8 +207,9 @@ public sealed class BuildWindow : Window
         panel.Children.Add(new TextBlock { Text = "No project open", FontSize = 20, Margin = new Thickness(0, 12, 0, 6), HorizontalAlignment = HorizontalAlignment.Center });
         panel.Children.Add(new TextBlock
         {
-            Text = $"A project (.atlaswh3) says which map and assembly kit to build and how: compile steps, custom steps, packing and installing. " +
-                   $"Create one for {_defaults.MapName} or open an existing one.",
+            Text = $"The map itself is its Terry project. A build project (.atlaswh3) holds what Terry doesn't: the mod pack the " +
+                   $"build writes into, extra steps such as CAIME, and which steps run. " +
+                   $"Create one for {_defaults.MapName}, or open one you already have.",
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), TextAlignment = TextAlignment.Center,
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
@@ -254,7 +255,19 @@ public sealed class BuildWindow : Window
             Title = "New project: where to save it (the default pack goes next to it)",
         };
         if (dlg.ShowDialog(this) != true) return;
-        var project = BuildProject.CreateDefault(_defaults.MapName, _defaults.AssemblyKitRoot, _defaults.ModPacks);
+        // the map's mod pack: the build writes its compiled files into it
+        var modPacks = _defaults.ModPacks;
+        if (modPacks.Count == 0)
+        {
+            var pack = new OpenFileDialog
+            {
+                Filter = "Pack files (*.pack)|*.pack",
+                Title = $"The pack {_defaults.MapName} ships in, which the build writes into (Cancel: a new pack beside the project)",
+                InitialDirectory = Directory.Exists(_defaults.GameDataDir) ? _defaults.GameDataDir : "",
+            };
+            if (pack.ShowDialog(this) == true) modPacks = [pack.FileName];
+        }
+        var project = BuildProject.CreateDefault(_defaults.MapName, modPacks);
         project.Save(dlg.FileName);
         OpenProject(dlg.FileName);
     }
@@ -320,6 +333,7 @@ public sealed class BuildWindow : Window
         Title = AppInfo.Title($"Build — {name}{(_dirty ? " *" : "")}");
         _projectLabel.Text = _project is null ? "No project" : $"{name}  ({_project.Map})";
         _save.IsEnabled = _project is not null;
+        _buildAll.IsEnabled = _runSelected.IsEnabled = _packOnly.IsEnabled = _project is not null && !_running;
     }
 
     private static void TrySaveSettings()
@@ -348,15 +362,11 @@ public sealed class BuildWindow : Window
                    on => SetStep(step.Name, on)).Step = step.Name;
         compile.Item.IsExpanded = true;
         AddCustom(CustomStepStage.AfterCompile);
-        var packTargets = profile.Packs.Where(x => x.Output.Length > 0)
-            .Select(x => $"{x.Mode} pack → {Path.GetFileName(p.Expand(x.Output, Paths()))}{(x.Enabled ? "" : " (off)")}").ToList();
-        var packTarget = packTargets.Count > 0 ? string.Join("\n", packTargets) : "No pack output set yet (Project settings → Pack).";
+        var packTarget = p.PackOutput(Paths()) is { } target ? $"Writes into {target}." : "No pack set yet (Project settings > Pack).";
+        if (p.PiecesPackOutput(Paths()) is { } pieces) packTarget += $"\nThe event-area pieces go into {pieces}.";
         AddRow(_tree.Items, "pack", BuildSegment.Pack, "Pack", InfoCard.Make("Pack", $"{InfoCards.Get("build.pack").Text}\n{packTarget}"),
-               profile.Packs.Any(x => x.Enabled), on => { foreach (var x in profile.Packs) x.Enabled = on; MarkDirty(); });
+               profile.WritePack, on => { profile.WritePack = on; MarkDirty(); });
         AddCustom(CustomStepStage.AfterPack);
-        AddRow(_tree.Items, "install", BuildSegment.Install, "Install", InfoCard.For("build.install"), profile.Install.Enabled,
-               on => { profile.Install.Enabled = on; MarkDirty(); });
-        AddCustom(CustomStepStage.AfterInstall);
 
         void AddCustom(CustomStepStage stage)
         {
@@ -432,7 +442,6 @@ public sealed class BuildWindow : Window
         if (On("compile") && steps.Count > 0) segments.Add(BuildSegment.Compile);
         if (custom.Count > 0) segments.Add(BuildSegment.Custom);
         if (On("pack")) segments.Add(BuildSegment.Pack);
-        if (On("install")) segments.Add(BuildSegment.Install);
         return new BuildRunner.Request { Segments = segments, Steps = steps, CustomSteps = custom };
     }
 
@@ -520,7 +529,7 @@ public sealed class BuildWindow : Window
 
     private void SetRunningUi(bool running)
     {
-        _buildAll.IsEnabled = _runSelected.IsEnabled = _packOnly.IsEnabled = !running;
+        _buildAll.IsEnabled = _runSelected.IsEnabled = _packOnly.IsEnabled = !running && _project is not null;
         _cancel.IsEnabled = running;
         foreach (var r in _rows.Values) r.Check.IsEnabled = !running;   // the tree stays enabled (selection, scrolling)
         _profileHost.IsEnabled = !running;

@@ -25,7 +25,7 @@ static class NormalCommands
         if (a.Contains("--patches"))
         {
             var notes = new List<string>();
-            var packs = GameSetup.OpenWithLinked(paths.GameDataDir, paths.ModPacks);
+            var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
             var patches = AtlasWH3.Core.Campaign.Trees.TreeHeightField.LoadPatches(project, packs, notes, a.Contains("--camera"));
             notes.ForEach(Console.WriteLine);
             // pixel centres: x = (px + 0.5) · ww / W, z = (H − py − 0.5) · ww / W · 1.15476 (row 0 north); --corner: no 0.5
