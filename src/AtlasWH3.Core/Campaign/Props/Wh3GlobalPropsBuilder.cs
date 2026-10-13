@@ -115,23 +115,27 @@ public sealed class Wh3GlobalPropsBuilder
     /// <summary>Optional trace: one line per placed object (kind, entity id, identity, x, z, box, cell, region).</summary>
     public Action<string>? Trace { get; init; }
 
-    /// <param name="cultures">prefab_types: culture key → value.</param>
+    /// <param name="prefabTypes">prefab_types (<see cref="ReadCultures"/>): the cultures' values and the mountain bodies'
+    /// first bucket.</param>
     /// <param name="root">The quadtree's root rectangle (<see cref="HexRegionLookup.QuadRoot"/>).</param>
-    /// <param name="prefabTypeRows">prefab_types' row count (<see cref="PrefabTypes.Rows"/>), for <see cref="MountainBucket"/>.</param>
-    public Wh3GlobalPropsBuilder(PackSet packs, PrefabLibrary prefabs, IReadOnlyDictionary<string, int> cultures, string mapName,
-                                 (float X0, float Z0, float X1, float Z1) root, Func<float, float, string> regionAt, int prefabTypeRows = 0)
+    public Wh3GlobalPropsBuilder(PackSet packs, PrefabLibrary prefabs, PrefabTypes prefabTypes, string mapName,
+                                 (float X0, float Z0, float X1, float Z1) root, Func<float, float, string> regionAt)
     {
         _packs = packs;
         _prefabs = prefabs;
-        _cultures = cultures;
-        _mountainBucket = MountainBucket(cultures, prefabTypeRows);
+        _cultures = prefabTypes.Cultures;
+        _mountainBucket = prefabTypes.FirstMountainBucket;
         _mapName = mapName;
         _root = root;
         _regionAt = regionAt;
     }
 
     /// <summary>prefab_types as the game reads it: culture → value, and the table's row count.</summary>
-    public sealed record PrefabTypes(Dictionary<string, int> Cultures, int Rows);
+    public sealed record PrefabTypes(Dictionary<string, int> Cultures, int Rows)
+    {
+        /// <summary>The first mountain body's bucket (<see cref="MountainBucket"/>).</summary>
+        public int FirstMountainBucket => MountainBucket(Cultures, Rows);
+    }
 
     /// <summary>prefab_types_tables of the map's mod packs and the vanilla db, a higher-priority pack winning a key
     /// (vanilla: 40 rows, values 0-38; IEE adds 23 rows and cultures, values 39-61).</summary>

@@ -37,7 +37,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var root = (b.MinX - margin, b.MinY - margin, b.MaxX + margin, b.MaxY + margin);
         var prefabTypes = Wh3GlobalPropsBuilder.ReadCultures(packs);
         var builder = new Wh3GlobalPropsBuilder(packs, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            prefabTypes.Cultures, ctx.MapName, root, (x, z) => lookup.RegionAt(x, z) ?? NoRegion, prefabTypes.Rows)
+            prefabTypes, ctx.MapName, root, (x, z) => lookup.RegionAt(x, z) ?? NoRegion)
         {
             Trace = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
         };

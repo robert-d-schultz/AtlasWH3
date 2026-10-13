@@ -12,6 +12,8 @@ namespace AtlasWH3.Tests;
 public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const string OldWorld = "cr_oldworld_map_1";
+    /// <summary>Vanilla prefab_types' row count: mountain bodies from bucket 640.</summary>
+    private const int VanillaPrefabTypeRows = 40;
 
     [Fact]
     public void Bmd27_RoundTripsEveryBody()
@@ -110,7 +112,7 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
                 </layer>
                 """);
             var cultures = new Dictionary<string, int> { ["wh_main_emp_empire"] = 11, ["wh3_main_ksl_kislev"] = 24, ["wh3_main_pro_ksl_kislev"] = 24 };
-            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), cultures, "m", (0, 0, 100, 100), (_, _) => "r");
+            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new(cultures, VanillaPrefabTypeRows), "m", (0, 0, 100, 100), (_, _) => "r");
             builder.AddLayer(layer);
             var props = builder.BuildProps().ToDictionary(e => e.Name[(e.Name.LastIndexOf('/') + 1)..], e => Bmd27Body.Parse(e.Body));
             var sound = builder.BuildSound();
@@ -156,7 +158,7 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
                     """);
                 return path;
             }).ToList();
-            Wh3GlobalPropsBuilder Builder() => new(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new Dictionary<string, int>(), "m", (0, 0, 100, 100), (_, _) => "r");
+            Wh3GlobalPropsBuilder Builder() => new(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new([], VanillaPrefabTypeRows), "m", (0, 0, 100, 100), (_, _) => "r");
             var one = Builder();
             foreach (var l in layers) one.AddLayer(l);
             var ahead = Builder();
@@ -244,7 +246,7 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
                 </layer>
                 """);
             var cultures = new Dictionary<string, int> { ["wh_main_emp_empire"] = 11 };
-            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), cultures, "m", (0, 0, 100, 100), (_, _) => "r");
+            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new(cultures, VanillaPrefabTypeRows), "m", (0, 0, 100, 100), (_, _) => "r");
             builder.AddLayer(layer);
             var files = Assert.Single(builder.BuildPieces((x, _) => x < 50 ? 0 : -1, 1)).ToDictionary(f => f.Stem);
             Assert.Equal(["bmd_objects_sound", "bmd_objects_sound_devastation_chaos", "objects", "objects_devastation_chaos"], files.Keys.Order());
@@ -315,9 +317,15 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
             var ctx = new CampaignBuildContext(TestKits.Paths(TestKits.Iee, TestKits.IeePack), target);
             Assert.Empty(new GlobalPropsStep().CheckInputs(ctx));
             new GlobalPropsStep().Run(ctx);
+            var mountainBucket = Wh3GlobalPropsBuilder.ReadCultures(GameSetup.OpenWithLinked(ctx.Paths.GameDataDir, ctx.Paths.ModPacks))
+                .FirstMountainBucket;
+            Assert.Equal(1008, mountainBucket);
+            var bobMountainBucket = GlobalPropsParity.BobMountainBucket(ctx.Paths.GameDataDir);
+            Assert.Equal(640, bobMountainBucket);
             foreach (var (file, share) in new[] { ("global_props.bin", 0.85), ("global_props_sound.bin", 0.995) })
             {
-                var parity = GlobalPropsParity.Compare(GlobalPropsParity.Load(ctx.OutFile(file)), GlobalPropsParity.Load(Path.Combine(bobDir, file)));
+                var parity = GlobalPropsParity.Compare(GlobalPropsParity.Load(ctx.OutFile(file)), mountainBucket,
+                                                       GlobalPropsParity.Load(Path.Combine(bobDir, file)), bobMountainBucket);
                 output.WriteLine($"{file}: {parity.Share:P2} ({parity.Same} same, {parity.Differ} differ)");
                 Assert.True(parity.Share > share, $"{file}: {parity.Same} same, {parity.Differ} differ: {string.Join("; ", parity.Examples)}");
             }

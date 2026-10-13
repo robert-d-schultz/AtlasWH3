@@ -173,9 +173,8 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             return null;
         }
         var packSet = packs();
-        var prefabTypes = Wh3GlobalPropsBuilder.ReadCultures(packSet);
         var builder = new Wh3GlobalPropsBuilder(packSet, PrefabLibrary.ForKit(ctx.Paths.AssemblyKitRoot, "campaign"),
-            prefabTypes.Cultures, mapName, (0, 0, 0, 0), (_, _) => "", prefabTypes.Rows);
+            Wh3GlobalPropsBuilder.ReadCultures(packSet), mapName, (0, 0, 0, 0), (_, _) => "");
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{mapName}: objects of {layers.Count} exported layers...");
         builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);
