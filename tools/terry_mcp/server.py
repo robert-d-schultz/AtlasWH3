@@ -62,6 +62,8 @@ PROJECT = os.environ.get("ATLASWH3_ROOT") or os.path.dirname(os.path.dirname(os.
 CLI_PROJECT = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "AtlasWH3.Cli.csproj")
 CLI_EXE = os.path.join(PROJECT, "src", "AtlasWH3.Cli", "bin", "Release", "net10.0", "AtlasWH3.Cli.exe")
 KIT = os.environ.get("ATLASWH3_AK") or r"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III\assembly_kit"
+# the CLI's map when --map is not given (MapCatalog.DefaultMap), for the tools that read the disk themselves
+DEFAULT_MAP = "wh3_main_combi_map_1"
 
 mcp = FastMCP("terry")
 
@@ -220,7 +222,8 @@ def parity_check(built_dir: str, reference_dir: str, mask_junk: bool = True, onl
 @mcp.tool()
 def list_outputs(map_name: str | None = None, out_dir: str | None = None, to_working_data: bool = False) -> dict:
     """List the files currently in a build target for a map, with sizes and modification times."""
-    root = os.path.join(KIT, "working_data") if to_working_data else (
+    map_name = map_name or DEFAULT_MAP
+    root =os.path.join(KIT, "working_data") if to_working_data else (
         out_dir or os.path.join(PROJECT, "output", "compiled", map_name))
     files = []
     for sub in (os.path.join("terrain", "campaigns", map_name), os.path.join("campaign_maps", map_name)):
