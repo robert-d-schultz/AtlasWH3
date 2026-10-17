@@ -244,10 +244,12 @@ public sealed class BuildRunner
     });
 
     /// <summary>The event-area pieces: the map's pieces\ and everything in the devastated map's folder (the compiled
-    /// output's other terrain\campaigns folder).</summary>
+    /// output's other terrain\campaigns folder, and its campaign_maps folder, which the devastation step owns).</summary>
     private bool IsPieces(string rel)
     {
         var parts = rel.Replace('\\', '/').Split('/');
+        if (parts.Length >= 3 && parts[0].Equals("campaign_maps", StringComparison.OrdinalIgnoreCase))
+            return !parts[1].Equals(_project.Map, StringComparison.OrdinalIgnoreCase);
         if (parts.Length < 4 || !parts[0].Equals("terrain", StringComparison.OrdinalIgnoreCase)
             || !parts[1].Equals("campaigns", StringComparison.OrdinalIgnoreCase)) return false;
         return !parts[2].Equals(_project.Map, StringComparison.OrdinalIgnoreCase) || parts[3].Equals("pieces", StringComparison.OrdinalIgnoreCase);

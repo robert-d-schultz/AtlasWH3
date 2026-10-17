@@ -119,6 +119,9 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
             notes.AddRange(devastatedNotes);
             written.AddRange(devastatedWritten);
             owns.Add(Path.Combine(outDir!, "pieces", "event_"));
+            // the devastated map ships no campaign_maps folder: what a pack has there (BOB's trees.campaign_tree_list,
+            // which the game doesn't read) is left over
+            owns.Add(Path.Combine(ctx.TargetRoot, "campaign_maps", devastated) + Path.DirectorySeparatorChar);
             if (mainObjects is not null && devastatedObjects is not null && pieceAt is not null)
             {
                 var lines = EventVfx(devastatedObjects.PieceVfx(pieceAt), mainObjects.MapWideVfx());

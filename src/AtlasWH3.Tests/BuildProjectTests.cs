@@ -155,7 +155,8 @@ public class BuildProjectTests : IDisposable
         manifest.Set("heightmaps", [Path.Combine(output, @"terrain\campaigns\m\a.bin"), Path.Combine(output, @"campaign_maps\m\x.bin")]);
         manifest.Set("devastation_pieces", [Path.Combine(output, @"terrain\campaigns\m\event_tiles"), Path.Combine(output, @"terrain\campaigns\m\pieces"),
                                             Path.Combine(output, @"terrain\campaigns\m_devastate_1")],
-                     [Path.Combine(output, @"terrain\campaigns\m\pieces\event_"), Path.Combine(output, @"terrain\campaigns\m_devastate_1\pieces\event_")]);
+                     [Path.Combine(output, @"terrain\campaigns\m\pieces\event_"), Path.Combine(output, @"terrain\campaigns\m_devastate_1\pieces\event_"),
+                      Path.Combine(output, @"campaign_maps\m_devastate_1") + @"\"]);
         manifest.Save(manifestFile);
 
         // the main pack still has an old piece: it is not the main pack's to drop
@@ -166,6 +167,7 @@ public class BuildProjectTests : IDisposable
         PackBuilder.New(main, PackBuilder.FromFolder(src));
         var src2 = Path.Combine(_dir, "src2");
         Write(src2, "terrain/campaigns/m_devastate_1/pieces/event_9/mask", "a deleted event area");
+        Write(src2, "campaign_maps/m_devastate_1/display/trees/trees.campaign_tree_list", "BOB's, left over");
         var piecesPack = Path.Combine(_dir, "devastate.pack");
         PackBuilder.New(piecesPack, PackBuilder.FromFolder(src2));
 
