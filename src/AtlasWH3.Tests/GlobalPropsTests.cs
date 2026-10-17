@@ -287,6 +287,73 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
         finally { dir.Delete(true); }
     }
 
+    /// <summary>A prefab's own typed groups type its entities, as CA's devastation prefabs (art\prefabs\campaign\
+    /// devastation) hold their chaos / nagash variants: placed from an untyped layer, each variant still goes into its
+    /// type's objects file, and the prefab's untyped entities into objects.</summary>
+    [Fact]
+    public void Builder_Pieces_TypeFromGroupsInsideAPrefab()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "dvst_test.terry"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <project version="27" id="1e36f490c3e7df0">
+                  <pc type="QTU::ProjectPrefab"><data database="campaign" is_skybox="0"/></pc>
+                  <pc type="QTU::Scene"><data version="41">
+                    <entity id="1000000000000f1" name="Default"><ECFileLayer export="true" bmd_export_type=""/></entity>
+                  </data></pc>
+                  <pc type="QTU::Terrain"/>
+                </project>
+                """);
+            File.WriteAllText(Path.Combine(dir.FullName, "dvst_test.1000000000000f1.layer"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <layer version="41">
+                  <entities>
+                    <entity id="1000000000000a1">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/rim.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="0 0 0" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a2">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/chaos.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="1 0 0" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000a3">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/nagash.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="1 0 0" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000b1" name="devastation_chaos"><ECLayer export="true" bmd_export_type="devastation_chaos"/></entity>
+                    <entity id="1000000000000b2" name="devastation_nagash"><ECLayer export="true" bmd_export_type="devastation_nagash"/></entity>
+                  </entities>
+                  <associations><Logical>
+                    <from id="1000000000000b1"><to id="1000000000000a2"/></from>
+                    <from id="1000000000000b2"><to id="1000000000000a3"/></from>
+                  </Logical></associations>
+                </layer>
+                """);
+            var layer = Path.Combine(dir.FullName, "a.layer");
+            File.WriteAllText(layer, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <layer version="41">
+                  <entities>
+                    <entity id="1000000000000c1">
+                      <ECPrefab key="dvst_test" use_culture_mask="true" valid_ids="1"/>
+                      <ECTransform position="10 0 10" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                  </entities>
+                </layer>
+                """);
+            var builder = new Wh3GlobalPropsBuilder(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"), new([], VanillaPrefabTypeRows), "m", (0, 0, 100, 100), (_, _) => "r");
+            builder.AddLayer(layer);
+            var files = Assert.Single(builder.BuildPieces((x, _) => x < 50 ? 0 : -1, 1)).ToDictionary(f => f.Stem);
+
+            Assert.Equal(["rigidmodels/rim.rigid_model_v2"], Bmd27Body.Parse(files["objects"].Bin).PropPaths);
+            Assert.Equal(["rigidmodels/chaos.rigid_model_v2"], Bmd27Body.Parse(files["objects_devastation_chaos"].Bin).PropPaths);
+            Assert.Equal(["rigidmodels/nagash.rigid_model_v2"], Bmd27Body.Parse(files["objects_devastation_nagash"].Bin).PropPaths);
+        }
+        finally { dir.Delete(true); }
+    }
+
     /// <summary>The .culture sections round-trip, empty ones left out.</summary>
     [Fact]
     public void PieceCulture_RoundTrips()
