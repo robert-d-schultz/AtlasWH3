@@ -286,7 +286,7 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 | # | Step | Writes | Basis | Est. |
 |---|---|---|---|---|
 | 3.1 | `heightmaps` | `full_logic_map.compressed_map`, `full_height_map.dds` (BC6H, BCnEncoder.Net if its BC6H is good enough, else DirectXTex), `shroud_heights.dds` | survey: logic map rebuilt byte-identical with 3 rule changes; shroud is a flipped copy | 3–5 d |
-| 3.2 | `trees` | `trees.campaign_tree_list` v4 | 3K generator, height from `full_logic_map`, WH3 tree tables, 256-variant check (`tree_variants.py`) | 2–4 d |
+| 3.2 | `trees` | `trees.campaign_tree_list` v4 | 3K generator, height from `full_logic_map`, WH3 tree tables (no 256-variant check: the game no longer wraps past 256 variants, per the user 2026-10-16; Old World draws its 261 types correctly) | 2–4 d |
 | 3.3 | `tile_list` | `tile_list.bin` v2, `tile_mask.dds` | 3K tile matching on the WH3 tile DB; verify against the fixtures. BOB takes about 5 min for this. Atlas3K's tile-map editor and validator come with it. | 1–2 w |
 | 3.4 | `global_map` (Global Tilemap) | 8-bit `global_blend.dds` (255 → 0), per-map `texture_arrays.xml` (from the asset db), subset `tile_list.bin` | survey | 1–2 d |
 | 3.5 | `masks` | `colour_overlay`, `lf_sea_colour` (BC1), `corruption_mask` (R8), `snow_mask` (BC4, with the stretch to whole blocks), `event_area_mask`; `patch_mask` comes with 3.3 (Tilemap writes it); `lf_normal` (DXT5nm, NVTT) belongs to Campaign Heightmap (3.1) | TIF → DDS; mips as BOB writes them | ~1 w |
