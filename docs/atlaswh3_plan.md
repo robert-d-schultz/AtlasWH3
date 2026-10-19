@@ -300,6 +300,8 @@ Phase 2 timing report: BOB time saved compared with cost to port.
 byte-identical to BOB's on IEE and Old World; `full_height_map.dds` uses AtlasWH3's own BC6H encoder (neither
 BCnEncoder.NET's nor DirectXTex's was usable), with half BOB's RMS error on both maps. Left: the in-game check.
 Numbers in `docs/native_campaign_build.md`.
+Since 2026-10-18 `shroud_heights.dds` is filled from the heights and height patches (Terry's Fill From Terrain,
+`ShroudHeights`) instead of copied from the HeightShroud layers.
 
 **3.2 status (2026-10-08):** `TreesStep` is in the pipeline. Old World's list is byte-identical to BOB's. On IEE every
 tree id, position and rotation is identical, and 93.8% of heights are bit-exact (99.8% within 1e-3). The rest are ulps

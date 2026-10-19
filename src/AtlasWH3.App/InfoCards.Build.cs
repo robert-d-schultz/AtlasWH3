@@ -38,7 +38,7 @@ public static partial class InfoCards
 
         // ---- compile steps (key = "build.step." + step name)
         new("build.step.heightmaps", "heightmaps  (BOB: Campaign Heightmap, Campaign Shroud Heights)",
-            "Writes full_logic_map.compressed_map, full_height_map.dds, lf_normal.dds and shroud_heights.dds from the Terry project's height layers (lf_normal without Terry's export). tile_list, trees and the camera height map read them, so run it after any height edit."),
+            "Writes full_logic_map.compressed_map, full_height_map.dds, lf_normal.dds and shroud_heights.dds from the Terry project's height layers (lf_normal without Terry's export). The shroud is filled from the heights and the props' height patches, 1 above the ground, as Terry's Fill From Terrain does; the Terry project's shroud layers are not used. tile_list, trees and the camera height map read them, so run it after any height edit."),
         new("build.step.tile_list", "tile_list  (BOB: Tilemap)",
             "Turns the Terry project's tile_map.png into tile_list.bin, choosing and placing the 3D terrain tiles. Run it after editing the tile map; its source is set under Tile map source."),
         new("build.step.trees", "trees  (BOB: Campaign Trees)",

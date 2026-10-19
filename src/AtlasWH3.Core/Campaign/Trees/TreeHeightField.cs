@@ -5,6 +5,7 @@ using AtlasWH3.Core.Campaign.Props;
 using AtlasWH3.Formats.Maps;
 using AtlasWH3.Formats.Models;
 using AtlasWH3.Formats.Packs;
+using AtlasWH3.Formats.Props;
 using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.Core.Campaign.Trees;
@@ -70,9 +71,12 @@ public sealed class TreeHeightField
 
     /// <summary>TerrainSurface::height at a world point; patches for which <paramref name="skip"/> is true are left out
     /// (seating a prop on the ground without its own patch).</summary>
-    public float Height(float x, float z, Func<Patch, bool>? skip = null)
+    public float Height(float x, float z, Func<Patch, bool>? skip = null) => Raised(x, z, Terrain(x, z), skip);
+
+    /// <summary>sample_height_patches over a terrain height the caller has (Terry's own heights, not the logic map's): the
+    /// highest patch under the point, else <paramref name="lf"/>.</summary>
+    public float Raised(float x, float z, float lf, Func<Patch, bool>? skip = null)
     {
-        var lf = Terrain(x, z);
         var result = lf;
         if (x < 0 || z < 0) return result;
         var cx = (int)(x / _cellSize);
@@ -233,6 +237,33 @@ public sealed class TreeHeightField
         if (nested > 0) notes.Add($"{nested} height-patched props inside groups are not applied (not supported yet)");
         if (missing.Count > 0) notes.Add($"no height patch in the packs for {missing.Count} model(s): {string.Join(", ", missing.Take(8))}" +
                                          (missing.Count > 8 ? ", ..." : ""));
+        return patches;
+    }
+
+    /// <summary>The height patches of a compiled global_props.bin: every prop with apply_height_patch, placed by its stored
+    /// world transform (3x3 column-major, then the position), models read from <paramref name="packs"/>. A shipped map's
+    /// own patches, for comparing against its shipped files.</summary>
+    internal static List<Patch> GlobalPropsPatches(byte[] globalProps, PackSet packs)
+    {
+        var models = new Dictionary<string, (CompressedMap.Map Map, bool Add)?>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>();
+        var patches = new List<Patch>();
+        foreach (var (_, bytes) in GlobalProps.Read(globalProps).Bodies())
+        {
+            var body = Bmd27Body.Parse(bytes);
+            foreach (var p in body.Props.Where(p => p.ApplyHeightPatch != 0))
+            {
+                var model = body.PropPaths[(int)p.PathIndex];
+                var t = p.Transform;
+                if (!seen.Add(model + "|" + string.Join(",", t))) continue;   // the same prop in several culture buckets
+                if (!models.TryGetValue(model, out var info)) models[model] = info = LoadModel(model, packs);
+                if (info is not { } m) continue;
+                var matrix = new double[9];
+                for (var r = 0; r < 3; r++)
+                    for (var c = 0; c < 3; c++) matrix[r * 3 + c] = t[c * 3 + r];
+                patches.Add(Patch.Create(model, matrix, t[9], t[10], t[11], m.Map, m.Add));
+            }
+        }
         return patches;
     }
 

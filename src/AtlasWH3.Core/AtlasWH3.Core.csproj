@@ -8,6 +8,10 @@
     <PackageReference Include="SkiaSharp" Version="3.119.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AtlasWH3.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

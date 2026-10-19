@@ -178,7 +178,8 @@ public sealed class Bc6hTests
         finally { dir.Delete(true); }
     }
 
-    /// <summary>full_logic_map.compressed_map and shroud_heights.dds are BOB's bytes, on the IEE fixture.</summary>
+    /// <summary>full_logic_map.compressed_map is BOB's bytes on the IEE fixture, and WriteShroud writes BOB's shroud_heights.dds
+    /// from the HeightShroud layers BOB copied (the build fills the shroud from the terrain instead, see ShroudHeightsTests).</summary>
     [Fact]
     public void Heightmaps_LogicMapAndShroudMatchBob()
     {

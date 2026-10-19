@@ -1,17 +1,22 @@
 using System.Diagnostics;
+using AtlasWH3.Core.Campaign.Terrain;
+using AtlasWH3.Core.Campaign.Trees;
 using AtlasWH3.Formats.Dds;
+using AtlasWH3.Formats.Esf;
 using AtlasWH3.Formats.Maps;
 using AtlasWH3.Formats.Terry;
 
 namespace AtlasWH3.Core.Campaign;
 
 /// <summary>
-/// BOB's "Campaign Heightmap" and "Campaign Shroud Heights", from the .terry's composited height maps
-/// (<see cref="TerrainComposite"/>; all three are stored bottom row first):
+/// BOB's "Campaign Heightmap" and "Campaign Shroud Heights", from the .terry's composited Height and HeightSea maps
+/// (<see cref="TerrainComposite"/>; all are stored bottom row first):
 ///  - full_logic_map.compressed_map: the Height map normalised to its own range, v = trunc((h − lo) · (1/(hi − lo)) ·
 ///    65535) in float32, header (0, lo, 0, 0, hi, 0), 16 × 16 tiles with WH3's 3 padding bytes after each bit-packed
 ///    tile. Byte-identical to BOB's on IEE and Old World.
-///  - shroud_heights.dds: the HeightShroud map as R32_FLOAT. Byte-identical to BOB's on IEE and Old World.
+///  - shroud_heights.dds: R32_FLOAT, computed from the Height map and the layers' height patches (read from the packs)
+///    as Terry's Fill From Terrain makes it (<see cref="ShroudHeights"/>). The .terry's HeightShroud layers are not
+///    read; BOB copied them.
 ///  - lf_normal.dds: the Height map's normals as Terry exports them to lf_normal.png (<see cref="LfNormalMap"/>), in the
 ///    DXT5nm layout BOB's NVTT writes; no Terry export or PNG in between.
 ///  - full_height_map.dds: Height in red, HeightSea in green, as BC6H_SF16 (<see cref="Bc6h"/>; BOB's AMD Compress
@@ -29,12 +34,17 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         if (!File.Exists(ctx.TerryFile)) return [$"missing {ctx.TerryFile}"];
         var project = TerryProject.Load(ctx.TerryFile);
         var missing = new List<string>();
-        foreach (var type in new[] { "Height", "HeightSea", "HeightShroud" })
+        foreach (var type in new[] { "Height", "HeightSea" })
         {
             if (project.Find(type) is not { } map) { missing.Add($"no {type} map in the .terry"); continue; }
             try { TerrainComposite.Inputs(project, map); }
             catch (FileNotFoundException e) { missing.Add(e.Message); }
         }
+        // the shroud's height patches: their models come from the packs, placed by the world width
+        if (project.WorldWidth is null && !GameSetup.HasCampaignMapFile(ctx.Paths, ctx.CampaignMapName, "map_data.esf"))
+            missing.Add("the .terry has no world_width, and " + GameSetup.CampaignMapFileMissing(ctx.Paths, ctx.CampaignMapName, "map_data.esf") +
+                        " to take the width from");
+        if (!Directory.Exists(ctx.Paths.GameDataDir)) missing.Add($"missing game data folder {ctx.Paths.GameDataDir}");
         return missing;
     }
 
@@ -48,8 +58,8 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         ctx.Log("Height...");
         var land = TerrainComposite.Heights(project, "Height");
         var logicPath = ctx.OutFile("full_logic_map.compressed_map");
-        var (lo, hi) = WriteLogicMap(land, logicPath);
-        notes.Add($"logic map {land.Width}x{land.Height}, heights {lo} .. {hi}");
+        var logic = WriteLogicMap(land, logicPath);
+        notes.Add($"logic map {land.Width}x{land.Height}, heights {logic.Header[1]} .. {logic.Header[4]}");
         ctx.Cancel.ThrowIfCancellationRequested();
 
         ctx.Log("lf_normal.dds...");
@@ -69,15 +79,22 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         if (reference is not null) notes.Add($"full_height_map.dds: {copied} blocks copied from {ctx.HeightMapReference!.Value.HeightMap}");
         ctx.Cancel.ThrowIfCancellationRequested();
 
-        ctx.Log("HeightShroud...");
-        var shroud = TerrainComposite.Heights(project, "HeightShroud");
+        ctx.Log("shroud heights (height patches from the packs)...");
+        var worldWidth = project.WorldWidth ?? MapDataBounds.Read(EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        var field = new TreeHeightField(logic, worldWidth, TreeHeightField.LoadPatches(project, packs, notes));
+        var shroud = ShroudHeights.Compute(land, field);
         var shroudPath = ctx.OutFile("shroud_heights.dds");
         WriteShroud(shroud, shroudPath);
+        notes.Add($"shroud {shroud.Width}x{shroud.Height}: the heights and height patches + {ShroudHeights.Offset}" +
+                  (project.Find("HeightShroud") is { } painted && painted.Layers.Any(l => l.Composited)
+                      ? "; the .terry's HeightShroud layers are not used" : ""));
         return new StepResult(Name, [logicPath, normalPath, heightPath, shroudPath], notes, sw.Elapsed);
     }
 
-    /// <summary>full_logic_map.compressed_map from the composited Height map (row 0 = north); returns (lo, hi).</summary>
-    public static (float Lo, float Hi) WriteLogicMap(Raster<float> land, string path)
+    /// <summary>full_logic_map.compressed_map from the composited Height map (row 0 = north); returns the map written
+    /// (header [1] = lo, [4] = hi).</summary>
+    public static CompressedMap.Map WriteLogicMap(Raster<float> land, string path)
     {
         float lo = float.MaxValue, hi = float.MinValue;
         foreach (var v in land.Data) { if (v < lo) lo = v; if (v > hi) hi = v; }
@@ -90,8 +107,9 @@ public sealed class HeightmapsStep : ICampaignBuildStep
             for (var x = 0; x < land.Width; x++)
                 values.Data[dst + x] = (ushort)(int)((land.Data[src + x] - lo) * inv * 65535f);
         });
-        CompressedMap.Write(path, values, [0, lo, 0, 0, hi, 0], 3, 16, CompressedMap.Wh3BitTilePadding);
-        return (lo, hi);
+        float[] header = [0, lo, 0, 0, hi, 0];
+        CompressedMap.Write(path, values, header, 3, 16, CompressedMap.Wh3BitTilePadding);
+        return new CompressedMap.Map(values, header, 3, 16, 16);
     }
 
     /// <summary>The reference land, sea and full_height_map.dds of <see cref="CampaignBuildContext.HeightMapReference"/>,
