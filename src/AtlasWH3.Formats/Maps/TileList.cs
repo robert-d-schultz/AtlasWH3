@@ -12,6 +12,16 @@ namespace AtlasWH3.Formats.Maps;
 ///             (−24, −24) on IEE, (−16, −24) on Old World; 3K (0, W/4, H/4, hexW, hexH, 0, 0, A, B, W/4, H/4) on the lf grid
 ///   u8 1, u32 record count, 21-byte records; version 2 ends with one more byte (0).
 /// Record low/high heights are world units in WH3, normalised 0..1 in 3K.
+/// The header is BATTLE_TILE_MAP's serialised fields (the field names in warscape.modder.x64.dll's deserialiser
+/// 0x18063aa9b, in this order): floats low_frequency_world_position (vec2), low_frequency_world_scale (vec2),
+/// low_frequency_world_vertical_scale, high_frequency_world_vertical_scale; low_freq_height_map and low_freq_normal_map
+/// (two empty u16-length strings: int 0); battle_size_in_tiles (ints 1-2), battle_center_in_tiles (ints 3-4),
+/// origin_offset (ints 5-6, a float vec2), map_area (ints 7-10, a signed AABB_2i); is_campaign (the u8 1); the tiles;
+/// extend_tile_blend_ranges_to_maximum (version 2's last byte). In memory the tile positions are signed ints
+/// (BATTLE_TILE_MAP::add_tile(int, int, ...)). origin_offset and low_frequency_world_position are never read: a
+/// campaign map's origin is fixed at world (0, 0) and the tile map is stretched to the world width passed to
+/// TERRAIN_DIMENSIONS::init (0x1805b9fe0); map_area is used for battle maps only (an Old World origin_offset of
+/// (−100, 0) changed nothing in game, 2026-10-19).
 /// </summary>
 public sealed class TileList
 {
