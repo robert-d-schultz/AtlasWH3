@@ -2,9 +2,9 @@ namespace AtlasWH3.Formats.Esf;
 
 /// <summary>
 /// The campaign map's world bounds in map_data.esf: CAMPAIGN_THEATRE's two vec2 values (min x, min z) and
-/// (max x, max z). CAIME writes them; BOB's campaign hex grid (trees, region lookup) is built on them. They can differ
-/// from the campaign_map_playable_areas row: the user's Old World row says 1068.1111 × 748.1, its map_data.esf (and its
-/// tree list header) 1367.396 × 1368.7428.
+/// (max x, max z). CAIME writes them; BOB's campaign hex grid (trees, region lookup) is built on them. Old World:
+/// 1367.396 × 1368.7428, as its tree list header and its pack's campaign_map_playable_areas maxx (the Assembly Kit's
+/// Old World row, 1068.1111 × 748.1, is a dummy).
 /// </summary>
 public readonly record struct MapDataBounds(float MinX, float MinZ, float MaxX, float MaxZ)
 {

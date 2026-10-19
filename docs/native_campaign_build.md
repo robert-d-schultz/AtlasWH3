@@ -64,8 +64,9 @@ and measured on the fixtures:
 Read off qttoolutility (capstone, 2026-10-08) and measured on the fixtures:
 
 - **Grid:** map_data.esf's CAMPAIGN_THEATRE bounds (`MapDataBounds`) and the composited CampaignTree map (2 px per hex;
-  255 = empty). Not the campaign_map_playable_areas row: Old World's row is IEE's 1068.1111 × 748.1, its map_data.esf
-  says 1367.396 × 1368.7428, as the tree list header does. IEE's map_data.esf is **CBAB** (CAAB with u32 string-table
+  255 = empty). Old World's map_data.esf says 1367.396 × 1368.7428, as the tree list header does; its pack's
+  campaign_map_playable_areas row has the same maxx (1367.396; the row has minx/maxx only). The Assembly Kit's Old World
+  row (1068.1111 × 748.1) is a dummy, not the map's. IEE's map_data.esf is **CBAB** (CAAB with u32 string-table
   lengths); `EsfTree` reads both.
 - **Placement:** 3K's rules (minstd_rand per hex; id, z jitter, x jitter, rotation) with one change:
   z = row + (jitter − 0.2), where 3K had (row + jitter) − 0.2. Every IEE and Old World tree agrees.

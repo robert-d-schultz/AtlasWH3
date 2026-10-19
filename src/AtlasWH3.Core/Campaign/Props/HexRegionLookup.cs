@@ -98,8 +98,7 @@ public sealed class HexRegionLookup
 
     /// <summary>The lookup for a map, from its map_data.esf as its mod pack ships it: the per-hex regions
     /// (MASKED_REGIONS_DATA) and the map bounds BOB uses, the two vec2 values at the file's head (CAIME writes them from
-    /// the campaign_map_playable_areas row; Old World's row carries IEE's 1068.11 where its map_data.esf has 1367.396,
-    /// and BOB and the game follow the ESF). Null, with the reason, when the file is missing.</summary>
+    /// the campaign_map_playable_areas row). Null, with the reason, when the file is missing.</summary>
     public static HexRegionLookup? ForMap(ProjectPaths paths, out string reason)
     {
         if (MapData(paths, out reason) is not var (data, b)) return null;
