@@ -101,6 +101,10 @@ public static partial class InfoCards
             "The tile map check stops the build on these errors. Tick one to build anyway, only when you know the game tolerates it."),
         new("profile.patchMask", "Patch mask",
             "How tile_list writes patch_mask.dds, the per-patch mask the game hides the sea floor under land with. Fitted (default) spreads the cells over the whole tile map, as the game reads them. Vanilla is BOB's: its rows fall short of the north edge, so the sea floor pokes out under land, worst in the north."),
+        new("profile.keepOutsideQuadtree", "Keep props outside the quadtree",
+            "global_props sorts every prop into a quadtree covering the map plus the playable-areas row's quadtree_margin. Off (default), as BOB: a prop reaching past it is dropped. On: it goes in the quadtree cell nearest to it instead, for maps with props placed past the map's edge on purpose."),
+        new("profile.zeroShroudWestEdge", "Shroud at 0 along the west edge",
+            "heightmaps fills shroud_heights.dds from the terrain. On: its pixels over the map's westmost 10 units are 0 instead, so the shroud meets a visual extension placed west of the map at sea level. Off (default): the fill runs to the edge."),
         new("profile.lookupLast", "Lookup: regions past 1024",
             "Regions whose lookup palette entries go to the end: region keys, or .txt files of them (one per line, # comments). The game reads only the first 1024 palette entries, so on a map with more regions than that, list the ones that can go without (wastelands, unreachable or tiny regions). The .tga, .dds and _minimap.tga are reordered together, and hexes without a region (black) go to the end with them. Empty (default): BOB's order. The lookup step names the regions left past entry 1024."),
 

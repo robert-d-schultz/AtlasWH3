@@ -170,6 +170,58 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
         finally { dir.Delete(true); }
     }
 
+    /// <summary>A prop past the quadtree root (the west of the map): dropped as BOB, or with KeepOutsideRoot in the cell
+    /// nearest to it, the deepest one holding its box clamped into the root.</summary>
+    [Fact]
+    public void Builder_KeepOutsideRoot_PutsPastTheRootInTheNearestCell()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var layer = Path.Combine(dir.FullName, "a.layer");
+            File.WriteAllText(layer, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <layer version="41">
+                  <entities>
+                    <entity id="1000000000000b1">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/x.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="-30 0 30" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                    <entity id="1000000000000b2">
+                      <ECPropMesh/><ECMesh model_path="rigidmodels/x.rigid_model_v2" opacity="1"/>
+                      <ECTransform position="10 0 10" rotation="0 0 0" scale="1 1 1" pivot="0 0 0"/>
+                    </entity>
+                  </entities>
+                </layer>
+                """);
+            Wh3GlobalPropsBuilder Builder(bool keep) => new(new PackSet([]), new PrefabLibrary(dir.FullName, "campaign"),
+                new([], VanillaPrefabTypeRows), "m", (0, 0, 100, 100), (_, _) => "r") { KeepOutsideRoot = keep };
+            Dictionary<int, int> PropsPerCell(Wh3GlobalPropsBuilder builder)
+            {
+                builder.AddLayer(layer);
+                return builder.BuildProps().Select(e => (Parts: GlobalPropsParity.Parts(e.Name), e.Body))
+                    .Where(e => e.Parts.Bucket >= 0)
+                    .GroupBy(e => e.Parts.Cell).ToDictionary(g => g.Key, g => g.Sum(e => Bmd27Body.Parse(e.Body).Props.Count));
+            }
+
+            var drop = Builder(false);
+            var dropped = PropsPerCell(drop);
+            Assert.Contains("1 objects reach outside the quadtree root: dropped (as BOB)", drop.Notes);
+            var keep = Builder(true);
+            var kept = PropsPerCell(keep);
+            Assert.Contains("1 objects reach outside the quadtree root: kept in the nearest cell", keep.Notes);
+            // no packs: the model is boxed as [-1, 1]^3, so x -31..-29 clamps to the root's west edge, z 29..31 stays;
+            // that is a level-5 cell on the west edge, not the root
+            var nearest = keep.Cell(0, 29, 0, 31);
+            Assert.True(nearest > 0);
+            Assert.Equal(nearest, keep.Cell(0, 29.5f, 0.5f, 30.5f));
+            Assert.Equal(1, kept[nearest] - dropped.GetValueOrDefault(nearest));
+            // the prop inside the root is placed the same either way
+            Assert.Equal(dropped.Where(kv => kv.Key != nearest), kept.Where(kv => kv.Key != nearest));
+        }
+        finally { dir.Delete(true); }
+    }
+
     /// <summary>Devastation pieces' objects files on a small layer: one flat body per bmd_export_type (a typed group's
     /// nested "sound" group included), .culture masks (0 for no culture, bit 63 for one without a prefab_types row),
     /// light probes and rivers left out, an entity turned about its pivot, a hole's (triangle count, mask) run, and the

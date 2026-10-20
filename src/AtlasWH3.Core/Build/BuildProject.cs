@@ -132,6 +132,12 @@ public sealed class BuildProfile
     /// <summary>lookup: regions moved to the end of the lookup palette, past the 1024 entries the game reads (region keys,
     /// or text files of them, relative to the project folder).</summary>
     public List<string> LookupLast { get; set; } = [];
+    /// <summary>global_props: objects reaching outside the quadtree root (the map bounds grown by quadtree_margin) go in
+    /// the nearest cell (the box clamped into the root) instead of being dropped as BOB drops them.</summary>
+    public bool KeepOutsideQuadtree { get; set; }
+    /// <summary>heightmaps: shroud_heights.dds is 0 over the map's westmost 10 units
+    /// (<see cref="Campaign.Terrain.ShroudHeights.WestEdgeZeroWidth"/>), for a westward visual extension.</summary>
+    public bool ZeroShroudWestEdge { get; set; }
     public List<CustomStep> CustomSteps { get; set; } = [];
     /// <summary>The map's .pack: Pack writes the compiled files into it (replacing the build's files, keeping everything
     /// else) or creates it. It is also read first, before the other mod packs.</summary>

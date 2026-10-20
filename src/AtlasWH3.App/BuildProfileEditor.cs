@@ -78,6 +78,8 @@ public sealed class BuildProfileEditor : ScrollViewer
         form.Children.Add(output);
         form.Children.Add(AcceptedErrors(b));
         form.Children.Add(Combo("Patch mask", Enum.GetValues<PatchMaskMode>(), () => b.PatchMask, v => b.PatchMask = v, "profile.patchMask"));
+        form.Children.Add(Check("Keep props outside the quadtree", () => b.KeepOutsideQuadtree, v => b.KeepOutsideQuadtree = v, "profile.keepOutsideQuadtree"));
+        form.Children.Add(Check("Shroud at 0 along the west edge", () => b.ZeroShroudWestEdge, v => b.ZeroShroudWestEdge = v, "profile.zeroShroudWestEdge"));
         form.Children.Add(ListField("Lookup: regions past 1024", "profile.lookupLast", () => b.LookupLast, v => b.LookupLast = v, ordered: false,
             entry: new TextBox { ToolTip = "A region key, e.g. wh3_main_combi_region_altdorf" },
             ("Add file…", () =>

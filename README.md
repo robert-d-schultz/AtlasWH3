@@ -124,7 +124,9 @@ the game are the ones in Settings (or the CLI's `--ak`).
   lists other packs the map reads (only read). Projects made before this keep working: their `packs` and `install` become
   `packFile` on load.
 - **Map settings:** `acceptTileMap` (tile-map check codes to build through), `patchMask` (`fitted`, or `vanilla` for
-  BOB's), `lookupLast` (regions to move past palette entry 1024).
+  BOB's), `lookupLast` (regions to move past palette entry 1024), `keepOutsideQuadtree` (`true` keeps props placed
+  past the map's edge, in the quadtree cell nearest to them; BOB drops them), `zeroShroudWestEdge` (`true` sets
+  shroud_heights.dds to 0 over the map's westmost 10 units).
 - **Output:** `output` (or the CLI's `--out`) compiles into another folder; by default it is
   `%LocalAppData%\AtlasWH3\output\compiled\<map>`.
 

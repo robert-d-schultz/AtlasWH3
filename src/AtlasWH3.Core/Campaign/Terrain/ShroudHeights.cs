@@ -24,9 +24,14 @@ public static class ShroudHeights
     /// <summary>Terry's fill offset as CA set it for vanilla combi.</summary>
     public const float Offset = 1f;
 
+    /// <summary>How far in from the west edge the shroud is 0 with the project's ZeroShroudWestEdge (world units): the
+    /// strip a westward visual extension past x = 0 meets.</summary>
+    public const float WestEdgeZeroWidth = 10f;
+
     /// <summary>The shroud (row 0 = north) from the composited Height map (row 0 = north) and the field holding the
-    /// height patches; <paramref name="field"/>'s world width places the patches.</summary>
-    public static Raster<float> Compute(Raster<float> land, TreeHeightField field)
+    /// height patches; <paramref name="field"/>'s world width places the patches. Pixels whose sample point is west of
+    /// <paramref name="zeroWestOf"/> are 0 (no offset).</summary>
+    public static Raster<float> Compute(Raster<float> land, TreeHeightField field, float zeroWestOf = 0)
     {
         int w = land.Width, h = land.Height, sw = (w + 1) / 2, sh = (h + 1) / 2;
         var texel = field.WorldWidth / w;
@@ -37,7 +42,7 @@ public static class ShroudHeights
             var z = (h - 2 * r) * zTexel;
             var row = 2 * r * w;
             for (var c = 0; c < sw; c++)
-                shroud.Data[r * sw + c] = field.Raised(2 * c * texel, z, land.Data[row + 2 * c]) + Offset;
+                shroud.Data[r * sw + c] = 2 * c * texel < zeroWestOf ? 0 : field.Raised(2 * c * texel, z, land.Data[row + 2 * c]) + Offset;
         });
         return shroud;
     }

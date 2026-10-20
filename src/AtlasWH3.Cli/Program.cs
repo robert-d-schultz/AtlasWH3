@@ -81,7 +81,7 @@ static void Help()
     Console.WriteLine("        [--custom name,..] [--out <dir>] [--pack-output <file>] [--json]");
     Console.WriteLine("                                           a project's build, as the app's Build window runs it");
     Console.WriteLine("  build-campaign [--steps a,b] [--out <dir>] [--accept-tilemap code,..] [--patch-mask fitted|vanilla]");
-    Console.WriteLine("        [--devastated <map>|none] [--lookup-last <region,..|file.txt>] [--json]");
+    Console.WriteLine("        [--devastated <map>|none] [--lookup-last <region,..|file.txt>] [--keep-outside-quadtree] [--zero-shroud-west] [--json]");
     Console.WriteLine("                                           the compile steps alone, without a project");
     Console.WriteLine("  diagnose-campaign [--out <dir>] [--json]  every step's input check");
     Console.WriteLine("  validate-tilemap [--tilemap <png>] [--climate-dir <dir>] [--db <_tile_database>] [--simulate]");
@@ -132,6 +132,8 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
     a = TakeOption(a, "--patch-mask", out var patchMask);
     a = TakeOption(a, "--devastated", out var devastated);
     a = TakeOption(a, "--lookup-last", out var lookupLast);
+    var keepOutside = TakeFlag(ref a, "--keep-outside-quadtree");
+    var zeroShroudWest = TakeFlag(ref a, "--zero-shroud-west");
     var json = TakeFlag(ref a, "--json");
     var sw = Stopwatch.StartNew();
     var ctx = new CampaignBuildContext(paths, outDir, json ? Console.Error.WriteLine : Console.WriteLine)
@@ -140,6 +142,8 @@ static int BuildCampaign(ProjectPaths paths, string[] a)
         PatchMask = patchMask is null ? PatchMaskMode.Fitted : Enum.Parse<PatchMaskMode>(patchMask, ignoreCase: true),
         DevastatedMap = CampaignBuildContext.DevastatedSetting(devastated),
         LookupLastRegions = (lookupLast ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        KeepOutsideQuadtree = keepOutside,
+        ZeroShroudWestEdge = zeroShroudWest,
     };
     var outcomes = new CampaignBuildPipeline().Run(ctx, steps?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     if (json)

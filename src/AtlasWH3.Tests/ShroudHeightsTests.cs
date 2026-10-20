@@ -44,6 +44,21 @@ public class ShroudHeightsTests
                 Assert.Equal(land.Data[2 * r * 5 + 2 * c] + ShroudHeights.Offset, shroud.Data[r * 3 + c], 1e-4f);
     }
 
+    /// <summary>zeroWestOf: pixels sampling west of it are 0, the rest the fill.</summary>
+    [Fact]
+    public void Fill_ZeroWestOf_ZeroesTheWestColumns()
+    {
+        // 10 texels over 100 units: shroud columns sample x = 0, 20, 40, 60, 80
+        var land = new Raster<float>(10, 4);
+        for (var i = 0; i < land.Data.Length; i++) land.Data[i] = 5 + i * 0.25f;
+        var field = Field(land, 100f, []);
+        var fill = ShroudHeights.Compute(land, field);
+        var zeroed = ShroudHeights.Compute(land, field, 40f);
+        for (var r = 0; r < 2; r++)
+            for (var c = 0; c < 5; c++)
+                Assert.Equal(c < 2 ? 0 : fill.Data[r * 5 + c], zeroed.Data[r * 5 + c]);
+    }
+
     /// <summary>
     /// The fill against vanilla Immortal Empires' shroud_heights.dds, all from vanilla's own files: the heights from its
     /// full_logic_map, its props' height patches from global_props.bin (3060 props), its width from map_data.esf.

@@ -21,6 +21,14 @@ public sealed class CampaignBuildContext
     /// <summary>tile_list step's patch_mask.dds (<see cref="PatchMaskMode"/>).</summary>
     public PatchMaskMode PatchMask { get; init; } = PatchMaskMode.Fitted;
 
+    /// <summary>global_props step: objects reaching outside the quadtree root go in the nearest cell instead of being
+    /// dropped (BOB's behaviour, the default).</summary>
+    public bool KeepOutsideQuadtree { get; init; }
+
+    /// <summary>heightmaps step: shroud_heights.dds is 0 over the map's westmost
+    /// <see cref="Terrain.ShroudHeights.WestEdgeZeroWidth"/> units.</summary>
+    public bool ZeroShroudWestEdge { get; init; }
+
     /// <summary>The map whose campaign_maps\ inputs (CAIME's map_data.esf) the build reads: the map itself, or for a
     /// devastated project, its main map (so no fake campaign_maps\&lt;map&gt;_devastate_1 is needed).</summary>
     public string CampaignMapName { get => _campaignMapName ?? MapName; init => _campaignMapName = value; }

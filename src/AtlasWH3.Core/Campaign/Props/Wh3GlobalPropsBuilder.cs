@@ -115,6 +115,10 @@ public sealed class Wh3GlobalPropsBuilder
     /// <summary>Optional trace: one line per placed object (kind, entity id, identity, x, z, box, cell, region).</summary>
     public Action<string>? Trace { get; init; }
 
+    /// <summary>Objects reaching outside the quadtree root go in the nearest cell (their box clamped into the root)
+    /// instead of being dropped (as BOB).</summary>
+    public bool KeepOutsideRoot { get; init; }
+
     /// <param name="prefabTypes">prefab_types (<see cref="ReadCultures"/>): the cultures' values and the mountain bodies'
     /// first bucket.</param>
     /// <param name="root">The quadtree's root rectangle (<see cref="HexRegionLookup.QuadRoot"/>).</param>
@@ -714,11 +718,23 @@ public sealed class Wh3GlobalPropsBuilder
         return first + row * (1 << level) + col;
     }
 
-    private int CellOf(Obj o)
+    /// <summary>The object's cell: -1 outside the root, unless <see cref="KeepOutsideRoot"/> puts it in the nearest one.</summary>
+    private int CellOf(Obj o) => RawCellOf(o) is var cell && cell < 0 && KeepOutsideRoot ? NearestCellOf(o) : cell;
+
+    private int RawCellOf(Obj o)
     {
         if (o.RootCell) return 0;
         var b = o.Box ?? [o.X, o.Z, o.X, o.Z];
         return Cell(b[0], b[1], b[2], b[3]);
+    }
+
+    /// <summary>The deepest cell holding the object's box clamped into the root: the part inside for a box across the
+    /// root's edge, the nearest stretch of the edge for one wholly past it.</summary>
+    private int NearestCellOf(Obj o)
+    {
+        var b = o.Box ?? [o.X, o.Z, o.X, o.Z];
+        var (rx0, rz0, rx1, rz1) = _root;
+        return Cell(Math.Clamp(b[0], rx0, rx1), Math.Clamp(b[1], rz0, rz1), Math.Clamp(b[2], rx0, rx1), Math.Clamp(b[3], rz0, rz1));
     }
 
     private static int KindRank(string kind) => kind == "decal" ? 0 : 1;
@@ -729,18 +745,20 @@ public sealed class Wh3GlobalPropsBuilder
     {
         var prefix = $"terrain/campaigns/{_mapName}/bmd_objects";
         var placed = new List<(int Cell, string Region, int Bucket, Obj O)>();
-        var dropped = 0;
+        var outside = 0;
         foreach (var o in _objects.Where(o => o.Type.Length == 0))
         {
-            var cell = CellOf(o);
+            var cell = RawCellOf(o);
+            if (cell < 0) { outside++; if (KeepOutsideRoot) cell = NearestCellOf(o); }
             var region = _regionAt(o.X, o.Z);
             Trace?.Invoke(FormattableString.Invariant($"{o.Kind},{o.Id:x}/{o.InnerId:x}/{o.Sub},{o.What},{o.X},{o.Z},{(o.Box is null ? "" : string.Join(" ", o.Box))},{cell},{region},{(o.DefaultBox is { } d ? Cell(d[0], d[1], d[2], d[3]) : -2)}"));
-            if (cell < 0) { dropped++; continue; }
+            if (cell < 0) continue;
             if (o.OnePerBody) { placed.Add((cell, region, -1, o)); continue; }
             var low = o.Kind is "prop" or "vfx" ? 15 : 0;
             foreach (var v in o.Cultures) placed.Add((cell, region, 16 * v + low, o));
         }
-        if (dropped > 0) Notes.Add($"{dropped} objects reach outside the quadtree root: dropped (as BOB)");
+        if (outside > 0)
+            Notes.Add($"{outside} objects reach outside the quadtree root: {(KeepOutsideRoot ? "kept in the nearest cell" : "dropped (as BOB)")}");
         // a sound emitter's (region, cell) gets an empty bucket-16 body here too (its records go to global_props_sound.bin)
         foreach (var o in _sounds.Where(o => o.Type.Length == 0))
             if (CellOf(o) is var cell and >= 0)

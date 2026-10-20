@@ -40,6 +40,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
             prefabTypes, ctx.MapName, root, (x, z) => lookup.RegionAt(x, z) ?? NoRegion)
         {
             Trace = Environment.GetEnvironmentVariable("ATLASWH3_GP_TRACE") is { Length: > 0 } trace ? TraceTo(trace) : null,
+            KeepOutsideRoot = ctx.KeepOutsideQuadtree,
         };
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{layers.Count} exported layers...");

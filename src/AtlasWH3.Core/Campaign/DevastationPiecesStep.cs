@@ -156,6 +156,7 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                                            m => ctx.Log($"{devastated}: {m}"))
         {
             Cancel = ctx.Cancel, AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, PatchMask = ctx.PatchMask,
+            KeepOutsideQuadtree = ctx.KeepOutsideQuadtree, ZeroShroudWestEdge = ctx.ZeroShroudWestEdge,
             CampaignMapName = ctx.MapName,
             HeightMapBlocks = steps.Contains("heightmaps") ? HeightMapBlocks(project) : null,
             HeightMapReference = (ctx.TerryFile, ctx.OutFile("full_height_map.dds")),

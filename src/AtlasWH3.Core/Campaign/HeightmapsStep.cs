@@ -83,12 +83,15 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         var worldWidth = project.WorldWidth ?? MapDataBounds.Read(EsfTree.Read(TreesStep.MapData(ctx)!.Value.Data)).Width;
         var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var field = new TreeHeightField(logic, worldWidth, TreeHeightField.LoadPatches(project, packs, notes));
-        var shroud = ShroudHeights.Compute(land, field);
+        var zeroWestOf = ctx.ZeroShroudWestEdge ? ShroudHeights.WestEdgeZeroWidth : 0;
+        var shroud = ShroudHeights.Compute(land, field, zeroWestOf);
         var shroudPath = ctx.OutFile("shroud_heights.dds");
         WriteShroud(shroud, shroudPath);
         notes.Add($"shroud {shroud.Width}x{shroud.Height}: the heights and height patches + {ShroudHeights.Offset}" +
                   (project.Find("HeightShroud") is { } painted && painted.Layers.Any(l => l.Composited)
                       ? "; the .terry's HeightShroud layers are not used" : ""));
+        if (zeroWestOf > 0)
+            notes.Add($"shroud: 0 west of x = {zeroWestOf:G9} (the first {(int)MathF.Ceiling(zeroWestOf / (2 * worldWidth / land.Width))} columns)");
         return new StepResult(Name, [logicPath, normalPath, heightPath, shroudPath], notes, sw.Elapsed);
     }
 

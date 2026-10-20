@@ -331,6 +331,8 @@ public sealed class BuildRunner
     {
         AcceptedTileMapIssues = _project.Build.AcceptTileMap.ToHashSet(),
         PatchMask = _project.Build.PatchMask,
+        KeepOutsideQuadtree = _project.Build.KeepOutsideQuadtree,
+        ZeroShroudWestEdge = _project.Build.ZeroShroudWestEdge,
         LookupLastRegions = _project.Build.LookupLast.Select(e => LookupStep.IsFile(e) ? _project.Resolve(e, _paths) : e).ToList(),
         Cancel = _cancel,
     };
