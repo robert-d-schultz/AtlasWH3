@@ -102,7 +102,7 @@ public static partial class InfoCards
         new("profile.patchMask", "Patch mask",
             "How tile_list writes patch_mask.dds, the per-patch mask the game hides the sea floor under land with. Fitted (default) spreads the cells over the whole tile map, as the game reads them. Vanilla is BOB's: its rows fall short of the north edge, so the sea floor pokes out under land, worst in the north."),
         new("profile.keepOutsideQuadtree", "Keep props outside the quadtree",
-            "global_props sorts every prop into a quadtree covering the map plus the playable-areas row's quadtree_margin. Off (default), as BOB: a prop reaching past it is dropped. On: it goes in the quadtree cell nearest to it instead, for maps with props placed past the map's edge on purpose."),
+            "global_props sorts every object into a quadtree covering the map plus the playable-areas row's quadtree_margin. Off (default), as BOB: a prop, decal, effect or sound emitter reaching past it is dropped. On: it goes in the quadtree cell nearest to it instead (with the region of the map's nearest hex), for maps with objects placed past the map's edge on purpose."),
         new("profile.zeroShroudWestEdge", "Shroud at 0 along the west edge",
             "heightmaps fills shroud_heights.dds from the terrain. On: its pixels over the map's westmost 10 units are 0 instead, so the shroud meets a visual extension placed west of the map at sea level. Off (default): the fill runs to the edge."),
         new("profile.lookupLast", "Lookup: regions past 1024",

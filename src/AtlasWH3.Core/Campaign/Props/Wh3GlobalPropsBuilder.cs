@@ -718,21 +718,17 @@ public sealed class Wh3GlobalPropsBuilder
         return first + row * (1 << level) + col;
     }
 
-    /// <summary>The object's cell: -1 outside the root, unless <see cref="KeepOutsideRoot"/> puts it in the nearest one.</summary>
-    private int CellOf(Obj o) => RawCellOf(o) is var cell && cell < 0 && KeepOutsideRoot ? NearestCellOf(o) : cell;
+    private int CellOf(Obj o) => CellOf(o, out _);
 
-    private int RawCellOf(Obj o)
-    {
-        if (o.RootCell) return 0;
-        var b = o.Box ?? [o.X, o.Z, o.X, o.Z];
-        return Cell(b[0], b[1], b[2], b[3]);
-    }
-
-    /// <summary>The deepest cell holding the object's box clamped into the root: the part inside for a box across the
-    /// root's edge, the nearest stretch of the edge for one wholly past it.</summary>
-    private int NearestCellOf(Obj o)
+    /// <summary>The object's cell; <paramref name="outside"/> when its box reaches outside the root. That is -1, unless
+    /// <see cref="KeepOutsideRoot"/> puts it in the nearest cell: the deepest one holding the box clamped into the root
+    /// (the part inside for a box across the root's edge, the nearest stretch of the edge for one wholly past it).</summary>
+    private int CellOf(Obj o, out bool outside)
     {
         var b = o.Box ?? [o.X, o.Z, o.X, o.Z];
+        var cell = o.RootCell ? 0 : Cell(b[0], b[1], b[2], b[3]);
+        outside = cell < 0;
+        if (!outside || !KeepOutsideRoot) return cell;
         var (rx0, rz0, rx1, rz1) = _root;
         return Cell(Math.Clamp(b[0], rx0, rx1), Math.Clamp(b[1], rz0, rz1), Math.Clamp(b[2], rx0, rx1), Math.Clamp(b[3], rz0, rz1));
     }
@@ -748,8 +744,8 @@ public sealed class Wh3GlobalPropsBuilder
         var outside = 0;
         foreach (var o in _objects.Where(o => o.Type.Length == 0))
         {
-            var cell = RawCellOf(o);
-            if (cell < 0) { outside++; if (KeepOutsideRoot) cell = NearestCellOf(o); }
+            var cell = CellOf(o, out var past);
+            if (past) outside++;
             var region = _regionAt(o.X, o.Z);
             Trace?.Invoke(FormattableString.Invariant($"{o.Kind},{o.Id:x}/{o.InnerId:x}/{o.Sub},{o.What},{o.X},{o.Z},{(o.Box is null ? "" : string.Join(" ", o.Box))},{cell},{region},{(o.DefaultBox is { } d ? Cell(d[0], d[1], d[2], d[3]) : -2)}"));
             if (cell < 0) continue;
@@ -757,12 +753,18 @@ public sealed class Wh3GlobalPropsBuilder
             var low = o.Kind is "prop" or "vfx" ? 15 : 0;
             foreach (var v in o.Cultures) placed.Add((cell, region, 16 * v + low, o));
         }
-        if (outside > 0)
-            Notes.Add($"{outside} objects reach outside the quadtree root: {(KeepOutsideRoot ? "kept in the nearest cell" : "dropped (as BOB)")}");
         // a sound emitter's (region, cell) gets an empty bucket-16 body here too (its records go to global_props_sound.bin)
+        var soundsOutside = 0;
         foreach (var o in _sounds.Where(o => o.Type.Length == 0))
-            if (CellOf(o) is var cell and >= 0)
+        {
+            var cell = CellOf(o, out var past);
+            if (past) soundsOutside++;
+            if (cell >= 0)
                 placed.Add((cell, _regionAt(o.X, o.Z), 16, new Obj { Kind = "sound", Id = o.Id, Sub = o.Sub, Cultures = [1], Add = _ => { } }));
+        }
+        if (outside + soundsOutside > 0)
+            Notes.Add($"{outside} objects and {soundsOutside} sound emitters reach outside the quadtree root: " +
+                      (KeepOutsideRoot ? "kept in the nearest cell" : "dropped (as BOB)"));
 
         var entries = new List<(string, byte[])>();
         var root = new Bmd27Body();

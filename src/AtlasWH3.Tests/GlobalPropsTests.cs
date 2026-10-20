@@ -206,10 +206,10 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
 
             var drop = Builder(false);
             var dropped = PropsPerCell(drop);
-            Assert.Contains("1 objects reach outside the quadtree root: dropped (as BOB)", drop.Notes);
+            Assert.Contains("1 objects and 0 sound emitters reach outside the quadtree root: dropped (as BOB)", drop.Notes);
             var keep = Builder(true);
             var kept = PropsPerCell(keep);
-            Assert.Contains("1 objects reach outside the quadtree root: kept in the nearest cell", keep.Notes);
+            Assert.Contains("1 objects and 0 sound emitters reach outside the quadtree root: kept in the nearest cell", keep.Notes);
             // no packs: the model is boxed as [-1, 1]^3, so x -31..-29 clamps to the root's west edge, z 29..31 stays;
             // that is a level-5 cell on the west edge, not the root
             var nearest = keep.Cell(0, 29, 0, 31);

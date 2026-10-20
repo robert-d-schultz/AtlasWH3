@@ -54,6 +54,7 @@ public class ShroudHeightsTests
         var field = Field(land, 100f, []);
         var fill = ShroudHeights.Compute(land, field);
         var zeroed = ShroudHeights.Compute(land, field, 40f);
+        Assert.Equal(2, ShroudHeights.ZeroedColumns(land, field, 40f));
         for (var r = 0; r < 2; r++)
             for (var c = 0; c < 5; c++)
                 Assert.Equal(c < 2 ? 0 : fill.Data[r * 5 + c], zeroed.Data[r * 5 + c]);

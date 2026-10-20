@@ -29,12 +29,13 @@ public static class ShroudHeights
     public const float WestEdgeZeroWidth = 10f;
 
     /// <summary>The shroud (row 0 = north) from the composited Height map (row 0 = north) and the field holding the
-    /// height patches; <paramref name="field"/>'s world width places the patches. Pixels whose sample point is west of
-    /// <paramref name="zeroWestOf"/> are 0 (no offset).</summary>
+    /// height patches; <paramref name="field"/>'s world width places the patches. The <see cref="ZeroedColumns"/> west
+    /// of <paramref name="zeroWestOf"/> are 0 (no offset).</summary>
     public static Raster<float> Compute(Raster<float> land, TreeHeightField field, float zeroWestOf = 0)
     {
         int w = land.Width, h = land.Height, sw = (w + 1) / 2, sh = (h + 1) / 2;
         var texel = field.WorldWidth / w;
+        var zeroed = ZeroedColumns(land, field, zeroWestOf);
         var zTexel = texel * TreeHeightField.ZScale;
         var shroud = new Raster<float>(sw, sh);
         Parallel.For(0, sh, r =>
@@ -42,8 +43,18 @@ public static class ShroudHeights
             var z = (h - 2 * r) * zTexel;
             var row = 2 * r * w;
             for (var c = 0; c < sw; c++)
-                shroud.Data[r * sw + c] = 2 * c * texel < zeroWestOf ? 0 : field.Raised(2 * c * texel, z, land.Data[row + 2 * c]) + Offset;
+                shroud.Data[r * sw + c] = c < zeroed ? 0 : field.Raised(2 * c * texel, z, land.Data[row + 2 * c]) + Offset;
         });
         return shroud;
+    }
+
+    /// <summary>How many of the shroud's columns, from the west, sample a point west of <paramref name="zeroWestOf"/>
+    /// (<see cref="Compute"/>'s zeroed columns).</summary>
+    public static int ZeroedColumns(Raster<float> land, TreeHeightField field, float zeroWestOf)
+    {
+        int sw = (land.Width + 1) / 2, n = 0;
+        var texel = field.WorldWidth / land.Width;
+        while (n < sw && 2 * n * texel < zeroWestOf) n++;
+        return n;
     }
 }
