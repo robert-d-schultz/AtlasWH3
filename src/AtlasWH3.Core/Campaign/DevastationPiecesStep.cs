@@ -228,8 +228,8 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
     public static string? DevastatedFromDb(ProjectPaths paths, List<string>? errors = null)
     {
         if (!Directory.Exists(paths.GameDataDir)) return null;
-        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
-        var named = Formats.Db.DbBinaryTable.PackRows(packs, "campaigns_tables")
+        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
+        var named = Formats.Db.DbTables.PackRows(packs, "campaigns_tables")
             .Where(r => string.Equals(r.Table.Get(r.Row, "terrain_location") as string, paths.MapName, StringComparison.OrdinalIgnoreCase))
             .Select(r => (r.Table.Get(r.Row, "terrain_location_devastate") as string)?.Trim()).OfType<string>().Where(d => d.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();

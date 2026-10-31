@@ -69,8 +69,7 @@ public sealed class TerrainTextureSet
             var cachePath = Path.Combine(paths.TextureCacheDir, $"{group.Index:D2}_{group.Name}.png");
             if (!File.Exists(cachePath))
             {
-                packs ??= PackSet.OpenVanilla(paths.GameDataDir,
-                    n => n.StartsWith("terrain", StringComparison.OrdinalIgnoreCase));
+                packs ??= PackSet.OpenVanilla(paths.GameDataDir);
                 var bytes = packs.TryRead(group.BaseColour);
                 if (bytes == null)
                 {

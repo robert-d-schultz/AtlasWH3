@@ -2,7 +2,7 @@ using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Core.Build;
 
-/// <summary>Builds uncompressed PFH5 mod packs from loose files: a new pack, or a merge over an existing pack.</summary>
+/// <summary>Builds mod packs from loose files through RPFM's server: a new pack, or a merge over an existing pack.</summary>
 public static class PackBuilder
 {
     public sealed record Summary(string Pack, int Files, long Bytes, int Kept, int Replaced, int Added, int Dropped, bool Verified);
@@ -43,20 +43,17 @@ public static class PackBuilder
     /// <summary>A pack with exactly <paramref name="files"/>, re-read to check every file is present.</summary>
     public static Summary New(string output, IReadOnlyDictionary<string, (string Rel, string Disk)> files)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         PackWriter.Write(output, files.Values.Select(f => (f.Rel, f.Disk)));
-        var check = PackFile.Open(output);
         var bytes = files.Values.Sum(f => new FileInfo(f.Disk).Length);
-        return new Summary(output, files.Count, bytes, 0, 0, files.Count, 0, files.Keys.All(check.Contains));
+        return new Summary(output, files.Count, bytes, 0, 0, files.Count, 0, Check(output, files.Keys));
     }
 
     /// <summary>A copy of <paramref name="basePack"/> with <paramref name="overrides"/> replacing or adding files. Base files
     /// inside a <paramref name="replaceDirs"/> folder that the overrides don't have are dropped (e.g. stale generated
     /// meshes), but only in a folder the overrides put at least one file in, so a build that did not make a folder's
-    /// files never empties it. <paramref name="output"/> may be the base pack itself (written to a temp file, then
-    /// swapped). Base files under an <paramref name="owned"/> prefix (a step's own files, e.g.
-    /// terrain/campaigns/&lt;map&gt;/models/river_) that the overrides don't have are always dropped. The base pack's type
-    /// and dependency list are kept.</summary>
+    /// files never empties it. <paramref name="output"/> may be the base pack itself. Base files under an
+    /// <paramref name="owned"/> prefix (a step's own files, e.g. terrain/campaigns/&lt;map&gt;/models/river_) that the
+    /// overrides don't have are always dropped. The base pack's type, dependencies and compression are kept.</summary>
     public static Summary Merge(string basePack, string output, IReadOnlyDictionary<string, (string Rel, string Disk)> overrides,
                                 IEnumerable<string>? replaceDirs = null, IEnumerable<string>? owned = null)
     {
@@ -64,20 +61,30 @@ public static class PackBuilder
         var dirs = (replaceDirs ?? []).Select(d => PackFile.Normalize(d.TrimEnd('/', '\\') + "/"))
             .Where(d => overrides.Keys.Any(k => k.StartsWith(d, StringComparison.Ordinal)))
             .Concat((owned ?? []).Select(PackFile.Normalize)).ToList();
-        var sources = new List<PackWriter.Source>();
-        int kept = 0, replaced = 0, dropped = 0;
+        // replaced files are deleted first: the server's paths are case-sensitive, ours are not
+        var delete = new List<string>();
+        var keep = new List<string>();
+        int replaced = 0, dropped = 0;
         foreach (var (key, entry) in pack.Entries)
         {
-            if (overrides.ContainsKey(key)) { replaced++; continue; }
-            if (dirs.Any(d => key.StartsWith(d, StringComparison.Ordinal))) { dropped++; continue; }
-            sources.Add(PackWriter.FromPack(pack, entry));
-            kept++;
+            if (overrides.ContainsKey(key)) replaced++;
+            else if (dirs.Any(d => key.StartsWith(d, StringComparison.Ordinal))) dropped++;
+            else { keep.Add(key); continue; }
+            delete.Add(entry.Path);
         }
-        foreach (var (_, f) in overrides) sources.Add(PackWriter.FromDisk(f.Rel, f.Disk));
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
-        PackWriter.Write(output, sources, PackWriter.Header.Of(pack));
-        var check = PackFile.Open(output);
-        return new Summary(output, sources.Count, sources.Sum(s => s.Size), kept, replaced, overrides.Count - replaced, dropped,
-                           sources.All(s => check.Contains(s.InternalPath)));
+        PackWriter.Merge(basePack, output, delete, overrides.Values.Select(f => (f.Rel, f.Disk)));
+        var bytes = overrides.Values.Sum(f => new FileInfo(f.Disk).Length);
+        return new Summary(output, keep.Count + overrides.Count, bytes, keep.Count, replaced, overrides.Count - replaced, dropped,
+                           Check(output, keep.Concat(overrides.Keys)));
+    }
+
+    /// <summary>Whether the written pack holds every one of <paramref name="keys"/> (and no more).</summary>
+    private static bool Check(string pack, IEnumerable<string> keys)
+    {
+        var written = PackFile.Open(pack);
+        var expected = keys.ToHashSet(StringComparer.Ordinal);
+        var ok = written.Entries.Count == expected.Count && expected.All(written.Contains);
+        PackFile.Forget(pack);
+        return ok;
     }
 }

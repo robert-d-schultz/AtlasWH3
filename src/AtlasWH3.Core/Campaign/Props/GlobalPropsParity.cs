@@ -47,7 +47,7 @@ public static class GlobalPropsParity
     /// <summary>BOB's first one-prop bucket: BOB reads the kit's prefab_types, vanilla's rows whatever the map's mod packs
     /// add (docs/native_campaign_build.md), so 16 × the vanilla db's row count (40 rows: 640).</summary>
     public static int BobMountainBucket(string gameDataDir) =>
-        Wh3GlobalPropsBuilder.ReadCultures(Formats.Packs.PackSet.OpenVanilla(gameDataDir, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase)))
+        Wh3GlobalPropsBuilder.ReadCultures(Formats.Packs.PackSet.OpenVanilla(gameDataDir))
             .FirstMountainBucket;
 
     /// <summary>(region, cell, bucket) of an entry name; bucket -1 for a cell body, cell -1 for the root.</summary>

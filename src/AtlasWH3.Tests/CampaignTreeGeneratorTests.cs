@@ -126,8 +126,7 @@ public class CampaignTreeGeneratorTests
         var project = TerryProject.Load(Terry(map));
         var (treeMap, palette) = TerrainComposite.Indexed(project, "CampaignTree");
         var grid = HexGrid.ForTreeMap(treeMap.Width, treeMap.Height, MapDataBounds.Read(MapData(map)).Width);
-        var db = TreeDatabase.FromPacks(GameSetup.OpenWithMods(TestKits.Wh3GameData, [ModPack(pack)],
-            n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase)));
+        var db = TreeDatabase.FromPacks(GameSetup.OpenWithMods(TestKits.Wh3GameData, [ModPack(pack)]));
         return CampaignTreeGenerator.Generate(CampaignTreeGenerator.ReadTreeMap(treeMap, palette!, grid, TreesStep.EmptyIndex), grid, db, height);
     }
 }

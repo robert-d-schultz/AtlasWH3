@@ -15,7 +15,7 @@ public sealed class SettingsWindow : Window
 {
     private readonly AppSettings _s = AppSettings.Current;
     private readonly bool _firstRun;
-    private readonly TextBox _game = new(), _kit = new();
+    private readonly TextBox _game = new(), _kit = new(), _rpfm = new();
     private readonly TextBox _data = new() { IsReadOnly = true };
     /// <summary>The data folder setting: empty = <see cref="Defaults.LocalData"/>.</summary>
     private string _dataSetting;
@@ -44,8 +44,8 @@ public sealed class SettingsWindow : Window
             panel.Children.Add(new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 6, 0, 6),
-                Text = "AtlasWH3 found these through Steam: check them and continue. Nothing of the game's is shipped with AtlasWH3: " +
-                       "it reads your own install and packs, and never writes to them.",
+                Text = "AtlasWH3 found these through Steam: check them, choose RPFM's folder, and continue. Nothing of the game's is " +
+                       "shipped with AtlasWH3: it reads your own install and packs through RPFM, and never writes to them.",
             });
         }
         var folders = new StackPanel().Spot("settings.folders");
@@ -63,6 +63,8 @@ public sealed class SettingsWindow : Window
             if (_kit.Text.Trim().Equals(kitAuto, StringComparison.OrdinalIgnoreCase)) _kit.Text = next;
             kitAuto = next;
         };
+        folders.Children.Add(PathRow("RPFM", _rpfm, _s.RpfmFolder, () => "", "",
+                                     p => File.Exists(Path.Combine(p, "rpfm_server.exe")), "settings.rpfm"));
         folders.Children.Add(DataRow());
         _dev.Card("settings.dev");
 
@@ -218,6 +220,7 @@ public sealed class SettingsWindow : Window
         }
         _s.GameFolder = IsAuto(_game) ? "" : _game.Text.Trim();
         _s.AssemblyKit = IsAuto(_kit) ? "" : _kit.Text.Trim();
+        _s.RpfmFolder = _rpfm.Text.Trim();
         _s.DataFolder = _dataSetting;
         _s.DeveloperMode = _dev.IsChecked == true;
         try

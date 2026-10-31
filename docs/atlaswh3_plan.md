@@ -21,7 +21,7 @@ the state at the fork.
 | WH3_visual_map_decompiler | Stays a separate repo. Its readers (BMD v27, BC6H, tile DB, rivers, pieces) are **copied** into `AtlasWH3.Formats` as needed. Its output doubles as round-trip test data. |
 | Keep | Build, editors (scene / tile map / terrain), Campaign battles window, AI pathfinding (hlp/spd). |
 | Cut | The experimental battle terrain editor. |
-| Packs | Keep Atlas3K's own C# pack reader, plus zstd. No RPFM server dependency. |
+| Packs | Through RPFM's server (5.3+): reading, DB tables and writing. Until 2026-10-31 Atlas3K's own C# pack reader, plus zstd, with no RPFM server dependency; RPFM 5.3's JSON-RPC API replaced it. |
 | hlp/spd today | The game builds them. A native version is the last phase. |
 | Devastated maps | Not separate campaigns. The devastated project is an input of the main map's build (§2). |
 | Fixtures | Old World and IEE only. The OvN maps are out of date. |
@@ -169,7 +169,7 @@ after its BOB run. Parity needs **frozen fixture pairs** (sources and BOB output
 | `WH3_visual_map_decompiler` | WH3 readers to copy: `Bmd/` (GlobalPropsParser, CultureMask, entities), `Formats/` (BC6H, CompressedMap), `Tiles/` (TileDatabase, TileSettings), `Rivers/` (RiverMesh, spline fit), `Pieces/`, `Imaging/SnowMaskStretch`, `Terry/` (project reader/writer). Docs on river splines, event-area pieces, colour-overlay blending and tree scatter. | MIT (yours) |
 | `campaign_tools` | Format knowledge: `map_hex.py` (map.hex v20), `terry.py` (layer compositing), `assetdb.py`, `height_patches.py`, `trim_mips.py` (the BOB 14-mip pieces crash), `devastation.py`, `corruption_mask.py`; `exe_tools/` for the `Warhammer3.exe` work in Phase 6 | yours; add a licence before copying code |
 | `CampaignMapToolkit` (CAIME) | Today it makes map.hex, map_data.esf and pathfinding.ppd; AtlasWH3 takes those files as **inputs**, as Atlas3K did. `FileFormatDefinitions/*.bt` are a format reference. | **Non-commercial share-alike.** Incompatible with MIT: **never copy CAIME code into AtlasWH3**. Read its docs and templates for knowledge only. |
-| RPFM `schema_wh3.ron` (`%AppData%\FrodoWazEre\rpfm\config\schemas`) | DB table layouts read straight from the file (see Phase 1). This is not the RPFM server. | MIT |
+| RPFM server (`rpfm_server.exe`, 5.3+) | Every pack read and written, and the DB tables decoded with RPFM's schema, over its local JSON-RPC WebSocket API. No RPFM code is copied. | MIT |
 
 ## 5. Principles
 
@@ -220,10 +220,11 @@ The editors, the build and parity all need this foundation.
 
 - [x] **Packs:** zstd entries in `PackFile` (u32 size + zstd frame) with a managed library (ZstdSharp.Port). Confirm
   the header variant on the current game build (PFH5 expected). Done 2026-10-08: every pack is PFH5; some tile meshes
-  are LZ4 (K4os).
+  are LZ4 (K4os). Since 2026-10-31 RPFM's server reads the packs, and this reader is gone.
 - [x] **DB schemas:** this addresses the schema-drift concern. WH3 is still being updated, so table versions change.
-  `DbBinaryTable` looks layouts up in RPFM's `schema_wh3.ron` (plain file, parsed directly) when present, falls back to
-  an embedded snapshot, and reports an unknown version clearly instead of misreading it. Tables needed:
+  `DbBinaryTable` looked layouts up in RPFM's `schema_wh3.ron` (plain file, parsed directly) when present, fell back to
+  an embedded snapshot, and reported an unknown version clearly instead of misreading it. Since 2026-10-31 RPFM's
+  server decodes the tables (`DbTables`). Tables needed:
   - `campaigns`, `campaign_map_playable_areas`
   - `campaign_tree_ids` / `_types` / `_type_cultures` / `_variants`
   - `prefab_types` (culture bits)
@@ -680,7 +681,7 @@ build comes first. The open items below stay as they are.
 **Status (2026-10-10):** Atlas3K's 3K generator, carried over to WH3's formats. Details and parity are in
 [`hlp_spd.md`](hlp_spd.md) (WH3).
 - [x] 6.1 Reference set: all 4 files of 15 maps (11 vanilla, IEE, Old World and its Classic and Darklands variants),
-  extracted from the packs (`research/hlp_spd_wh3/extract_refs.py`).
+  extracted from the packs (`AtlasWH3.Cli extract`, see [`hlp_spd.md`](hlp_spd.md)).
 - [x] 6.2 Formats:
   - `CaabWriter` / `CaabReader`: child records, CA's padded sizes, CBAB. All 30 reference files round-trip.
   - The WH3 hlp/spd models.
@@ -750,7 +751,7 @@ depend on any external tool.
 
 | Risk | Mitigation |
 |---|---|
-| WH3 patches change formats or DB versions | Readers check versions and fail loudly; DB layouts come from RPFM's updatable schema file; the fixtures carry the game build they were made on |
+| WH3 patches change formats or DB versions | Readers check versions and fail loudly; RPFM decodes the DB tables with its updatable schema; the fixtures carry the game build they were made on |
 | BC6H quality or BCn differences show in game | Quality first (compare with CA's encode); keep BOB fallback for textures until then |
 | BOB's pack-reading actions resist automation | Phase 2 starts by documenting them; worst case, write the temporary pack with `PackWriter` and keep the user out of it |
 | Atlas3K 3K tile rules don't hold for WH3 | 3.6 is measured against the fixtures before the editor's Errors tab is trusted |

@@ -52,6 +52,8 @@ about half the error of BOB's.
 
 - Windows 10 or 11, x64.
 - Total War: WARHAMMER III and its Assembly Kit, with your map's Terry project in `raw_data\terrain\campaigns\<map>`.
+- [RPFM](https://github.com/Frodo45127/rpfm) 5.3 or newer, with its WH3 schema up to date. AtlasWH3 reads and writes
+  every pack through RPFM's server (`rpfm_server.exe`), and starts it when it is not running.
 - Your campaign's `.pack`, set as the project's pack. The build reads CAIME's `map_data.esf` and `pathfinding.ppd`
   from its `campaign_maps\<map>\`, and the mod's DB tables, models and textures; then it writes the compiled map into
   it. (A vanilla map needs none: the build makes a new pack.)
@@ -75,7 +77,8 @@ the Assembly Kit's `working_data` is not touched.
 
 ### In the app
 
-1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install).
+1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install), and choose RPFM's
+   folder.
 2. **Start page:** pick the map from the kit (Project: *No project*).
 3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*, save it, pick the mod pack the map ships in (or Cancel for a
    pack of its own), then *Build all* (F7).
@@ -192,8 +195,8 @@ read the live kit. Add `--replace` to freeze a fixture again.
   together give a round trip.
 - [CampaignMapToolkit (CAIME)](https://github.com/robert-d-schultz/CampaignMapToolkit) makes the campaign AI map files
   AtlasWH3 takes as input. Its code is under a non-commercial licence, so none of it is copied here.
-- [RPFM](https://github.com/Frodo45127/rpfm): AtlasWH3 reads its `schema_wh3.ron` for DB layouts when it is
-  installed.
+- [RPFM](https://github.com/Frodo45127/rpfm): AtlasWH3 reads and writes packs through RPFM's server, and RPFM's
+  schema decodes the DB tables.
 
 ## Credits and licence
 

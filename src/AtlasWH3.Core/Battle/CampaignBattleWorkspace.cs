@@ -1,4 +1,5 @@
 using AtlasWH3.Formats.Battle;
+using AtlasWH3.Formats.Db;
 using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Core.Battle;
@@ -72,7 +73,7 @@ public sealed class CampaignBattleWorkspace
         else
         {
             blmBytes = packs.TryRead(blmPath) ?? throw new FileNotFoundException($"{blmPath} is not in the mod or game packs");
-            source = Path.GetFileName(packs.FindOwner(blmPath)?.SourcePath ?? "packs");
+            source = packs.Origin(blmPath) ?? "packs";
         }
         var map = BattleLocations.Read(blmBytes);
         log?.Invoke($"catchments from {source}: {map.AreaCount} areas, {map.Width}x{map.Height} cells");
@@ -84,7 +85,7 @@ public sealed class CampaignBattleWorkspace
         if (packs.TryRead(esfPath) is { } esf)
         {
             campaign = CampaignSettlements.Read(esf);
-            campaignSource = Path.GetFileName(packs.FindOwner(esfPath)?.SourcePath);
+            campaignSource = packs.Origin(esfPath);
             if (campaign.HexWidth != map.Width || Math.Abs(campaign.HexHeight - map.Height) > 1)
                 notes.Add($"The campaign map {paths.MapName} is {campaign.HexWidth}x{campaign.HexHeight} hexes but the battle grid is " +
                           $"{map.Width}x{map.Height}: settlements are not on the battle grid. The battle terrain (catchments and tile map) " +
@@ -140,15 +141,13 @@ public sealed class CampaignBattleWorkspace
         return ws;
     }
 
-    /// <summary>battles_tables rows from the RPFM TSV folders, then every pack's binary battles_tables.</summary>
+    /// <summary>battles_tables rows from the RPFM TSV folders, then the packs' battles_tables.</summary>
     private static Dictionary<string, string> KnownBattleRows(PackSet packs, IEnumerable<string> dbRoots)
     {
         var known = BattlesTable.KnownMapPaths(dbRoots);
-        foreach (var pack in packs.Packs)
-            foreach (var entry in pack.Entries.Keys.Where(k => PackFile.Normalize(k).StartsWith(@"db\battles_tables\", StringComparison.OrdinalIgnoreCase)))
-                if (pack.TryRead(entry) is { } bytes)
-                    foreach (var (mapPath, type) in BattlesTable.ScanBinary(bytes))
-                        known.TryAdd(mapPath, type);
+        foreach (var (t, row) in DbTables.PackRows(packs, "battles_tables"))
+            if (t.Get(row, "map_path") is string { Length: > 0 } mapPath && t.Get(row, "type") is string type)
+                known.TryAdd(mapPath, type);
         return known;
     }
 
@@ -213,8 +212,7 @@ public sealed class CampaignBattleWorkspace
         SourceGuard.EnsureWritable(Path.GetDirectoryName(full)!, Paths);
         if (Paths.ModPacks.Any(p => string.Equals(Path.GetFullPath(p), full, StringComparison.OrdinalIgnoreCase)))
             throw new UnauthorizedAccessException($"Refusing to write: {packPath} is a mod pack (read-only).");
-        var bytes = Map.Write();
-        PackWriter.Write(packPath, [new PackWriter.Source(BlmPackPath, bytes.Length, s => s.Write(bytes))]);
+        PackWriter.Write(packPath, [(BlmPackPath, Map.Write())]);
     }
 
     /// <summary>The kit copy BOB's pack step picks up: &lt;kit&gt;\working_data\terrain\battles\&lt;folder&gt;\

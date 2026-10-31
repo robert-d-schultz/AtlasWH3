@@ -240,32 +240,6 @@ public static class BattlesTable
         return sb.ToString();
     }
 
-    /// <summary>
-    /// (map_path, type) of every row of a binary battles_tables file. Only the first columns are located (key, type,
-    /// is_naval, map_path, each string u16-length-prefixed), by finding each terrain\battles\…\ string and the type
-    /// string ahead of its is_naval byte, so it reads any table version without the full schema.
-    /// </summary>
-    public static IEnumerable<(string MapPath, string Type)> ScanBinary(byte[] data)
-    {
-        var text = Encoding.Latin1.GetString(data);
-        for (var p = text.IndexOf("terrain\\battles\\", StringComparison.OrdinalIgnoreCase); p >= 0;
-             p = text.IndexOf("terrain\\battles\\", p + 1, StringComparison.OrdinalIgnoreCase))
-        {
-            if (p < 5) continue;
-            int len = data[p - 2] | data[p - 1] << 8;
-            if (len <= 0 || p + len > data.Length) continue;
-            var mapPath = text.Substring(p, len);
-            var typeEnd = p - 3;   // the is_naval byte sits between the type string and the map_path length
-            for (var l = 1; l <= 40 && typeEnd - l - 2 >= 0; l++)
-            {
-                var at = typeEnd - l;
-                if ((data[at - 2] | data[at - 1] << 8) != l) continue;
-                var type = text.Substring(at, l);
-                if (type.All(c => c is >= 'a' and <= 'z' or '_')) { yield return (mapPath, type); break; }
-            }
-        }
-    }
-
     /// <summary>map_path → type of the rows in RPFM battles_tables TSVs under <paramref name="dbRoots"/> (each a folder
     /// holding battles_tables\*.tsv); missing folders are skipped.</summary>
     public static Dictionary<string, string> KnownMapPaths(IEnumerable<string> dbRoots)

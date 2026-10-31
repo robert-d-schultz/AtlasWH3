@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using AtlasWH3.Formats.Rpfm;
+
 namespace AtlasWH3.Core;
 
 /// <summary>Where the tool finds the map's sources (the assembly kit), the game's packs and the mod packs, and where it
@@ -62,10 +65,22 @@ public static class Defaults
         Detected.Value ?? @"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III");
     public static string AssemblyKit => Or(AppSettings.Current.AssemblyKit, Path.Combine(GameFolder, "assembly_kit"));
     public static string GameData => Path.Combine(GameFolder, "data");
+    /// <summary>rpfm_server.exe in the settings' RPFM folder; null when that is not set.</summary>
+    public static string? RpfmServer => string.IsNullOrWhiteSpace(AppSettings.Current.RpfmFolder) ? null
+        : Path.Combine(AppSettings.Current.RpfmFolder, "rpfm_server.exe");
     /// <summary>AtlasWH3's own data folder: <see cref="LocalData"/> unless the settings move it.</summary>
     public static string DataFolder => Or(AppSettings.Current.DataFolder, LocalData);
     public static string Output => Path.Combine(DataFolder, "output");
     public static string Cache => Path.Combine(DataFolder, "cache");
 
     private static string Or(string setting, string fallback) => string.IsNullOrWhiteSpace(setting) ? fallback : setting;
+}
+
+/// <summary>Points <see cref="RpfmClient"/> at the RPFM install in the settings, for everything that uses Core.</summary>
+internal static class RpfmSetup
+{
+#pragma warning disable CA2255   // AtlasWH3's own library: all its hosts want the setting
+    [ModuleInitializer]
+#pragma warning restore CA2255
+    internal static void Init() => RpfmClient.LocateServer = () => Defaults.RpfmServer;
 }

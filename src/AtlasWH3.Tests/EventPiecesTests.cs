@@ -163,8 +163,7 @@ public class EventPiecesTests
         try
         {
             var other = Path.Combine(dir, "!other.pack");
-            AtlasWH3.Formats.Packs.PackWriter.Write(other, [new AtlasWH3.Formats.Packs.PackWriter.Source(
-                @"db\campaigns_tables\other", bytes.Length, s => s.Write(bytes))]);
+            AtlasWH3.Formats.Packs.PackWriter.Write(other, [(@"db\campaigns_tables\other", bytes)]);
             var paths = TestKits.Paths(TestKits.Iee, TestKits.IeePack);
             paths = paths with { ModPacks = [other, .. paths.ModPacks] };
             var errors = new List<string>();

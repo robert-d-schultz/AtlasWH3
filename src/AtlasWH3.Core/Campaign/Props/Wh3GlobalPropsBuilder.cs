@@ -147,7 +147,7 @@ public sealed class Wh3GlobalPropsBuilder
     {
         var cultures = new Dictionary<string, int>(StringComparer.Ordinal);
         var keys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (t, row) in Formats.Db.DbBinaryTable.PackRows(packs, "prefab_types_tables"))
+        foreach (var (t, row) in Formats.Db.DbTables.PackRows(packs, "prefab_types_tables"))
         {
             if (t.Get(row, "prefab_type") is not string key || !keys.Add(key)) continue;
             if (t.Get(row, "culture") is string { Length: > 0 } c && c != "*" && t.Get(row, "value") is { } v)

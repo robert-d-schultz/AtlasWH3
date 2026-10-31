@@ -286,7 +286,7 @@ static class Gp27Commands
                 geometry = f.Geometry;
                 Console.WriteLine($"  geometry {f.Geometry}; materials {string.Join(", ", f.Materials.Values.Distinct())}");
             }
-            Console.WriteLine($"  pack: {packs.FindOwner(geometry.ToLowerInvariant())?.SourcePath ?? "none"}");
+            Console.WriteLine($"  pack: {packs.Origin(geometry) ?? "none"}");
             if (packs.TryRead(geometry.ToLowerInvariant()) is { } bytes)
             {
                 var rm = AtlasWH3.Formats.Models.RigidModel.Read(bytes);

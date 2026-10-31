@@ -64,21 +64,19 @@ public sealed class TreeDatabase
     public static TreeDatabase FromPacks(PackSet packs)
     {
         var ids = new Dictionary<string, TreeId>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_ids_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_tree_ids_tables"))
         {
             var id = (string)t.Get(row, "tree_id")!;
-            var colour = (uint)(Convert.ToInt32(t.Get(row, "colour_r")) << 16 | Convert.ToInt32(t.Get(row, "colour_g")) << 8 |
-                                Convert.ToInt32(t.Get(row, "colour_b")));
-            ids.TryAdd(id, new TreeId(id, t.Get(row, "can_be_removed") is true, colour));
+            ids.TryAdd(id, new TreeId(id, t.Get(row, "can_be_removed") is true, t.Colour(row)));
         }
         var variants = new Dictionary<(string, string), Variant>();
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_variants_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_tree_variants_tables"))
         {
             var v = new Variant((string)t.Get(row, "tree_id")!, (string)t.Get(row, "tree_type")!, (string)t.Get(row, "tree_rigid")!);
             variants.TryAdd((v.TreeId.ToLowerInvariant(), v.TreeType.ToLowerInvariant()), v);
         }
         var cultures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_tree_type_cultures_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_tree_type_cultures_tables"))
             cultures.TryAdd((string)t.Get(row, "culture")!, (string)t.Get(row, "tree_type")!);
         if (ids.Count == 0) throw new FileNotFoundException("no campaign_tree_ids_tables in the packs");
         return new TreeDatabase(ids, [.. variants.Values], cultures);

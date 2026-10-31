@@ -14,7 +14,7 @@ public static partial class InfoCards
         new("start.selection", "Current map",
             "What the Scene editor, Tile map, Campaign battles and Build open. Mod packs are only read, never written."),
         new("start.settings", "Settings",
-            "The game and assembly kit folders, AtlasWH3's data folder, developer mode and walkthroughs."),
+            "The game, assembly kit and RPFM folders, AtlasWH3's data folder, developer mode and walkthroughs."),
 
         // ---- settings: folders
         new("settings.game", "Game folder",
@@ -22,6 +22,9 @@ public static partial class InfoCards
         new("settings.kit", "Assembly kit",
             "The Assembly Kit holding your maps' Terry projects (raw_data): the game folder's assembly_kit unless you pick another. " +
             "Edits land in the Terry projects or in AtlasWH3's data folder, never in the game's packs."),
+        new("settings.rpfm", "RPFM",
+            "RPFM's folder, holding rpfm_server.exe (RPFM 5.3 or newer). AtlasWH3 reads and writes every pack through RPFM's " +
+            "server, and starts it when it is not running. RPFM's schema decodes the DB tables: keep RPFM's schemas up to date."),
         new("settings.data", "AtlasWH3 data",
             "AtlasWH3's own folder, %LocalAppData%\\AtlasWH3: build output, logs and edit history (output\\) and decoded textures " +
             "(cache\\). There is no need to move it."),
@@ -34,6 +37,6 @@ public static partial class InfoCards
         new("settings.resetTours", "Reset walkthroughs",
             "Every window's walkthrough starts again the next time that window opens, as on a fresh install."),
         new("menu.settings", "Settings",
-            "The game and assembly kit folders, AtlasWH3's data folder and developer mode. Changes apply to windows opened afterwards."),
+            "The game, assembly kit and RPFM folders, AtlasWH3's data folder and developer mode. Changes apply to windows opened afterwards."),
     ];
 }

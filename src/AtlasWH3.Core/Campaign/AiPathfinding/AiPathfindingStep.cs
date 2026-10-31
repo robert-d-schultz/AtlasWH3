@@ -68,19 +68,19 @@ public sealed class AiPathfindingStep : ICampaignBuildStep
             notes?.Add($"no game data folder ({paths.GameDataDir}); CA's default road and beach costs");
             return s;
         }
-        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var packs = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
         var campaigns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_playable_areas_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_map_playable_areas_tables"))
             if (string.Equals((string?)t.Get(row, "mapname"), paths.MapName, StringComparison.OrdinalIgnoreCase) && t.Get(row, "campaign_key") is string key)
                 campaigns.Add(key);
         var roads = new Dictionary<string, (float Threshold, uint Cost)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_roads_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_map_roads_tables"))
             if (t.Get(row, "key") is string key && !roads.ContainsKey(key) && t.Get(row, "campaign") is string campaign && campaigns.Contains(campaign))
                 roads[key] = (Convert.ToSingle(t.Get(row, "threshold"), CultureInfo.InvariantCulture), Convert.ToUInt32(t.Get(row, "movement_cost"), CultureInfo.InvariantCulture));
         if (roads.Count > 0) s = s with { RoadCost = roads.Values.MinBy(r => r.Threshold).Cost };
         else notes?.Add($"no campaign_map_roads row for {paths.MapName}'s campaigns ({string.Join(", ", campaigns)}); road cost {s.RoadCost}");
         var seen = new HashSet<string>();
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_variables_tables"))
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_variables_tables"))
         {
             if (t.Get(row, "variable_key") is not string key || !seen.Add(key) || t.Get(row, "value") is not { } value) continue;
             var v = (uint)Convert.ToSingle(value, CultureInfo.InvariantCulture);

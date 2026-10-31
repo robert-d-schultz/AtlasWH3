@@ -43,7 +43,7 @@ public sealed class AssetSource
 
     public byte[] Read(string path) => TryRead(path) ?? throw new FileNotFoundException($"asset not found: {path}");
 
-    /// <summary>Where a path resolves: a loose file path, or "pack.pack" (null when missing).</summary>
+    /// <summary>Where a path resolves: a loose file path, or the pack file's name (null when missing).</summary>
     public string? Locate(string path)
     {
         var p = Normalize(path);
@@ -53,8 +53,8 @@ public sealed class AssetSource
             if (File.Exists(full)) return full;
         }
         foreach (var pack in _extraPacks)
-            if (pack.Contains(p)) return Path.GetFileName(pack.SourcePath);
-        return Vanilla.FindOwner(p) is { } owner ? Path.GetFileName(owner.SourcePath) : null;
+            if (pack.Contains(p)) return pack.Name;
+        return Vanilla.Origin(p);
     }
 
     /// <summary>Every asset path with one of the extensions, across all sources (deduplicated, normalized).</summary>

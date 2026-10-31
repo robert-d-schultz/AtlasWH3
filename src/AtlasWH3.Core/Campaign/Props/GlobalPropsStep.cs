@@ -80,8 +80,8 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
     public static (float Margin, string From) QuadtreeMargin(CampaignBuildContext ctx)
     {
         if (!Directory.Exists(ctx.Paths.GameDataDir)) return (DefaultQuadtreeMargin, "no game data folder: default");
-        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks, n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "campaign_map_playable_areas_tables"))
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
+        foreach (var (t, row) in DbTables.PackRows(packs, "campaign_map_playable_areas_tables"))
             if (string.Equals((string?)t.Get(row, "mapname"), ctx.MapName, StringComparison.OrdinalIgnoreCase) &&
                 t.Get(row, "quadtree_margin") is { } m)
                 return (Convert.ToSingle(m, System.Globalization.CultureInfo.InvariantCulture), "campaign_map_playable_areas");

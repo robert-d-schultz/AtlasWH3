@@ -98,16 +98,14 @@ public sealed class LookupStep : ICampaignBuildStep
 
     public static bool IsFile(string entry) => entry.IndexOfAny(['.', '/', '\\']) >= 0;
 
-    /// <summary>Region key → lookup colour (regions_tables r, g, b, which CAIME paints the lookup with), from the
-    /// map's mod packs and the vanilla db packs, a higher-priority pack winning.</summary>
+    /// <summary>Region key → lookup colour (regions_tables' colour, which CAIME paints the lookup with), from the
+    /// map's mod packs and the vanilla packs, a higher-priority pack winning.</summary>
     private static Dictionary<string, uint> RegionColours(CampaignBuildContext ctx)
     {
-        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks,
-            n => n.StartsWith("db", StringComparison.OrdinalIgnoreCase));
+        var packs = GameSetup.OpenWithMods(ctx.Paths.GameDataDir, ctx.Paths.ModPacks);
         var colours = new Dictionary<string, uint>(StringComparer.Ordinal);
-        foreach (var (t, row) in DbBinaryTable.PackRows(packs, "regions_tables"))
-            colours.TryAdd((string)t.Get(row, "key")!, (uint)(Convert.ToInt32(t.Get(row, "r")) << 16 |
-                                                            Convert.ToInt32(t.Get(row, "g")) << 8 | Convert.ToInt32(t.Get(row, "b"))));
+        foreach (var (t, row) in DbTables.PackRows(packs, "regions_tables"))
+            colours.TryAdd((string)t.Get(row, "key")!, t.Colour(row));
         return colours;
     }
 

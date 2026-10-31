@@ -17,6 +17,12 @@ internal static class TestKits
     public const string Iee = "cr_combi_expanded_map_1", OldWorld = "cr_oldworld_map_1";
     public const string IeePack = "!cr_immortal_empires_expanded.pack", OldWorldPack = "!cr_oldworld_campaign.pack";
 
+    /// <summary>Starts RPFM's server from the settings' RPFM folder, for tests that touch nothing of Core's first.</summary>
+#pragma warning disable CA2255
+    [System.Runtime.CompilerServices.ModuleInitializer]
+#pragma warning restore CA2255
+    internal static void UseRpfm() => Formats.Rpfm.RpfmClient.LocateServer = () => Defaults.RpfmServer;
+
     public static string Wh3Game => GameSetup.FindGameFolder() ?? @"C:\Program Files (x86)\Steam\steamapps\common\Total War WARHAMMER III";
     public static string Wh3GameData => Path.Combine(Wh3Game, "data");
     /// <summary>The live kit (DB, prefabs, Terry configuration…); a fixture map's folders: <see cref="Kit"/>.</summary>

@@ -35,6 +35,8 @@ switch (command)
         return MergePack(args.Skip(1).ToArray());
     case "make-pack":
         return MakePack(args.Skip(1).ToArray());
+    case "extract":
+        return Extract(paths, args.Skip(1).ToArray());
     case "parity":
         return ParityCheck(paths, args.Skip(1).ToArray());
     case "validate-tilemap":
@@ -94,6 +96,8 @@ static void Help()
     Console.WriteLine("Packs");
     Console.WriteLine("  make-pack <root folder> <out.pack> [--exclude substring]..");
     Console.WriteLine("  merge-pack <base.pack> <override root> <out.pack> [--exclude substring].. [--replace-dir pack/folder/]..");
+    Console.WriteLine("  extract <dest> --vanilla|--pack <file.pack> [--prefix path/] [--name file].. [--suffix ending]..");
+    Console.WriteLine("                                           files of the vanilla packs or one pack, kept at their paths");
     Console.WriteLine();
     Console.WriteLine("Editing the kit's sources (preview; JSON out)");
     Console.WriteLine("  tiles-info | tiles-get | tiles-edit --ops <json> [--dry-run|--force|--allow-warnings|--preview]");
@@ -114,7 +118,7 @@ static void Help()
     Console.WriteLine("  fixture-freeze <name> --maps a,b [--packs p,q] [--replace] | fixture-list | fixture-check [name]");
     Console.WriteLine("  fixture-delete <name>   (fixture-*: --store <dir>, default atlaswh3_fixtures beside the kit)");
     Console.WriteLine("  bob-actions | bob-scratch --maps a,b | bob-run --maps a,b   BOB headless, in an isolated copy of the kit");
-    Console.WriteLine("  db-check | db-dump <table> [--limit n] | db-schema-snapshot [--ron <schema_wh3.ron>] [--out <json>]");
+    Console.WriteLine("  db-dump <table> [--limit n]   a DB table's files in the packs, decoded by RPFM");
     Console.WriteLine("  terry-schema [--root <dir>].. [--out <json>]   the component schema from the kit's raw_data");
     Console.WriteLine("  esf-roundtrip <file.esf>.. | trees-roundtrip | find-textures | gp-model-box <rigid_model_v2>");
     Console.WriteLine($"  {string.Join(" | ", Gp27Commands.Names)} | {string.Join(" | ", NormalCommands.Names)}");
@@ -288,7 +292,7 @@ static void GpModelBox(string[] a)
         }
 }
 
-// Packs every file under <root> (paths relative to it) into an uncompressed PFH5 mod pack, then re-reads it.
+// Packs every file under <root> (paths relative to it) into a mod pack through RPFM's server, then re-reads it.
 static int MakePack(string[] a)
 {
     if (a.Length < 2) { Console.Error.WriteLine("make-pack <root folder> <out.pack> [--exclude substring]..."); return 2; }
@@ -297,6 +301,42 @@ static int MakePack(string[] a)
     var s = AtlasWH3.Core.Build.PackBuilder.New(a[1], AtlasWH3.Core.Build.PackBuilder.FromFolder(a[0], excludes));
     Console.WriteLine($"{a[1]}: {s.Files} files, {s.Bytes:N0} bytes; re-read: all present {s.Verified}");
     return s.Verified ? 0 : 1;
+}
+
+// Extracts files of the vanilla packs (--vanilla) or one pack (the global --pack) under <dest>, kept at their paths in
+// the pack: those under --prefix whose file name is a --name or ends with a --suffix (every file under the prefix
+// without either).
+static int Extract(ProjectPaths paths, string[] a)
+{
+    var usage = "extract <dest> --vanilla|--pack <file.pack> [--prefix path/] [--name file].. [--suffix ending]..";
+    if (a.Length < 1) { Console.Error.WriteLine(usage); return 2; }
+    string? prefix = null;
+    var pack = paths.ModPacks.Count == 1 ? paths.ModPacks[0] : null;
+    bool vanilla = false;
+    var names = new List<string>();
+    var suffixes = new List<string>();
+    for (var i = 1; i < a.Length; i++)
+        switch (a[i])
+        {
+            case "--vanilla": vanilla = true; break;
+            case "--prefix" when i + 1 < a.Length: prefix = a[++i]; break;
+            case "--name" when i + 1 < a.Length: names.Add(a[++i]); break;
+            case "--suffix" when i + 1 < a.Length: suffixes.Add(a[++i]); break;
+            default: Console.Error.WriteLine(usage); return 2;
+        }
+    if (vanilla == (pack is not null)) { Console.Error.WriteLine(usage); return 2; }
+    var source = vanilla ? PackFile.Vanilla(paths.GameDataDir) : PackFile.Open(pack!);
+    var start = PackFile.Normalize(prefix ?? "");
+    var files = source.Entries.Keys.Where(k => k.StartsWith(start, StringComparison.Ordinal)).Where(k =>
+    {
+        var name = k[(k.LastIndexOf('\\') + 1)..];
+        return names.Count + suffixes.Count == 0 || names.Contains(name, StringComparer.OrdinalIgnoreCase)
+               || suffixes.Any(s => name.EndsWith(s, StringComparison.OrdinalIgnoreCase));
+    }).Order(StringComparer.Ordinal).ToList();
+    foreach (var f in files) Console.WriteLine(source.Entries[f].Path);
+    source.Extract(files, a[0]);
+    Console.WriteLine($"{files.Count} files from {source.Name} under {Path.GetFullPath(a[0])}");
+    return 0;
 }
 
 // A copy of <base.pack> with every file under <override root> replacing (or adding to) the base's. Base files inside
@@ -353,8 +393,6 @@ static void FindTextures(ProjectPaths paths)
     var set = GameSetup.OpenWithMods(paths.GameDataDir, paths.ModPacks);
     foreach (var g in arrays.Groups)
     {
-        var owner = set.FindOwner(g.BaseColour);
-        var entry = owner?.Entries[PackFile.Normalize(g.BaseColour)];
-        Console.WriteLine($"{g.Index,2} {g.Name,-16} {(owner == null ? "MISSING" : Path.GetFileName(owner.SourcePath) + (entry!.IsCompressed ? " (compressed)" : ""))}");
+        Console.WriteLine($"{g.Index,2} {g.Name,-16} {set.Origin(g.BaseColour) ?? "MISSING"}");
     }
 }

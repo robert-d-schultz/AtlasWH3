@@ -249,20 +249,21 @@ public class BuildProjectTests : IDisposable
         Assert.NotNull(PackFile.Open(Path.Combine(_dir, "out.pack")).TryRead("terrain/m/pieces/event_1/mask"));
     }
 
+    /// <summary>RPFM's paths are case-sensitive and ours are not: an override spelled in another case replaces the base
+    /// file instead of adding a second one.</summary>
     [Fact]
-    public void MergeCopiesCompressedEntriesAsTheyAre()
+    public void MergeReplacesAFileSpelledInAnotherCase()
     {
-        var data = System.Text.Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("db rows ", 500)));
-        using var zstd = new ZstdSharp.Compressor();
-        var stored = BitConverter.GetBytes(data.Length).Concat(zstd.Wrap(data).ToArray()).ToArray();
         var basePack = Path.Combine(_dir, "base.pack");
-        PackWriter.Write(basePack, [new PackWriter.Source("db/t/data", stored.Length, s => s.Write(stored), Compressed: true)]);
+        PackWriter.Write(basePack, [("Terrain/A.bin", "old"u8.ToArray())]);
         var update = Path.Combine(_dir, "update");
-        Write(update, "x.bin", "x");
-        PackBuilder.Merge(basePack, basePack, PackBuilder.Collect([(update, "terrain")], m => Assert.Fail(m)));
+        Write(update, "a.bin", "new");
+        var s = PackBuilder.Merge(basePack, basePack, PackBuilder.Collect([(update, "terrain")], m => Assert.Fail(m)));
+        Assert.True(s.Verified);
+        Assert.Equal((0, 1, 0), (s.Kept, s.Replaced, s.Added));
         var pack = PackFile.Open(basePack);
-        Assert.True(pack.Entries[@"db\t\data"].IsCompressed);
-        Assert.Equal(data, pack.TryRead("db/t/data"));
+        Assert.Equal("terrain/a.bin", Assert.Single(pack.Entries.Values).Path);
+        Assert.Equal("new"u8.ToArray(), pack.TryRead("terrain/a.bin"));
     }
 
     [Fact]
@@ -326,7 +327,7 @@ public class BuildProjectTests : IDisposable
     public void MergeKeepsTheBasePacksTypeAndDependencies()
     {
         var basePack = Path.Combine(_dir, "base.pack");
-        PackWriter.Write(basePack, [new PackWriter.Source("db/t/data", 1, s => s.WriteByte(7))],
+        PackWriter.Write(basePack, [("misc/t.bin", new byte[] { 7 })],
                          new PackWriter.Header(4, ["!a_dependency.pack", "other.pack"]));   // a movie pack
         var update = Path.Combine(_dir, "update");
         Write(update, "x.bin", "x");
@@ -335,7 +336,7 @@ public class BuildProjectTests : IDisposable
         var pack = PackFile.Open(out1);
         Assert.Equal(4u, pack.PackType);
         Assert.Equal(["!a_dependency.pack", "other.pack"], pack.Dependencies);
-        Assert.Equal([(byte)7], pack.TryRead("db/t/data")!);
+        Assert.Equal([(byte)7], pack.TryRead("misc/t.bin")!);
         Assert.Equal("x", System.Text.Encoding.UTF8.GetString(pack.TryRead("terrain/x.bin")!));
         // a new pack is a mod pack without dependencies
         var fresh = PackFile.Open(PackBuilder.New(Path.Combine(_dir, "new.pack"), PackBuilder.FromFolder(update)).Pack);

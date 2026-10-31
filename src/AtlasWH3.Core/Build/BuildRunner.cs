@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using AtlasWH3.Core.Campaign;
 using AtlasWH3.Core.Campaign.TileMapCheck;
+using AtlasWH3.Formats.Packs;
 
 namespace AtlasWH3.Core.Build;
 
@@ -289,7 +290,7 @@ public sealed class BuildRunner
             File.Delete(temp);
             throw new InvalidDataException($"re-read check failed: files missing from the written pack; {name} was not changed");
         }
-        File.Move(temp, target, overwrite: true);
+        PackFile.Replace(temp, target);
         notes.Add($"{target}: {summary.Files} files, {summary.Bytes / 1048576.0:F1} MB");
         return summary.Files;
     }

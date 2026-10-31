@@ -1,90 +1,103 @@
-using System.Text;
+using AtlasWH3.Formats.Rpfm;
 
 namespace AtlasWH3.Formats.Packs;
 
 /// <summary>
-/// Writes a PFH5 pack (WH3, as RPFM saves a pack without compression): "PFH5", u32 flags (the pack type, 3 = mod), u32
-/// dependency count, u32 dependency index size, u32 file count, u32 file index size, u32 timestamp, the dependencies
-/// (pack name + \0 each), then per file (u32 stored size, u8 compressed, backslash path + \0), then the file data in
-/// index order. New files are stored uncompressed; a file copied from another pack keeps its stored bytes. Same layout
-/// <see cref="PackFile"/> reads.
+/// Writes packs through RPFM's server (<see cref="RpfmClient"/>): a new pack from files, or an existing pack with files
+/// deleted and added. RPFM saves them (PFH5 for WH3); a .tsv file added is imported as its DB table. Each pack is saved
+/// beside its target and then swapped in, so a failed write never leaves half a pack.
 /// </summary>
 public static class PackWriter
 {
     public const uint ModPack = 3;
 
-    /// <summary>The header fields a pack keeps through a merge: its type and the packs it depends on.</summary>
+    /// <summary>The header fields a new pack gets: its type and the packs it depends on.</summary>
     public sealed record Header(uint PackType, IReadOnlyList<string> Dependencies)
     {
         public static readonly Header Mod = new(ModPack, []);
-        public static Header Of(PackFile pack) => new(pack.PackType, pack.Dependencies);
     }
 
-    /// <summary>One file to pack: its path inside the pack (/ or \), stored size, a callback that copies its stored bytes,
-    /// and whether those bytes are a compressed entry (u32 size + zstd / LZ4 frame).</summary>
-    public sealed record Source(string InternalPath, long Size, Action<Stream> CopyTo, bool Compressed = false);
+    private static RpfmClient Rpfm => RpfmClient.Shared;
 
-    /// <summary>A file on disk.</summary>
-    public static Source FromDisk(string internalPath, string diskPath) =>
-        new(internalPath, new FileInfo(diskPath).Length, s => { using var src = File.OpenRead(diskPath); src.CopyTo(s); });
-
-    /// <summary>A file taken unchanged from an existing pack (a compressed entry stays compressed).</summary>
-    public static Source FromPack(PackFile pack, PackEntry entry) => new(entry.Path, entry.Size, s =>
-    {
-        using var src = new FileStream(pack.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        src.Seek(entry.Offset, SeekOrigin.Begin);
-        var buffer = new byte[1 << 20];
-        var left = (long)entry.Size;
-        while (left > 0)
-        {
-            var n = src.Read(buffer, 0, (int)Math.Min(buffer.Length, left));
-            if (n <= 0) throw new EndOfStreamException(entry.Path);
-            s.Write(buffer, 0, n);
-            left -= n;
-        }
-    }, entry.IsCompressed);
-
-    public static void Write(string packPath, IEnumerable<(string InternalPath, string DiskPath)> files) =>
-        Write(packPath, files.Select(f => FromDisk(f.InternalPath, f.DiskPath)));
-
-    public static void Write(string packPath, IEnumerable<Source> sources, Header? header = null)
+    /// <summary>A new pack at <paramref name="packPath"/> holding <paramref name="files"/> (path in the pack, file on disk).</summary>
+    public static void Write(string packPath, IEnumerable<(string InternalPath, string DiskPath)> files, Header? header = null)
     {
         header ??= Header.Mod;
-        var list = sources.Select(f => (Name: f.InternalPath.Replace('/', '\\').TrimStart('\\'), Source: f))
-            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        var dependencies = header.Dependencies.SelectMany(d => Encoding.UTF8.GetBytes(d).Append((byte)0)).ToArray();
-        var index = new MemoryStream();
-        using (var w = new BinaryWriter(index, Encoding.UTF8, leaveOpen: true))
-            foreach (var (name, source) in list)
-            {
-                w.Write(checked((uint)source.Size));
-                w.Write(source.Compressed ? (byte)1 : (byte)0);
-                w.Write(Encoding.UTF8.GetBytes(name));
-                w.Write((byte)0);
-            }
-
-        var temp = packPath + ".tmp";
-        using (var fs = File.Create(temp))
-        using (var w = new BinaryWriter(fs))
+        var key = (string)Rpfm.Call("pack.new")!["key"]!;
+        try
         {
-            w.Write("PFH5"u8);
-            w.Write(header.PackType & 0xF);
-            w.Write((uint)header.Dependencies.Count);
-            w.Write((uint)dependencies.Length);
-            w.Write((uint)list.Count);
-            w.Write((uint)index.Length);
-            w.Write((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            w.Write(dependencies);
-            w.Write(index.ToArray());
-            w.Flush();
-            foreach (var (_, source) in list)
+            Rpfm.Call("pack.update", new
             {
-                var before = fs.Position;
-                source.CopyTo(fs);
-                if (fs.Position - before != source.Size)
-                    throw new InvalidDataException($"{source.InternalPath}: wrote {fs.Position - before} bytes, expected {source.Size}.");
-            }
+                pack = key, pack_type = PackFile.PackTypes[(int)header.PackType],
+                dependencies = header.Dependencies.Select(d => new { enabled = true, name = d }),
+            });
+            Add(key, files.ToList());
+            Save(key, packPath);
         }
-        File.Move(temp, packPath, overwrite: true);
+        finally { Close(key); }
+    }
+
+    /// <summary>A new pack holding in-memory files (staged in a temporary folder).</summary>
+    public static void Write(string packPath, IEnumerable<(string InternalPath, byte[] Data)> files, Header? header = null)
+    {
+        var stage = Directory.CreateTempSubdirectory("atlaswh3_pack_").FullName;
+        try
+        {
+            var onDisk = files.Select((f, i) =>
+            {
+                var disk = Path.Combine(stage, $"{i}_{Path.GetFileName(f.InternalPath.Replace('\\', '/'))}");
+                File.WriteAllBytes(disk, f.Data);
+                return (f.InternalPath, disk);
+            }).ToList();
+            Write(packPath, onDisk, header);
+        }
+        finally { Directory.Delete(stage, true); }
+    }
+
+    /// <summary><paramref name="basePack"/> with the files at <paramref name="delete"/> (paths as the pack spells them)
+    /// removed and <paramref name="add"/> added, saved to <paramref name="output"/> (which may be the base pack). The
+    /// base pack's type, dependencies and compression are kept.</summary>
+    public static void Merge(string basePack, string output, IReadOnlyCollection<string> delete,
+                             IEnumerable<(string InternalPath, string DiskPath)> add)
+    {
+        PackFile.Forget(basePack);   // the server opens a pack file only once
+        var key = (string)Rpfm.Call("pack.open", new { paths = new[] { Path.GetFullPath(basePack) }, lazy_loading = true })!["key"]!;
+        try
+        {
+            if (delete.Count > 0) Rpfm.Call("files.delete", new { pack = key, paths = delete });
+            Add(key, add.ToList());
+            Save(key, output);
+        }
+        finally { Close(key); }
+    }
+
+    private static void Add(string key, List<(string InternalPath, string DiskPath)> files)
+    {
+        if (files.Count == 0) return;
+        var result = Rpfm.Call("files.add_from_disk", new
+        {
+            pack = key,
+            paths = files.Select(f => Path.GetFullPath(f.DiskPath)),
+            pack_paths = files.Select(f => f.InternalPath.Replace('\\', '/').TrimStart('/')),
+        })!;
+        if ((string?)result["error"] is { Length: > 0 } error)
+            throw new IOException($"RPFM could not add every file to the pack: {error}");
+    }
+
+    /// <summary>Saves the pack beside <paramref name="packPath"/>, closes it, and swaps it in.</summary>
+    private static void Save(string key, string packPath)
+    {
+        var full = Path.GetFullPath(packPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        var temp = full + ".rpfm.tmp";
+        Rpfm.Call("pack.save", new { pack = key, path = temp });
+        Close(key);
+        PackFile.Replace(temp, full);
+    }
+
+    private static void Close(string key)
+    {
+        try { Rpfm.Call("pack.close", new { pack = key }); }
+        catch (RpfmException) { }   // closed already
     }
 }

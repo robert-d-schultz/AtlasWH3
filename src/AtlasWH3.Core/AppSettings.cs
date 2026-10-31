@@ -17,6 +17,9 @@ public sealed class AppSettings
     public string GameFolder { get; set; } = "";
     /// <summary>Default assembly kit; empty = &lt;game&gt;\assembly_kit.</summary>
     public string AssemblyKit { get; set; } = "";
+    /// <summary>RPFM's install folder (holding rpfm_server.exe), which AtlasWH3 reads and writes packs through; empty =
+    /// unknown, and then only an RPFM server that is already running is used.</summary>
+    public string RpfmFolder { get; set; } = "";
     /// <summary>Where AtlasWH3 keeps its own data (output\, cache\); empty = %LocalAppData%\AtlasWH3.</summary>
     public string DataFolder { get; set; } = "";
     /// <summary>The project (.atlaswh3) the Start screen opens editors on; empty = none: the kit's <see cref="MapName"/>.</summary>

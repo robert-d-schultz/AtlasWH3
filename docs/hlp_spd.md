@@ -5,8 +5,10 @@
 WH3 maps ship `campaign_maps/<map>/hlp_data.esf` and `spd_data.esf`, which the game builds offline from
 `pathfinding.ppd` and `map_data.esf`. The `hlp_spd` step and `hlp-spd` CLI build them natively, on top of Atlas3K's
 3K generator (below), changed where WH3 differs. The reference files are the vanilla packs' 11 maps and the user's
-IEE and Old World maps (all four inputs and outputs per map). `extract_refs.py` in `research/hlp_spd_wh3` pulls them
-out through rpfm_server.
+IEE and Old World maps (all four inputs and outputs per map). The CLI pulls them out through RPFM's server, one source
+at a time: `AtlasWH3.Cli extract <out>/vanilla --vanilla --prefix campaign_maps/ --name hlp_data.esf --name
+spd_data.esf --name pathfinding.ppd --name map_data.esf --suffix _lookup.tga`, then the same with `--pack <mod.pack>`
+into `<out>/<mod>` for each mod.
 
 - **Pipeline:** the `hlp_spd` step runs with the other native steps. It reads `pathfinding.ppd` and `map_data.esf`
   from `campaign_maps/<map>` in the map's linked mod pack (else the vanilla packs, for a vanilla map), and the DB

@@ -1,129 +1,167 @@
-using System.Text;
+using System.Text.Json.Nodes;
+using AtlasWH3.Formats.Db;
+using AtlasWH3.Formats.Rpfm;
 
 namespace AtlasWH3.Formats.Packs;
 
-// Read-only PFH4/PFH5 pack reader, adapted from Atlas3K's 3K reader (Z:\Claude\TKAudio\Tk3AudioTool\Services\Tk3Pack.cs).
-// WH3's packs are PFH5 with byte mask 1 (checked on the 2026-09 game build).
-//
-// Header: "PFH5", u32 byteMask, u32 dependantCount, u32 dependantIndexSize, u32 fileCount,
-// u32 fileIndexSize, timestamp buffer (4 bytes, or 24 if byteMask & 0x100), dependant names.
-// File table: u32 size, [u32 timestamp if byteMask & 0x40], [u8 compressed if PFH5], zero-terminated path.
-// Data follows the table, in table order.
-// A compressed entry (every campaign file in WH3's packs) is u32 uncompressed size + one zstd frame, or one LZ4 frame
-// (some tile meshes in tiles_campaign.pack). Old packs' LZMA1 streams are reported, not decoded.
+/// <summary>A file of a pack: its path as the pack spells it (forward slashes, its own case).</summary>
+public sealed record PackEntry(string Path);
 
-public sealed record PackEntry(string Path, long Offset, uint Size, bool IsCompressed);
-
+/// <summary>
+/// A pack opened in RPFM's server (<see cref="RpfmClient"/>): a pack file from disk, or the game's vanilla packs merged
+/// in load order (<see cref="Vanilla"/>: the packs RPFM loads for the game, data\manifest.txt's with only the game's own
+/// language pack). The server reads and decompresses the files. Paths are looked up case-insensitively with either
+/// slash; the server's own lookups are exact, so they go through <see cref="Entries"/>. Opening a pack again reuses the
+/// open one until the file on disk changes.
+/// </summary>
 public sealed class PackFile
 {
+    /// <summary>The pack file; for the vanilla packs, the game's data folder.</summary>
     public string SourcePath { get; }
+    /// <summary>The pack's file name; "vanilla packs" for the vanilla packs.</summary>
+    public string Name { get; }
+    /// <summary><see cref="Normalize"/>d path → the file.</summary>
     public IReadOnlyDictionary<string, PackEntry> Entries => _entries;
-    /// <summary>The pack type, the byte mask's low 4 bits (0 boot, 1 release, 2 patch, 3 mod, 4 movie).</summary>
-    public uint PackType { get; private set; }
+    /// <summary>The pack type: 0 boot, 1 release, 2 patch, 3 mod, 4 movie.</summary>
+    public uint PackType { get; }
     /// <summary>The packs this one names as its dependencies, in header order.</summary>
-    public IReadOnlyList<string> Dependencies => _dependencies;
+    public IReadOnlyList<string> Dependencies { get; }
 
-    private readonly Dictionary<string, PackEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<string> _dependencies = [];
+    internal string Key { get; }
+    private readonly Dictionary<string, PackEntry> _entries;
+    private readonly bool _vanilla;
+    /// <summary>The server's copy was closed (the file is being replaced): reads go to the file as it is now.</summary>
+    private volatile bool _closed;
 
-    private PackFile(string sourcePath) => SourcePath = sourcePath;
+    public static readonly IReadOnlyList<string> PackTypes = ["Boot", "Release", "Patch", "Mod", "Movie"];
 
+    private PackFile(string sourcePath, string name, string key, JsonNode info, bool vanilla)
+    {
+        SourcePath = sourcePath;
+        Name = name;
+        Key = key;
+        _vanilla = vanilla;
+        var type = PackTypes.Select((t, i) => (t, i)).FirstOrDefault(t => t.t == (string?)info["pack_type"]);
+        PackType = (uint)type.i;
+        Dependencies = info["dependencies"] is JsonArray deps ? deps.Select(d => (string)d!["name"]!).ToList() : [];
+        var files = Rpfm.Call("files.list", new { source = new { pack = key }, limit = int.MaxValue })!["files"]!.AsArray();
+        _entries = new Dictionary<string, PackEntry>(files.Count, StringComparer.Ordinal);
+        foreach (var f in files)
+        {
+            var path = (string)f!["path"]!;
+            _entries.TryAdd(Normalize(path), new PackEntry(path));
+        }
+    }
+
+    private static RpfmClient Rpfm => RpfmClient.Shared;
+
+    private static readonly Lock CacheGate = new();
+    private static readonly Dictionary<string, (DateTime Written, long Length, PackFile Pack)> Opened = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The pack at <paramref name="path"/>, opened in the server (or the one already open, if the file has not
+    /// changed since).</summary>
     public static PackFile Open(string path)
     {
-        var pack = new PackFile(path);
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-        using var reader = new BinaryReader(stream, Encoding.ASCII);
-
-        var magic = Encoding.ASCII.GetString(reader.ReadBytes(4));
-        if (magic != "PFH5" && magic != "PFH4")
-            throw new InvalidDataException($"'{Path.GetFileName(path)}' is not a PFH4/PFH5 pack (magic '{magic}').");
-
-        var byteMask = reader.ReadUInt32();
-        var dependantCount = reader.ReadUInt32();
-        var dependantIndexSize = reader.ReadUInt32();
-        var fileCount = reader.ReadUInt32();
-        var fileIndexSize = reader.ReadUInt32();
-        if ((byteMask & 0x80) != 0)
-            throw new NotSupportedException("Encrypted-index packs are not supported.");
-
-        pack.PackType = byteMask & 0xF;
-        var bufferLen = (byteMask & 0x100) != 0 ? 24 : 4;
-        reader.ReadBytes(bufferLen);
-        for (var i = 0; i < dependantCount; i++)
-            pack._dependencies.Add(ReadZeroTerminated(reader));
-
-        var hasTimestamps = (byteMask & 0x40) != 0;
-        var isPfh5 = magic == "PFH5";
-        long offset = 24 + bufferLen + dependantIndexSize + fileIndexSize;
-
-        for (uint i = 0; i < fileCount; i++)
+        var full = Path.GetFullPath(path);
+        var file = new FileInfo(full);
+        if (!file.Exists) throw new FileNotFoundException($"pack not found: {full}", full);
+        lock (CacheGate)
         {
-            var size = reader.ReadUInt32();
-            if (hasTimestamps) reader.ReadUInt32();
-            var compressed = isPfh5 && reader.ReadBoolean();
-            var entryPath = ReadZeroTerminated(reader);
-            pack._entries[Normalize(entryPath)] = new PackEntry(entryPath, offset, size, compressed);
-            offset += size;
+            if (Opened.TryGetValue(full, out var o))
+            {
+                if (o.Written == file.LastWriteTimeUtc && o.Length == file.Length) return o.Pack;
+                Close(o.Pack);
+            }
+            string key;
+            try { key = (string)Rpfm.Call("pack.open", new { paths = new[] { full }, lazy_loading = true })!["key"]!; }
+            catch (RpfmException e) { throw new InvalidDataException($"{Path.GetFileName(full)}: {e.Message}", e); }
+            var pack = new PackFile(full, Path.GetFileName(full), key, Rpfm.Call("pack.info", new { pack = key })!, vanilla: false);
+            Opened[full] = (file.LastWriteTimeUtc, file.Length, pack);
+            return pack;
         }
-        return pack;
+    }
+
+    /// <summary>The game's vanilla packs (<paramref name="gameDataDir"/>: the game's data folder), merged.</summary>
+    public static PackFile Vanilla(string gameDataDir)
+    {
+        var full = Path.GetFullPath(gameDataDir).TrimEnd(Path.DirectorySeparatorChar);
+        lock (CacheGate)
+        {
+            if (Opened.TryGetValue(full, out var o)) return o.Pack;
+            if (!Directory.Exists(full)) throw new DirectoryNotFoundException($"game data folder not found: {full}");
+            Rpfm.UseGameFolder(Path.GetDirectoryName(full)!);
+            var key = (string)Rpfm.Call("pack.open_vanilla")!["key"]!;
+            var pack = new PackFile(full, "vanilla packs", key, Rpfm.Call("pack.info", new { pack = key })!, vanilla: true);
+            Opened[full] = (default, 0, pack);
+            return pack;
+        }
+    }
+
+    /// <summary>Closes the server's copy of a pack file opened here (before the file is replaced on disk).</summary>
+    public static void Forget(string path)
+    {
+        lock (CacheGate)
+            if (Opened.Remove(Path.GetFullPath(path), out var o)) Close(o.Pack);
+    }
+
+    /// <summary>Moves the pack file <paramref name="source"/> over <paramref name="target"/>, after the server lets go of
+    /// both.</summary>
+    public static void Replace(string source, string target)
+    {
+        Forget(source);
+        Forget(target);
+        File.Move(source, target, overwrite: true);
+    }
+
+    private static void Close(PackFile pack)
+    {
+        pack._closed = true;
+        try { Rpfm.Call("pack.close", new { pack = pack.Key }); }
+        catch (RpfmException) { }   // already gone with an earlier session
     }
 
     public bool Contains(string internalPath) => _entries.ContainsKey(Normalize(internalPath));
 
-    public byte[]? TryRead(string internalPath)
-    {
-        if (!_entries.TryGetValue(Normalize(internalPath), out var entry))
-            return null;
+    public byte[]? TryRead(string internalPath) =>
+        _closed ? Open(SourcePath).TryRead(internalPath)
+        : _entries.TryGetValue(Normalize(internalPath), out var entry) ? Rpfm.ReadFile(Key, entry.Path) : null;
 
-        using var stream = new FileStream(SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        stream.Seek(entry.Offset, SeekOrigin.Begin);
-        var data = new byte[entry.Size];
-        stream.ReadExactly(data);
-        return entry.IsCompressed ? Decompress(data, entry.Path) : data;
+    /// <summary>The pack file a path comes from: this pack's name, or for the vanilla packs the CA pack holding it.</summary>
+    public string? Origin(string internalPath)
+    {
+        if (!_entries.TryGetValue(Normalize(internalPath), out var entry)) return null;
+        if (!_vanilla) return Name;
+        var files = Rpfm.Call("files.info", new { pack = Key, paths = new[] { entry.Path } })!["files"]!.AsArray();
+        return files.Count > 0 ? (string?)files[0]!["container_name"] : Name;
     }
 
-    private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD];
-    private static readonly byte[] Lz4Magic = [0x04, 0x22, 0x4D, 0x18];
-
-    /// <summary>A compressed entry's bytes: u32 uncompressed size, then a zstd or LZ4 frame.</summary>
-    public static byte[] Decompress(byte[] data, string name = "entry")
+    /// <summary>Extracts files under <paramref name="destination"/>, keeping their paths in the pack (in one request,
+    /// which is much faster than reading them one by one). Returns the files written.</summary>
+    public IReadOnlyList<string> Extract(IEnumerable<string> internalPaths, string destination)
     {
-        if (data.Length < 8) throw new InvalidDataException($"'{name}': compressed entry of {data.Length} bytes");
-        var size = BitConverter.ToInt32(data, 0);
-        var frame = data.AsSpan(4);
-        if (frame.StartsWith(ZstdMagic))
-        {
-            var result = new byte[size];
-            using var zstd = new ZstdSharp.Decompressor();
-            var written = zstd.Unwrap(frame, result);
-            if (written != size) throw new InvalidDataException($"'{name}': zstd gave {written} bytes, the entry says {size}");
-            return result;
-        }
-        if (frame.StartsWith(Lz4Magic))
-        {
-            var result = new byte[size];
-            using var lz4 = K4os.Compression.LZ4.Streams.LZ4Stream.Decode(new MemoryStream(data, 4, data.Length - 4, false));
-            lz4.ReadExactly(result);
-            return result;
-        }
-        throw new NotSupportedException($"'{name}' is compressed with LZMA1 (or an unknown format); only zstd and LZ4 entries are supported");
+        if (_closed) return Open(SourcePath).Extract(internalPaths, destination);
+        var paths = internalPaths.Select(p => _entries.TryGetValue(Normalize(p), out var e) ? e.Path : throw new FileNotFoundException($"{p} is not in {Name}")).ToList();
+        if (paths.Count == 0) return [];
+        var result = Rpfm.Call("files.extract", new { source = new { pack = Key }, paths, destination = Path.GetFullPath(destination) })!;
+        return result["extracted"]!.AsArray().Select(p => (string)p!).ToList();
     }
 
+    /// <summary>A DB table file of this pack (db/&lt;table&gt;/&lt;file&gt;), decoded by RPFM with its schema.</summary>
+    public DbTables.Table ReadTable(string internalPath)
+    {
+        if (_closed) return Open(SourcePath).ReadTable(internalPath);
+        var entry = _entries.TryGetValue(Normalize(internalPath), out var e) ? e : throw new FileNotFoundException($"{internalPath} is not in {Name}");
+        var file = new { source = new { pack = Key }, path = entry.Path };
+        return DbTables.FromRpfm(Rpfm.Call("table.info", new { file })!, Rpfm.Call("table.rows", new { file, limit = int.MaxValue })!);
+    }
+
+    /// <summary>A path as <see cref="Entries"/> keys it: backslashes, lower case.</summary>
     public static string Normalize(string path) => path.Replace('/', '\\').Trim().ToLowerInvariant();
-
-    private static string ReadZeroTerminated(BinaryReader reader)
-    {
-        var bytes = new List<byte>(96);
-        byte b;
-        while ((b = reader.ReadByte()) != 0)
-            bytes.Add(b);
-        return Encoding.UTF8.GetString(bytes.ToArray());
-    }
 }
 
 /// <summary>
-/// A set of packs searched like the game does: later packs in load order override earlier ones.
-/// Only vanilla packs (listed in data\manifest.txt) are used by default so mods don't leak in.
+/// Packs searched like the game does, highest priority first: mod packs, then the vanilla packs (merged by RPFM in the
+/// game's load order).
 /// </summary>
 public sealed class PackSet
 {
@@ -133,32 +171,12 @@ public sealed class PackSet
 
     public PackSet(IEnumerable<PackFile> packsInPriorityOrder) => _packs = packsInPriorityOrder.ToList();
 
-    public static PackSet OpenVanilla(string gameDataDir, Func<string, bool>? filter = null)
-    {
-        var manifest = Path.Combine(gameDataDir, "manifest.txt");
-        IEnumerable<string> names = File.Exists(manifest)
-            ? File.ReadLines(manifest).Select(l => l.Split('\t')[0].Trim())
-                  .Where(n => n.EndsWith(".pack", StringComparison.OrdinalIgnoreCase))
-            : Directory.EnumerateFiles(gameDataDir, "*.pack").Select(p => Path.GetFileName(p));
+    public static PackSet OpenVanilla(string gameDataDir) => new([PackFile.Vanilla(gameDataDir)]);
 
-        var packs = names
-            .Where(n => filter == null || filter(n))
-            .Select(n => Path.Combine(gameDataDir, n))
-            .Where(File.Exists)
-            .Select(PackFile.Open)
-            .ToList();
-        // Highest priority first (the game lets later/"newer" packs override; reverse load order).
-        packs.Reverse();
-        return new PackSet(packs);
-    }
-
-    public byte[]? TryRead(string internalPath)
-    {
-        foreach (var pack in _packs)
-            if (pack.Contains(internalPath))
-                return pack.TryRead(internalPath);
-        return null;
-    }
+    public byte[]? TryRead(string internalPath) => FindOwner(internalPath)?.TryRead(internalPath);
 
     public PackFile? FindOwner(string internalPath) => _packs.FirstOrDefault(p => p.Contains(internalPath));
+
+    /// <summary>The pack file a path is read from (a vanilla file's own CA pack), or null.</summary>
+    public string? Origin(string internalPath) => FindOwner(internalPath)?.Origin(internalPath);
 }
