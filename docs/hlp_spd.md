@@ -151,7 +151,8 @@ prologue, chaos 1–4, combi 1–5 and 7, IEE, Old World, Old World Classic and 
     - A region is left out only when all its map_data areas are of type 6/7, or it has none. Its pairs stay
       `FFFFFFFE` / 0, as do the diagonal and the costs' lower triangle.
     - A region with only type-1 areas is computed and finds nothing: `FFFFFFFF` / 255.
-    - Regions from 1,024 on have no row, but their costs count for OTHER_CONSTANTS (the largest cost).
+    - Regions from 1,024 on have no row, but their costs count for OTHER_CONSTANTS (the largest cost). In play the
+      game computes them live on every query (see the game's region lookups, below).
   - **Points** (`0x14284f9d8`): a region's areas of type 0 (land) and 3/4 (sea), in map_data order.
     - The pair's value comes from one search per (area of r, area of s), in that order.
     - Without land-sea transitions, s offers only areas of a medium r has, and an area pair needs equal `a`.
@@ -272,6 +273,96 @@ reads it), watch hex records for writes, or count pathfinder setups (`--trace`).
   0x4, 0x8 for a bridge crossing (the 0x1 hex's step is 500 for all four), 0x800 / 0x880 entering a slot / port
   area, 0x1000–0x7000 inside, 0x8000 the first hex after; any of 0xf800 sets flag 2. On IEE these sums equal CA's
   cost for all 33 transitions we had wrong. `wp_compare.py` lists our differing transitions with the game's waypoints.
+
+### The game's loader and region lookups (Warhammer3.exe of 2026-10-15)
+
+Read statically with `campaign_tools/exe_tools/exe_query.py` on 2026-10-22. That exe is newer than the addresses
+above: the code has moved (the per-pair functions by +0x4194), so find code by its strings first.
+
+- **The region tables are fixed 1024 × 1024 arrays inside the hlp object.** The loader `0x142a2a8d4` (`/hlp_data.esf`)
+  reads TRANSITION_DATA into `hlp+8`, the costs into `hlp+0x94` and the hops into `hlp+0x400094` (right after
+  0x100000 u32s), each with a fixed count of 0x100000, and OTHER_CONSTANTS into `hlp+0x90`.
+  - The array readers (`0x141436eb8` u32, `0x141436e00` u8) take the count from the array's byte length. Fewer
+    elements than 0x100000 fail the read (`0x14143e060`); more are skipped, since closing the array seeks to its end.
+  - So a larger table cannot work: the game keeps the first 1024² values as 1024-wide rows.
+- **Lookups** `0x1429f1390` (cost) and `0x1429f1f28` (hops) take (hlp, region, region, land-sea flag). A region's
+  index is `word [[region+0x178]+0xb8]`. The flag picks the triangle: set, `[low, high]`; clear, `[high, low]`.
+  - The same region: 0.
+  - `hlp+0x88` non-zero, or **either index ≥ 0x400**: computed live every time, never stored.
+  - Otherwise the table value. Cost `FFFFFFFE` or hops 0 means "not computed": the game computes it live and
+    stores it, unless the byte at `hlp+0x500094` is set (hops stored clamped to 255).
+- **The live computation is the table build's.** `0x1429f1450` (cost) and `0x1429f1fe8` (hops) are the per-pair
+  functions of **Region tables** above: the points (`0x142853e94`), one high-level search per area pair
+  (`0x142a28bf4`), equal `a` without land-sea transitions, the cost sum (`0x142a31c84`) or hop count
+  (`0x142a35724`). The table build calls the lookups (`0x142a084c0`) and so fills the table as a cache.
+- **Regions from 1,024 on therefore get exact values**, the same as a larger table would hold. They are just never
+  cached: every query for such a region repeats the searches. A cost lookup in the lower triangle (flag clear), which
+  every file leaves at `FFFFFFFE`, is computed live too, and stored if `hlp+0x500094` allows it.
+- **The hlp object** (0x500098 bytes) is built by `0x1429fbf04`, called from the CAI_INTERFACE setup (`0x1425ced00`),
+  which keeps it at `cai+0x918` (spd at `+0x910`) and then calls the loader. The constructor fills the costs with
+  `FFFFFFFE`, zeroes the hops, sets `+0x88 = 0`, `+0x90 = −1` and `+0x500094 = 0`, and allocates one search context
+  (0x1f0 bytes) per worker thread at `+0x80` (count at `+0x7c`).
+- **`hlp+0x88` is a what-if scope.** `0x1429fc0f4`, `0x1429fc17c` and `0x1429fc260` build three edge sets, apply them
+  to the pathfinding grid (`0x142a3afec`) and set `hlp+0x88` to themselves (`0x142a177e4`). Lookups made meanwhile are
+  computed on the changed grid, bypassing the table both ways. Their callers (`0x142b127f4`, `0x142c85000`,
+  `0x142cc3a2c`) clear `+0x88` right after the lookup.
+- **`hlp+0x500094` guards the parallel phase.** `0x142cd9b80` sets it, runs a job split over the worker threads (chunks
+  of n / (4 × threads)), clears it, and merges the results into its own map (`+0x198`). While it is set, lookups read
+  the table but never write it.
+- **Measured in play** (`research/hlp_spd_wh3/exe/region_lookups.py`, debugger breakpoints on both lookups and their
+  miss branches; Old World, 3 AI turns, 2026-10-22, `region_lookups_oldworld_3turns_20261022.json`):
+  - **The cost table was never read.** All 11,511 cost lookups were the same region (1,386) or what-if (10,125, with
+    `+0x88` set), from three call sites in `0x142ce2164`/`0x142ce22ec`/`0x142ce23e4`.
+  - **Hops use the table.** 3,670 hop lookups from two call sites (`0x142cf5af8`, `0x142cf5cf4`, always called in
+    pairs): 2,146 table reads, 1,286 computed live because a region was ≥ 1024, and 238 same region. No table miss:
+    every entry read under 1024 was filled.
+  - The largest index seen was 1,444, and the regions named were all 1,317 settlement regions plus 24 sea regions and
+    1 wasteland region: the runtime index is map_data order.
+  - So the 1024 limit costs about 430 live hop computations per AI turn here. The what-if cost lookups, which no
+    table size affects, are about 3,400 per turn.
+- RTTI does not name the callers: the exe has 839 RTTI names, none of them CAI classes.
+
+### Choosing which regions get the first 1024 indices (parked 2026-10-22)
+
+A pair is cached only when both regions are under 1024, and the index is map_data order, so the order decides which
+pairs the table holds. Nothing has been changed; these are the findings so far.
+
+- **Old World's order now** (the workshop pack's map_data): the first 1024 hold 1,018 settlement regions and 6
+  wastelands; 1024–1464 hold 299 settlement regions, all 132 sea regions and 10 wastelands. With 1,317 settlement
+  regions, at least 293 stay past 1024 in any order.
+- **The 3-turn run's pairs** mix cost and hop lookups (the probe now keeps them apart). Of the 4,014 distinct pairs
+  between two regions:
+  - 83 % are adjacent regions or one region further (1,762 and 1,577); 94 % are within three. The median pair is 49
+    map units apart; random pairs, 607.
+  - Every settlement region was named. Activity is uneven: a median of 14 lookups per region, at most 294.
+  - No static feature predicts it (Spearman against lookups per region): distance from the map centre −0.03, hlp areas
+    0.00, x −0.03, y +0.01, adjacent regions +0.14.
+- **Share of lookups that would miss the table** on the same data: the current order 40.6 % (about what a random order
+  gives); the 1,024 busiest regions first 12.8 %; a greedy optimum 12.4 %. Those two are fitted to the data they are
+  scored on, so they are upper bounds.
+- **Open: is the busy set stable?** If the AI's attention follows the wars, it moves, and no fixed order helps much.
+  The test: run the probe for about 5 turns, play 20–30 turns without it, run it for 5 more (`--out` gives each run
+  its own file), rank regions by hop lookups in one run and score the ranking on the other. If it holds, the rule is
+  "busiest regions first".
+- **The order itself:** Old World's map_data lists its land regions by key, alphabetically (0–1325: 1,317
+  settlements and 9 wastelands), then sea and the other regions, also alphabetically (1326–1464: 132 sea, 7
+  wastelands).
+- **Old World Classic** (workshop pack, 2026-10-22) has the same 1,465 keys in the same order, but 532 of Old World's
+  settlement regions and 50 of its sea regions are wasteland. So the first 1024 indices hold 614 settlements and 410
+  wastelands; 171 settlements are past 1024. Its hlp has nodes for all 1,465 regions in that order, with hlp areas only
+  for its 785 settlements and 82 sea regions. The 410 wasteland rows under 1024 are empty (`FFFFFFFE`), and the table
+  holds 188,191 of the 307,720 settlement pairs (61 %). With its settlements first, all 785 would fit and every
+  settlement pair would be cached, with no lookup data needed. Classic is where a reorder pays off clearly.
+- **Where the order comes from:** in both Old World maps, map_data's regions equal map.hex's `LandRegions` then
+  `SeaRegions`, and both lists are sorted by key. That does not show which file sets the order: CAIME sorts the region
+  list, and so does the Assembly Kit, which the live maps are built from. Once the DB comes from the mod's pack
+  through RPFM, with no Assembly Kit and no sort, the order is chosen wherever map_data's regions are written. Choose it there with an explicit rule, not through DB row order. For
+  Classic: settlement regions before wasteland regions in the land list. For Old World: a user-provided list of regions
+  to put last, like `LookupLast`. Not yet verified: that the game matches regions by key everywhere else (a map built
+  in another order will show it).
+- **Also open:** whether an order is worth it at all (the time a live hop computation takes, by stack sampling an AI
+  turn without breakpoints), and what a reorder must rewrite. CAIME sets the order; every (region, area) reference in
+  map_data, hlp and spd follows it, and anything else keyed by region index is not yet traced.
 
 ## Three Kingdoms (Atlas3K)
 
