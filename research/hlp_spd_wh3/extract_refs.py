@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, r"C:\Users\rob\CascadeProjects\campaign_tools")
+from shared.db import CA_PACKS, extract, open_pack, pack_paths  # noqa: E402
 from shared.rpfm_client import Rpfm  # noqa: E402
 
 DATA = Path(r"D:\SteamLibrary\steamapps\common\Total War WARHAMMER III\data")
@@ -26,25 +27,22 @@ def wanted(paths):
 def main(out):
     out = Path(out)
     with Rpfm() as rpfm:
-        rpfm.call({"SetGameSelected": ["warhammer_3", False]})
-        sources = []
-        rpfm.call("LoadAllCAPackFiles")
-        sources.append(("vanilla", "CA PackFiles", False))
+        rpfm.call("session.set_game", {"game": "warhammer_3"})
+        sources = [("vanilla", CA_PACKS, False)]
         for name, pack in MODS.items():
             if (DATA / pack).exists():
-                sources.append((name, rpfm.call({"OpenPackFiles": [str(DATA / pack)]})["StringContainerInfo"][0], True))
+                sources.append((name, open_pack(rpfm, DATA / pack), True))
         for name, key, close in sources:
-            files = wanted(f["path"] for f in rpfm.call({"GetPackFileDataForTreeView": key})["ContainerInfoVecRFileInfo"][1])
+            files = wanted(pack_paths(rpfm, key, "campaign_maps/"))
             print(name, len(files))
             for f in files:
                 print("  ", f)
             if files:
                 dest = out / name
                 dest.mkdir(parents=True, exist_ok=True)
-                rpfm.call({"ExtractPackedFiles": [key, {"PackFile": [{"File": f} for f in files]}, str(dest), False]})
+                extract(rpfm, key, files, dest)
             if close:
-                rpfm.call({"ClosePack": key})
-
+                rpfm.call("pack.close", {"pack": key})
 
 if __name__ == "__main__":
     main(sys.argv[1])
