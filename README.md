@@ -33,7 +33,7 @@ data the game would otherwise have to build, and it runs headless from the comma
 Independent steps run in parallel. Every step reads the Terry project and the game and mod packs directly, so
 nothing has to be installed between steps.
 
-**How close to BOB:** the logic map, shroud heights, tile list, masks, piece textures and river models (but for two
+**How close to BOB:** the logic map, tile list, masks, piece textures and river models (but for two
 bytes BOB leaves uninitialised) are byte-identical to BOB's on IEE and The Old World. Trees are byte-identical on Old World; on IEE every tree has the
 same id, position and rotation, and all but 23 of 253,903 heights agree within 1e-3. `global_props.bin` has the same
 objects in the same bodies; BOB's own record order changes from run to run, so it is compared by content.
@@ -41,7 +41,9 @@ objects in the same bodies; BOB's own record order changes from run to run, so i
 where the game's pathfinder has a bug). Each step's record, with every remaining difference explained, is in
 [`docs/native_campaign_build.md`](docs/native_campaign_build.md).
 
-**Where it differs on purpose:** `patch_mask.dds` covers the whole map (BOB's misses a band in the north). Props go
+**Where it differs on purpose:** `shroud_heights.dds` is filled from the terrain, as Terry's Fill From Terrain does
+(BOB copies the Terry project's HeightShroud layers). `patch_mask.dds` covers the whole map (BOB's misses a band in
+the north). Props go
 into quadtree cells by their models' real bounds (BOB uses a 2 × 2 × 2 cube for any model not loose in the kit).
 Region lookups can move regions past the 1024 palette entries the game reads. Cultures come from the packs'
 `prefab_types`, so a mod's own cultures get their own buckets (BOB read the Assembly Kit's vanilla table). Props get their
