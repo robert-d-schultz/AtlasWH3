@@ -55,6 +55,7 @@ public sealed class RpfmClient : IDisposable
     private long _nextId;
     private bool _closed;
     private string? _gameFolder;
+    private int? _serverPid;
 
     private RpfmClient(WebSocket ws) => _ws = ws;
 
@@ -178,12 +179,11 @@ public sealed class RpfmClient : IDisposable
 
     private void Start()
     {
-        using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
-        {
-            var version = (string?)JsonNode.Parse(http.GetStringAsync($"http://{Host}/version").GetAwaiter().GetResult())?["version"];
-            if (!Version.TryParse(version?.Split('-')[0], out var v) || v < MinimumVersion)
-                throw new RpfmException($"RPFM {version} is running; AtlasWH3 needs RPFM {MinimumVersion} or newer");
-        }
+        var server = Get("version")!;
+        var version = (string?)server["version"];
+        if (!Version.TryParse(version?.Split('-')[0], out var v) || v < MinimumVersion)
+            throw new RpfmException($"RPFM {version} is running; AtlasWH3 needs RPFM {MinimumVersion} or newer");
+        _serverPid = (int?)server["pid"];
         var status = Call("session.set_game", new { game = Game, rebuild_dependencies = false })!;
         if (status["schema_loaded"]?.GetValue<bool>() != true)
             throw new RpfmException("RPFM has no schema for Warhammer III: open RPFM and update its schemas");
@@ -264,16 +264,31 @@ public sealed class RpfmClient : IDisposable
         }
     }
 
-    /// <summary>Ends the session (session.disconnect), so the server drops it at once.</summary>
+    /// <summary>One of the server's REST endpoints (version, sessions).</summary>
+    private static JsonNode? Get(string endpoint)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        return JsonNode.Parse(http.GetStringAsync($"http://{Host}/{endpoint}").GetAwaiter().GetResult());
+    }
+
+    /// <summary>Ends the session (session.disconnect), so the server drops it at once. The last session leaving shuts the
+    /// server down; then this waits for it to exit, so the next connection starts a new server instead of joining one
+    /// that drops it mid-request.</summary>
     public void Dispose()
     {
         lock (_gate)
         {
             if (_closed) return;
+            bool last;
+            try { last = Get("sessions") is JsonArray { Count: <= 1 }; }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException) { last = false; }
             try { Request("session.disconnect", null); }
             catch (Exception e) when (e is IOException or WebSocketException or RpfmException) { }
             _closed = true;
             _ws.Dispose();
+            if (last && _serverPid is { } pid)
+                try { using var server = Process.GetProcessById(pid); server.WaitForExit(TimeSpan.FromSeconds(10)); }
+                catch (ArgumentException) { }   // exited already
         }
     }
 }
