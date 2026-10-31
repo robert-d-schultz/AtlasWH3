@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.2.0 (2026-10-31)
+
+AtlasWH3 now reads and writes packs through RPFM, and the shroud is filled from the terrain.
+
+### RPFM
+- **RPFM 5.3 or newer is required.** Every pack is read and written through RPFM's server, and RPFM's schema decodes
+  the DB tables, so a game patch that changes a table only needs RPFM's schemas updated. AtlasWH3 starts the server
+  when it isn't running.
+- **Settings** has a new **RPFM** folder, the one holding `rpfm_server.exe`.
+- Fixed: every language pack was read along with the game's own, so `local_zh.pack` replaced some English files, such
+  as the campaign maps' `_text.dds`. Only the game's own language pack is read now.
+
+### The build
+- `shroud_heights.dds` is filled from the terrain, as Terry's Fill From Terrain does: the Height map at half
+  resolution, raised by the props' height patches. The Terry project's HeightShroud layers are no longer read (BOB
+  copied them).
+- Two new build-project settings, both off by default:
+  - **Keep props outside the quadtree:** a prop, decal, effect or sound emitter reaching past the quadtree goes into
+    its nearest cell instead of being dropped, as BOB drops it.
+  - **Shroud at 0 along the west edge:** `shroud_heights.dds` is 0 over the map's westmost 10 units, for a visual
+    extension west of the map.
+- Fixed: devastation variants kept in typed groups inside a prefab (CA's devastation prefabs) went into the plain
+  objects, so they showed for any devastation (Nagash props under Chaos).
+- Fixed: the pieces pack kept BOB's left-over `campaign_maps\<devastated map>\` folder, which the game doesn't read.
+  It is now dropped.
+
+### Command line
+- New `extract`: files of the vanilla packs (`--vanilla`) or one pack (`--pack`) into a folder, at their paths.
+- `db-dump` reads through RPFM. Removed `db-check` and `db-schema-snapshot`.
+- `build-campaign`: `--keep-outside-quadtree` and `--zero-shroud-west`.
+
+### Upgrading from 1.1
+- Install RPFM 5.3 or newer, update its schemas, and choose its folder in Settings.
+
 ## 1.1.0 (2026-10-13)
 
 Fewer settings, plainer words. Everything about a map now lives in its build project, and the build writes straight
