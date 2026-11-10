@@ -38,15 +38,75 @@ public record struct Bmd27Flags(byte TacticalView = 0, byte TacticalViewOnly = 0
     }
 }
 
+/// <summary>A property_override of a PREFAB_INSTANCE: the properties of a battlefield building inside the referenced
+/// prefab (BATTLEFIELD_BUILDING's properties record; the kit writes v13, vanilla WH3 battle prefabs hold v12 and v13).
+/// Fields by the kit's version gates; the flags are bits of one word in the kit but each is stored as a bool.</summary>
+public sealed class Bmd27BuildingProperties
+{
+    public ushort Version = 13;
+    /// <summary>v2+.</summary>
+    public string BuildingId = "";
+    public float StartingDamageUnary;
+    public byte OnFire, StartDisabled, WeakPoint, AiBreachable, Indestructible, Dockable, Toggleable, Lite;
+    /// <summary>v3 to v7 only.</summary>
+    public byte ClampToSurface;
+    /// <summary>v4, v5, v6, v7, v9, v10, v11 and up.</summary>
+    public byte CastShadows, KeyBuilding, KeyBuildingUseFort, IsPropInOutfield, SettlementLevelConfigurable, HideTooltip, IncludeInFog;
+    /// <summary>v12+.</summary>
+    public float BlendEdges;
+    /// <summary>v13+.</summary>
+    public byte ReceiveDecals;
+
+    internal static Bmd27BuildingProperties Read(ref Bmd27Reader r)
+    {
+        var p = new Bmd27BuildingProperties { Version = r.U16() };
+        var v = p.Version;
+        if (v >= 2) p.BuildingId = r.Str();
+        p.StartingDamageUnary = r.F32();
+        p.OnFire = r.U8(); p.StartDisabled = r.U8(); p.WeakPoint = r.U8(); p.AiBreachable = r.U8();
+        p.Indestructible = r.U8(); p.Dockable = r.U8(); p.Toggleable = r.U8(); p.Lite = r.U8();
+        if (v is >= 3 and < 8) p.ClampToSurface = r.U8();
+        if (v >= 4) p.CastShadows = r.U8();
+        if (v >= 5) p.KeyBuilding = r.U8();
+        if (v >= 6) p.KeyBuildingUseFort = r.U8();
+        if (v >= 7) p.IsPropInOutfield = r.U8();
+        if (v >= 9) p.SettlementLevelConfigurable = r.U8();
+        if (v >= 10) p.HideTooltip = r.U8();
+        if (v >= 11) p.IncludeInFog = r.U8();
+        if (v >= 12) p.BlendEdges = r.F32();
+        if (v >= 13) p.ReceiveDecals = r.U8();
+        return p;
+    }
+
+    internal void Write(BinaryWriter w, Action<BinaryWriter, string> str)
+    {
+        var v = Version;
+        w.Write(v);
+        if (v >= 2) str(w, BuildingId);
+        w.Write(StartingDamageUnary);
+        w.Write(OnFire); w.Write(StartDisabled); w.Write(WeakPoint); w.Write(AiBreachable);
+        w.Write(Indestructible); w.Write(Dockable); w.Write(Toggleable); w.Write(Lite);
+        if (v is >= 3 and < 8) w.Write(ClampToSurface);
+        if (v >= 4) w.Write(CastShadows);
+        if (v >= 5) w.Write(KeyBuilding);
+        if (v >= 6) w.Write(KeyBuildingUseFort);
+        if (v >= 7) w.Write(IsPropInOutfield);
+        if (v >= 9) w.Write(SettlementLevelConfigurable);
+        if (v >= 10) w.Write(HideTooltip);
+        if (v >= 11) w.Write(IncludeInFog);
+        if (v >= 12) w.Write(BlendEdges);
+        if (v >= 13) w.Write(ReceiveDecals);
+    }
+}
+
 /// <summary>A reference to another body (cell to bucket, root to cell; Terry's PREFAB_INSTANCE): v9.</summary>
 public sealed class Bmd27Nested
 {
     public string Name = "";
     /// <summary>4x4 matrix as stored (always identity in BOB's files).</summary>
     public float[] Matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-    /// <summary>The length of the property_overrides vector, always 0 (the override records that would follow are
-    /// not decoded, so the reader refuses them).</summary>
-    public uint PropertyOverrideCount;
+    /// <summary>Empty in every BOB body.</summary>
+    public List<Bmd27BuildingProperties> PropertyOverrides = [];
     /// <summary>Terry's campaign_type_mask: prefab_types bits (bit = value - 1).</summary>
     public ulong CultureMask;
     public string Region = "";
@@ -259,9 +319,8 @@ public sealed class Bmd27Body
         for (var n = r.U32(); n > 0; n--)
         {
             Record(ref r, 9, "nested");
-            var x = new Bmd27Nested { Name = r.Str(), Matrix = r.Floats(16), PropertyOverrideCount = r.U32() };
-            if (x.PropertyOverrideCount != 0)
-                throw new InvalidDataException($"Nested body {x.Name} has {x.PropertyOverrideCount} property overrides (not supported).");
+            var x = new Bmd27Nested { Name = r.Str(), Matrix = r.Floats(16) };
+            for (var k = r.U32(); k > 0; k--) x.PropertyOverrides.Add(Bmd27BuildingProperties.Read(ref r));
             x.CultureMask = r.U64(); x.Region = r.Str(); x.HeightMode = r.Str();
             x.Uid = r.U64();
             b.Nested.Add(x);
@@ -402,7 +461,10 @@ public sealed class Bmd27Body
         Begin(w, 1, Nested.Count);
         foreach (var x in Nested)
         {
-            w.Write((ushort)9); Str(w, x.Name); Floats(w, x.Matrix); w.Write(x.PropertyOverrideCount); w.Write(x.CultureMask); Str(w, x.Region);
+            w.Write((ushort)9); Str(w, x.Name); Floats(w, x.Matrix);
+            w.Write(x.PropertyOverrides.Count);
+            foreach (var o in x.PropertyOverrides) o.Write(w, Str);
+            w.Write(x.CultureMask); Str(w, x.Region);
             Str(w, x.HeightMode); w.Write(x.Uid);
         }
         w.Write(AfterNested);
