@@ -433,17 +433,20 @@ public sealed class Wh3GlobalPropsBuilder
                 Transform = world.Record(), Path = (string?)scene.Attribute("path") ?? "", Autoplay = 1,   // 1 even for autoplay="false" (IEE's 6)
                 VisibleInShroud = B(shroud), NoCulling = B(noCulling), ScriptId = (string?)scene.Attribute("script_id") ?? "",
                 NotShroudOnly = B(!shroudOnly), TacticalView = flags.TacticalView, TacticalViewOnly = flags.TacticalViewOnly,
+                HoldFirstFrame = B((string?)scene.Attribute("hold_first_frame") == "true"),
+                HoldLastFrame = B((string?)scene.Attribute("hold_last_frame") == "true"),
             }));
             return;
         }
         if (e.Element("ECLightProbe") is { } probe)
         {
-            var sphere = e.Element("ECDoubleSphere");
+            var cylinder = e.Element("ECDoubleCylinder");
+            var sphere = e.Element("ECDoubleSphere") ?? cylinder;
             float S(string n, float d) => sphere?.Attribute(n) is { } a ? float.Parse((string)a, CultureInfo.InvariantCulture) : d;
             Add("probe", b => b.Probes.Add(new Bmd27Probe
             {
                 X = world.X, Y = world.Y, Z = world.Z, OuterRadius = S("outer_radius", 1), InnerRadius = S("inner_radius", 1),
-                Primary = B((string?)probe.Attribute("primary") == "true"),
+                IsCylinder = B(sphere is not null && sphere == cylinder), Primary = B((string?)probe.Attribute("primary") == "true"),
             }));
             return;
         }
@@ -453,14 +456,18 @@ public sealed class Wh3GlobalPropsBuilder
             if (local.Count < 3) return;
             var outline = local.Select(p => (p.X, 0f, p.Z)).ToList();
             var indices = Triangulate(local);
-            // tactical-view-only counts only with tactical view on; without it the byte after visible_in_shroud is 0 (the 2
-            // such Old World polygons; IEE's 19 with both set keep both)
+            // tactical-view-only counts only with tactical view on (the 2 such Old World polygons, also its only 2 shroud-only
+            // ones, so which of the two clears the flag is open; IEE's 19 with both set keep both)
             var hiddenOnMap = flags.TacticalViewOnly == 1 && flags.TacticalView == 0;
             Add("poly", b => b.Polys.Add(new Bmd27Poly
             {
                 Vertices = outline, Indices = indices, Material = (string?)poly.Attribute("material") ?? "",
                 Flags = hiddenOnMap ? flags with { TacticalViewOnly = 0 } : flags,
-                Transform = world.Record(), VisibleInShroud = B(shroud), Unknown2 = B(!hiddenOnMap),
+                Transform = world.Record(),
+                VisibleInsideSnow = B(Cp("visible_inside_snow_region", true)), VisibleOutsideSnow = B(Cp("visible_outside_snow_region", true)),
+                VisibleInsideDestruction = B(Cp("visible_inside_destruction_region", true)),
+                VisibleOutsideDestruction = B(Cp("visible_outside_destruction_region", true)),
+                VisibleInShroud = B(shroud), NotShroudOnly = B(!shroudOnly),
             }));
             return;
         }
@@ -516,7 +523,7 @@ public sealed class Wh3GlobalPropsBuilder
                 Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1], Type = _type, PieceMask = PieceMask(cultures, _cultureMask),
                 Add = b => b.Sounds.Add(new Bmd27Sound
                 {
-                    Name = key, Shape = shape, Points = points, Radius = radius, CultureMask = mask, Axes = SoundAxes(r),
+                    Name = key, Shape = shape, Points = points, OuterRadius = radius, CultureMask = mask, Axes = SoundAxes(r),
                 }),
             });
         }

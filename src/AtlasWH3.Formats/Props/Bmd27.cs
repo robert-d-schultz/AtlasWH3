@@ -8,15 +8,20 @@ namespace AtlasWH3.Formats.Props;
 // framing byte is the same in all 163,331 bodies of BOB's IEE and Old World global_props(_sound).bin (2026-10-09).
 // Record layouts follow WH3_visual_map_decompiler's GlobalPropsParser, with the bytes it skips named where the layers
 // explain them. Each list is "u16 version, u32 count, records"; each record starts with its own u16 version.
+// Field names in quotes are Terry's, from its .bmd.xml dumps of prefabs compiled from layers varied on purpose
+// (assembly_kit\working_data\prefabs). In BOB's IEE and Old World bodies most of these fields only ever hold their
+// defaults, so the dumps are the only evidence for them.
 
-/// <summary>The flag block several WH3 records share: u16 version (4), u16, u32 per-season visibility (four 1 bytes,
-/// WH3 has no seasons), visible_in_tactical_view, visible_in_tactical_view_only.</summary>
-public record struct Bmd27Flags(byte TacticalView = 0, byte TacticalViewOnly = 0)
+/// <summary>The flag block several WH3 records share: u16 version (4), allow_in_outfield, clamp_to_water_surface,
+/// per-season visibility (spring, summer, autumn, winter: always 1, WH3 has no seasons), visible_in_tactical_view,
+/// visible_in_tactical_view_only.</summary>
+public record struct Bmd27Flags(byte TacticalView = 0, byte TacticalViewOnly = 0, byte AllowInOutfield = 0, byte ClampToWaterSurface = 0)
 {
     public void Write(BinaryWriter w)
     {
         w.Write((ushort)4);
-        w.Write((ushort)0);
+        w.Write(AllowInOutfield);
+        w.Write(ClampToWaterSurface);
         w.Write(0x01010101u);
         w.Write(TacticalView);
         w.Write(TacticalViewOnly);
@@ -25,23 +30,28 @@ public record struct Bmd27Flags(byte TacticalView = 0, byte TacticalViewOnly = 0
     internal static Bmd27Flags Read(ref Bmd27Reader r)
     {
         var start = r.Pos;
-        if (r.U16() != 4 || r.U16() != 0 || r.U32() != 0x01010101u)
-            throw new InvalidDataException($"Unexpected BMD flag block at {start}.");
-        return new Bmd27Flags(r.U8(), r.U8());
+        if (r.U16() != 4) throw new InvalidDataException($"Unexpected BMD flag block version at {start}.");
+        byte outfield = r.U8(), water = r.U8();
+        if (r.U32() != 0x01010101u) throw new InvalidDataException($"Unexpected BMD season flags at {start}.");
+        return new Bmd27Flags(r.U8(), r.U8(), outfield, water);
     }
 }
 
-/// <summary>A reference to another body (cell to bucket, root to cell): v9.</summary>
+/// <summary>A reference to another body (cell to bucket, root to cell; Terry's PREFAB_INSTANCE): v9.</summary>
 public sealed class Bmd27Nested
 {
     public string Name = "";
     /// <summary>4x4 matrix as stored (always identity in BOB's files).</summary>
     public float[] Matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-    public uint Unknown;
+    /// <summary>Terry's property_overrides, by its place in the dump: a count, always 0 (the override records that
+    /// would follow a nonzero count are not known, so the reader refuses them).</summary>
+    public uint PropertyOverrideCount;
+    /// <summary>Terry's campaign_type_mask: prefab_types bits (bit = value - 1).</summary>
     public ulong CultureMask;
     public string Region = "";
     public string HeightMode = "BHM_CLASSIC";
-    public ulong Trailing;
+    /// <summary>Terry's uid (0 in BOB's files).</summary>
+    public ulong Uid;
 }
 
 /// <summary>A prop (ECMesh, ECDecal, river model): v30.</summary>
@@ -59,6 +69,7 @@ public sealed class Bmd27Prop
     /// apply_to_objects, render_above_snow).</summary>
     public byte B0, B1, B2, B3;
     public string HeightMode = "BHM_CLASSIC";
+    /// <summary>Terry's pdlc_mask (1 in BOB's files, all bits in a Terry-compiled prefab).</summary>
     public ulong CultureMask = 1;
     public byte CastShadow = 1, NoCulling, HasHeightPatch, ApplyHeightPatch, IncludeInFog;
     /// <summary>1 unless the object is visible in the shroud only.</summary>
@@ -87,7 +98,9 @@ public sealed class Bmd27Vfx
 public sealed class Bmd27Probe
 {
     public float X, Y, Z, OuterRadius, InnerRadius;
-    public byte Unknown, Primary;
+    /// <summary>Terry's is_cylinder: the probe's shape is an ECDoubleCylinder, not an ECDoubleSphere.</summary>
+    public byte IsCylinder;
+    public byte Primary;
     public string HeightMode = "BHM_CLASSIC";
 }
 
@@ -105,7 +118,8 @@ public sealed class Bmd27Light
     public byte Animation;
     public float AnimationScale1, AnimationScale2, ColourMin, RandomOffset;
     public string Falloff = "";
-    public byte Unknown;
+    /// <summary>Terry's lf_relative (0 in every BOB light).</summary>
+    public byte LfRelative;
     public string HeightMode = "BHM_CLASSIC";
     public byte LightProbesOnly;
     public ulong CultureMask = 1;
@@ -120,8 +134,10 @@ public sealed class Bmd27Poly
     public string HeightMode = "BHM_CLASSIC";
     public Bmd27Flags Flags;
     public float[] Transform = new float[12];
-    public uint Unknown = 0x01010101;
-    public byte VisibleInShroud, Unknown2 = 1;
+    public byte VisibleInsideSnow = 1, VisibleOutsideSnow = 1, VisibleInsideDestruction = 1, VisibleOutsideDestruction = 1;
+    public byte VisibleInShroud;
+    /// <summary>Terry's visible_without_shroud: 1 unless the object is visible in the shroud only.</summary>
+    public byte NotShroudOnly = 1;
 }
 
 public sealed class Bmd27Spot
@@ -137,17 +153,25 @@ public sealed class Bmd27Spot
     public Bmd27Flags Flags;
 }
 
+/// <summary>A river node of an SST_RIVER sound: u16 version, position, width, flow speed. Its layout is from
+/// Terry's dumps only: no BOB sound has one.</summary>
+public record struct Bmd27SoundRiverNode(ushort Version, float X, float Y, float Z, float Width, float FlowSpeed);
+
 public sealed class Bmd27Sound
 {
     public string Name = "";
     public string Shape = "SST_POINT";
     public List<(float X, float Y, float Z)> Points = [];
-    public uint Unknown;
-    public float Radius;
-    public byte[] Unknown53 = new byte[53];
+    public float InnerRadius, OuterRadius;
+    /// <summary>Min x, y, z then max x, y, z.</summary>
+    public float[] InnerCube = new float[6], OuterCube = new float[6];
+    public List<Bmd27SoundRiverNode> RiverNodes = [];
+    public byte ClampToSurface;
     public string HeightMode = "BHM_CLASSIC";
+    /// <summary>Terry's campaign_type_mask.</summary>
     public ulong CultureMask;
-    public ulong Unknown8 = 1;
+    /// <summary>Terry's pdlc_mask (1 in every BOB sound).</summary>
+    public ulong PdlcMask = 1;
     /// <summary>Six floats after the mask: the marker's x axis then (0, 1, 0)-like second axis.</summary>
     public float[] Axes = [1, 0, 0, 0, 1, 0];
     public string Marker = "SSS_SOUND_MARKER";
@@ -162,7 +186,8 @@ public sealed class Bmd27Scene
     public byte Autoplay = 1, VisibleInShroud, NoCulling;
     public string ScriptId = "", ParentScriptId = "";
     public byte NotShroudOnly = 1, TacticalView, TacticalViewOnly;
-    public ushort Unknown;
+    /// <summary>ECCompositeScene hold_first_frame / hold_last_frame.</summary>
+    public byte HoldFirstFrame, HoldLastFrame;
 }
 
 /// <summary>One FASTBIN0 v27 BMD_OBJECTS body.</summary>
@@ -222,9 +247,11 @@ public sealed class Bmd27Body
         for (var n = r.U32(); n > 0; n--)
         {
             Record(ref r, 9, "nested");
-            var x = new Bmd27Nested { Name = r.Str(), Matrix = r.Floats(16), Unknown = r.U32(), CultureMask = r.U64(), Region = r.Str() };
-            x.HeightMode = r.Str();
-            x.Trailing = r.U64();
+            var x = new Bmd27Nested { Name = r.Str(), Matrix = r.Floats(16), PropertyOverrideCount = r.U32() };
+            if (x.PropertyOverrideCount != 0)
+                throw new InvalidDataException($"Nested body {x.Name} has {x.PropertyOverrideCount} property overrides (not supported).");
+            x.CultureMask = r.U64(); x.Region = r.Str(); x.HeightMode = r.Str();
+            x.Uid = r.U64();
             b.Nested.Add(x);
         }
         b.AfterNested = r.Take(DefaultAfterNested.Length);
@@ -266,7 +293,7 @@ public sealed class Bmd27Body
             Record(ref r, 3, "light probe");
             b.Probes.Add(new Bmd27Probe
             {
-                X = r.F32(), Y = r.F32(), Z = r.F32(), OuterRadius = r.F32(), InnerRadius = r.F32(), Unknown = r.U8(), Primary = r.U8(),
+                X = r.F32(), Y = r.F32(), Z = r.F32(), OuterRadius = r.F32(), InnerRadius = r.F32(), IsCylinder = r.U8(), Primary = r.U8(),
                 HeightMode = r.Str(),
             });
         }
@@ -288,7 +315,7 @@ public sealed class Bmd27Body
             {
                 X = r.F32(), Y = r.F32(), Z = r.F32(), Radius = r.F32(), R = r.F32(), G = r.F32(), B = r.F32(), ColourScale = r.F32(),
                 Animation = r.U8(), AnimationScale1 = r.F32(), AnimationScale2 = r.F32(), ColourMin = r.F32(), RandomOffset = r.F32(),
-                Falloff = r.Str(), Unknown = r.U8(), HeightMode = r.Str(), LightProbesOnly = r.U8(), CultureMask = r.U64(),
+                Falloff = r.Str(), LfRelative = r.U8(), HeightMode = r.Str(), LightProbesOnly = r.U8(), CultureMask = r.U64(),
             };
             l.Flags = Bmd27Flags.Read(ref r);
             b.Lights.Add(l);
@@ -303,7 +330,9 @@ public sealed class Bmd27Body
             for (var k = r.U32(); k > 0; k--) p.Vertices.Add((r.F32(), r.F32(), r.F32()));
             for (var k = r.U32(); k > 0; k--) p.Indices.Add(r.U16());
             p.Material = r.Str(); p.HeightMode = r.Str(); p.Flags = Bmd27Flags.Read(ref r);
-            p.Transform = r.Floats(12); p.Unknown = r.U32(); p.VisibleInShroud = r.U8(); p.Unknown2 = r.U8();
+            p.Transform = r.Floats(12);
+            p.VisibleInsideSnow = r.U8(); p.VisibleOutsideSnow = r.U8(); p.VisibleInsideDestruction = r.U8(); p.VisibleOutsideDestruction = r.U8();
+            p.VisibleInShroud = r.U8(); p.NotShroudOnly = r.U8();
             b.Polys.Add(p);
         }
         b.AfterPoly = r.Take(DefaultAfterPoly.Length);
@@ -328,8 +357,10 @@ public sealed class Bmd27Body
             Record(ref r, 10, "sound emitter");
             var s = new Bmd27Sound { Name = r.Str(), Shape = r.Str() };
             for (var k = r.U32(); k > 0; k--) s.Points.Add((r.F32(), r.F32(), r.F32()));
-            s.Unknown = r.U32(); s.Radius = r.F32(); s.Unknown53 = r.Take(53); s.HeightMode = r.Str(); s.CultureMask = r.U64();
-            s.Unknown8 = r.U64(); s.Axes = r.Floats(6); s.Marker = r.Str();
+            s.InnerRadius = r.F32(); s.OuterRadius = r.F32(); s.InnerCube = r.Floats(6); s.OuterCube = r.Floats(6);
+            for (var k = r.U32(); k > 0; k--) s.RiverNodes.Add(new Bmd27SoundRiverNode(r.U16(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32()));
+            s.ClampToSurface = r.U8(); s.HeightMode = r.Str(); s.CultureMask = r.U64();
+            s.PdlcMask = r.U64(); s.Axes = r.Floats(6); s.Marker = r.Str();
             b.Sounds.Add(s);
         }
 
@@ -341,7 +372,7 @@ public sealed class Bmd27Body
             {
                 Transform = r.Floats(12), Path = r.Str(), HeightMode = r.Str(), CultureMask = r.U64(), Autoplay = r.U8(),
                 VisibleInShroud = r.U8(), NoCulling = r.U8(), ScriptId = r.Str(), ParentScriptId = r.Str(), NotShroudOnly = r.U8(),
-                TacticalView = r.U8(), TacticalViewOnly = r.U8(), Unknown = r.U16(),
+                TacticalView = r.U8(), TacticalViewOnly = r.U8(), HoldFirstFrame = r.U8(), HoldLastFrame = r.U8(),
             });
         }
         b.Trailing = data[r.Pos..].ToArray();
@@ -359,8 +390,8 @@ public sealed class Bmd27Body
         Begin(w, 1, Nested.Count);
         foreach (var x in Nested)
         {
-            w.Write((ushort)9); Str(w, x.Name); Floats(w, x.Matrix); w.Write(x.Unknown); w.Write(x.CultureMask); Str(w, x.Region);
-            Str(w, x.HeightMode); w.Write(x.Trailing);
+            w.Write((ushort)9); Str(w, x.Name); Floats(w, x.Matrix); w.Write(x.PropertyOverrideCount); w.Write(x.CultureMask); Str(w, x.Region);
+            Str(w, x.HeightMode); w.Write(x.Uid);
         }
         w.Write(AfterNested);
 
@@ -396,7 +427,7 @@ public sealed class Bmd27Body
         foreach (var p in Probes)
         {
             w.Write((ushort)3); w.Write(p.X); w.Write(p.Y); w.Write(p.Z); w.Write(p.OuterRadius); w.Write(p.InnerRadius);
-            w.Write(p.Unknown); w.Write(p.Primary); Str(w, p.HeightMode);
+            w.Write(p.IsCylinder); w.Write(p.Primary); Str(w, p.HeightMode);
         }
 
         Begin(w, 1, Holes.Count);
@@ -407,7 +438,7 @@ public sealed class Bmd27Body
         {
             w.Write((ushort)7); w.Write(l.X); w.Write(l.Y); w.Write(l.Z); w.Write(l.Radius); w.Write(l.R); w.Write(l.G); w.Write(l.B);
             w.Write(l.ColourScale); w.Write(l.Animation); w.Write(l.AnimationScale1); w.Write(l.AnimationScale2); w.Write(l.ColourMin);
-            w.Write(l.RandomOffset); Str(w, l.Falloff); w.Write(l.Unknown); Str(w, l.HeightMode); w.Write(l.LightProbesOnly);
+            w.Write(l.RandomOffset); Str(w, l.Falloff); w.Write(l.LfRelative); Str(w, l.HeightMode); w.Write(l.LightProbesOnly);
             w.Write(l.CultureMask); l.Flags.Write(w);
         }
         w.Write(AfterLights);
@@ -420,8 +451,9 @@ public sealed class Bmd27Body
             foreach (var (x, y, z) in p.Vertices) { w.Write(x); w.Write(y); w.Write(z); }
             w.Write(p.Indices.Count);
             foreach (var i in p.Indices) w.Write(i);
-            Str(w, p.Material); Str(w, p.HeightMode); p.Flags.Write(w); Floats(w, p.Transform); w.Write(p.Unknown);
-            w.Write(p.VisibleInShroud); w.Write(p.Unknown2);
+            Str(w, p.Material); Str(w, p.HeightMode); p.Flags.Write(w); Floats(w, p.Transform);
+            w.Write(p.VisibleInsideSnow); w.Write(p.VisibleOutsideSnow); w.Write(p.VisibleInsideDestruction); w.Write(p.VisibleOutsideDestruction);
+            w.Write(p.VisibleInShroud); w.Write(p.NotShroudOnly);
         }
         w.Write(AfterPoly);
 
@@ -439,7 +471,10 @@ public sealed class Bmd27Body
             w.Write((ushort)10); Str(w, s.Name); Str(w, s.Shape);
             w.Write(s.Points.Count);
             foreach (var (x, y, z) in s.Points) { w.Write(x); w.Write(y); w.Write(z); }
-            w.Write(s.Unknown); w.Write(s.Radius); w.Write(s.Unknown53); Str(w, s.HeightMode); w.Write(s.CultureMask); w.Write(s.Unknown8);
+            w.Write(s.InnerRadius); w.Write(s.OuterRadius); Floats(w, s.InnerCube); Floats(w, s.OuterCube);
+            w.Write(s.RiverNodes.Count);
+            foreach (var n in s.RiverNodes) { w.Write(n.Version); w.Write(n.X); w.Write(n.Y); w.Write(n.Z); w.Write(n.Width); w.Write(n.FlowSpeed); }
+            w.Write(s.ClampToSurface); Str(w, s.HeightMode); w.Write(s.CultureMask); w.Write(s.PdlcMask);
             Floats(w, s.Axes); Str(w, s.Marker);
         }
 
@@ -448,7 +483,7 @@ public sealed class Bmd27Body
         {
             w.Write((ushort)12); Floats(w, s.Transform); Str(w, s.Path); Str(w, s.HeightMode); w.Write(s.CultureMask); w.Write(s.Autoplay);
             w.Write(s.VisibleInShroud); w.Write(s.NoCulling); Str(w, s.ScriptId); Str(w, s.ParentScriptId); w.Write(s.NotShroudOnly);
-            w.Write(s.TacticalView); w.Write(s.TacticalViewOnly); w.Write(s.Unknown);
+            w.Write(s.TacticalView); w.Write(s.TacticalViewOnly); w.Write(s.HoldFirstFrame); w.Write(s.HoldLastFrame);
         }
         w.Write(Trailing);
         w.Flush();
