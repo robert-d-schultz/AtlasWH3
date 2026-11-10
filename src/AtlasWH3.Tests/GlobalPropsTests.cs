@@ -15,15 +15,26 @@ public class GlobalPropsTests(Xunit.Abstractions.ITestOutputHelper output)
     /// <summary>Vanilla prefab_types' row count: mountain bodies from bucket 640.</summary>
     private const int VanillaPrefabTypeRows = 40;
 
-    [Fact]
-    public void Bmd27_RoundTripsEveryBody()
+    /// <summary>Every body of the shipped IEE and Old World global_props(_sound).bin parses and re-encodes byte for byte.</summary>
+    [Theory]
+    [InlineData(TestKits.IeePack, TestKits.Iee)]
+    [InlineData(TestKits.OldWorldPack, TestKits.OldWorld)]
+    public void Bmd27_RoundTripsEveryShippedBody(string packName, string map)
     {
+        var path = TestKits.Pack(packName);
+        if (!File.Exists(path)) return;
+        var pack = PackFile.Open(path);
         foreach (var file in new[] { "global_props.bin", "global_props_sound.bin" })
         {
-            var path = CompiledFormatTests.Built(OldWorld, file);
-            if (!File.Exists(path)) return;
-            foreach (var (name, body) in GlobalProps.Load(path).Bodies())
-                Assert.True(Bmd27Body.Parse(body).ToBytes().AsSpan().SequenceEqual(body), name);
+            var bytes = pack.TryRead($"terrain/campaigns/{map}/{file}");
+            Assert.True(bytes is not null, $"{packName} has no {file}");
+            var bodies = 0;
+            foreach (var (name, body) in GlobalProps.Read(bytes!).Bodies())
+            {
+                Assert.True(Bmd27Body.Parse(body).ToBytes().AsSpan().SequenceEqual(body), $"{file}: {name}");
+                bodies++;
+            }
+            Assert.True(bodies > 0, $"{file} has no bodies");
         }
     }
 
