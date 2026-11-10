@@ -8,9 +8,10 @@ namespace AtlasWH3.Formats.Props;
 // framing byte is the same in all 163,331 bodies of BOB's IEE and Old World global_props(_sound).bin (2026-10-09).
 // Record layouts follow WH3_visual_map_decompiler's GlobalPropsParser, with the bytes it skips named where the layers
 // explain them. Each list is "u16 version, u32 count, records"; each record starts with its own u16 version.
-// Field names in quotes are Terry's, from its .bmd.xml dumps of prefabs compiled from layers varied on purpose
-// (assembly_kit\working_data\prefabs). In BOB's IEE and Old World bodies most of these fields only ever hold their
-// defaults, so the dumps are the only evidence for them.
+// Field names are the kit's: its BATTLE_MAP_DEFINITION serialisers in empireutility.modder.x64.dll (one versioned
+// visitor per record that names each field and gates it on the record version, e.g. sound shapes at 0x2020a0, props at
+// 0x2013cd, the body's list order at 0x1ff03a) give the order, type and name of every field read here, and Terry's
+// .bmd.xml dumps match them. In BOB's IEE and Old World bodies many of these fields only ever hold their defaults.
 
 /// <summary>The flag block several WH3 records share: u16 version (4), allow_in_outfield, clamp_to_water_surface,
 /// per-season visibility (spring, summer, autumn, winter: always 1, WH3 has no seasons), visible_in_tactical_view,
@@ -43,8 +44,8 @@ public sealed class Bmd27Nested
     public string Name = "";
     /// <summary>4x4 matrix as stored (always identity in BOB's files).</summary>
     public float[] Matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-    /// <summary>Terry's property_overrides, by its place in the dump: a count, always 0 (the override records that
-    /// would follow a nonzero count are not known, so the reader refuses them).</summary>
+    /// <summary>The length of the property_overrides vector, always 0 (the override records that would follow are
+    /// not decoded, so the reader refuses them).</summary>
     public uint PropertyOverrideCount;
     /// <summary>Terry's campaign_type_mask: prefab_types bits (bit = value - 1).</summary>
     public ulong CultureMask;
@@ -65,9 +66,7 @@ public sealed class Bmd27Prop
     public float DecalParallaxScale, DecalTiling;
     public byte DecalOverrideGbufferNormal;
     public Bmd27Flags Flags;
-    /// <summary>The four bytes after the flag block (GlobalPropsParser: visible_in_shroud, apply_to_terrain,
-    /// apply_to_objects, render_above_snow).</summary>
-    public byte B0, B1, B2, B3;
+    public byte VisibleInShroud, DecalApplyToTerrain, DecalApplyToGbufferObjects, DecalRenderAboveSnow;
     public string HeightMode = "BHM_CLASSIC";
     /// <summary>Terry's pdlc_mask (1 in BOB's files, all bits in a Terry-compiled prefab).</summary>
     public ulong CultureMask = 1;
@@ -89,6 +88,7 @@ public sealed class Bmd27Vfx
     public string Instance = "";
     public Bmd27Flags Flags;
     public string HeightMode = "BHM_CLASSIC";
+    /// <summary>The kit's pdlc_mask, as on props, lights, spots and scenes.</summary>
     public ulong CultureMask = 1;
     public byte Autoplay = 1, VisibleInShroud;
     public int ParentId = -1;
@@ -116,6 +116,7 @@ public sealed class Bmd27Light
 {
     public float X, Y, Z, Radius, R, G, B, ColourScale;
     public byte Animation;
+    /// <summary>AnimationScale1/2: the animation's params.</summary>
     public float AnimationScale1, AnimationScale2, ColourMin, RandomOffset;
     public string Falloff = "";
     /// <summary>Terry's lf_relative (0 in every BOB light).</summary>
@@ -143,7 +144,7 @@ public sealed class Bmd27Poly
 public sealed class Bmd27Spot
 {
     public float X, Y, Z;
-    /// <summary>Rotation quaternion (x, y, z, w).</summary>
+    /// <summary>Rotation quaternion (x, y, z, w); the kit calls it "end".</summary>
     public float[] Rotation = [0, 0, 0, 1];
     public float Length, InnerAngle, OuterAngle, R, G, B, Falloff;
     public string Gobo = "";
@@ -153,8 +154,7 @@ public sealed class Bmd27Spot
     public Bmd27Flags Flags;
 }
 
-/// <summary>A river node of an SST_RIVER sound: u16 version, position, width, flow speed. Its layout is from
-/// Terry's dumps only: no BOB sound has one.</summary>
+/// <summary>A river node of an SST_RIVER sound (v1): vertex, width, flow_speed. No BOB sound has one.</summary>
 public record struct Bmd27SoundRiverNode(ushort Version, float X, float Y, float Z, float Width, float FlowSpeed);
 
 public sealed class Bmd27Sound
@@ -172,9 +172,10 @@ public sealed class Bmd27Sound
     public ulong CultureMask;
     /// <summary>Terry's pdlc_mask (1 in every BOB sound).</summary>
     public ulong PdlcMask = 1;
-    /// <summary>Six floats after the mask: the marker's x axis then (0, 1, 0)-like second axis.</summary>
+    /// <summary>direction (x, y, z) then up (x, y, z).</summary>
     public float[] Axes = [1, 0, 0, 0, 1, 0];
-    public string Marker = "SSS_SOUND_MARKER";
+    /// <summary>The SOUND_SHAPE_SCOPE (SSS_*).</summary>
+    public string Scope = "SSS_SOUND_MARKER";
 }
 
 public sealed class Bmd27Scene
@@ -195,14 +196,25 @@ public sealed class Bmd27Body
 {
     public const ushort Version = 27;
 
-    // Framing, identical in every BOB body (kept as read, so unexpected files still round-trip).
+    // The lists between the ones read here, empty in every BOB body (kept as read, so unexpected files still round-trip).
+    // An empty list is u16 version + u32 0, or u32 0 alone for the unversioned outline lists.
+    /// <summary>BATTLEFIELD_BUILDING_LIST, BATTLEFIELD_BUILDING_LIST_FAR, CAPTURE_LOCATION_SET (v11), EF_LINE_LIST,
+    /// GO_OUTLINES, NON_TERRAIN_OUTLINES, ZONES_TEMPLATE_LIST.</summary>
     private static readonly byte[] DefaultPreamble = Convert.FromHexString("0100000000000100000000000b0000000000000000000000000000000000010000000000");
+    /// <summary>BMD_OUTLINE_LIST, TERRAIN_OUTLINES, LITE_BUILDING_OUTLINES, CAMERA_ZONES, CIVILIAN_DEPLOYMENT_LIST,
+    /// CIVILIAN_SHELTER_LIST.</summary>
     private static readonly byte[] DefaultAfterNested = Convert.FromHexString("01000000000000000000000000000100000000000000000000000000");
+    /// <summary>AI_HINTS (v1): separators, directed_points, polylines, polylines_list.</summary>
     private static readonly byte[] DefaultAfterVfx = Convert.FromHexString("0100010000000000010000000000010000000000010000000000");
-    /// <summary>After the point lights: global_props.bin bodies carry (64, 64) where global_props_sound.bin's carry (0, 0).</summary>
+    /// <summary>BUILDING_PROJECTILE_EMITTER_LIST, then PLAYABLE_AREA (v3): area (min x, min y, max x, max y), has_been_set,
+    /// valid_location_flags (v1: north, south, east, west). global_props.bin bodies carry min (64, 64) where
+    /// global_props_sound.bin's carry (0, 0).</summary>
     public static readonly byte[] AfterLightsProps = Convert.FromHexString("010000000000030000008042000080420000f0440000f04400010001010101");
     public static readonly byte[] AfterLightsSound = Convert.FromHexString("010000000000030000000000000000000000f0440000f04400010001010101");
+    /// <summary>TERRAIN_STENCIL_BLEND_TRIANGLE_LIST.</summary>
     private static readonly byte[] DefaultAfterPoly = Convert.FromHexString("010000000000");
+    /// <summary>DEPLOYMENT_LIST, BMD_CATCHMENT_AREA_LIST, TOGGLEABLE_BUILDINGS_SLOT_LIST (v7), TERRAIN_DECAL_LIST,
+    /// TREE_LIST_REFERENCE_LIST, GRASS_LIST_REFERENCE_LIST, WATER_OUTLINES.</summary>
     private static readonly byte[] DefaultTrailing = Convert.FromHexString("01000000000001000000000007000000000001000000000001000000000001000000000000000000");
 
     public byte[] Preamble = DefaultPreamble;
@@ -266,7 +278,7 @@ public sealed class Bmd27Body
             p.VisibleInsideDestruction = r.U8(); p.VisibleOutsideDestruction = r.U8(); p.Animated = r.U8();
             p.DecalParallaxScale = r.F32(); p.DecalTiling = r.F32(); p.DecalOverrideGbufferNormal = r.U8();
             p.Flags = Bmd27Flags.Read(ref r);
-            p.B0 = r.U8(); p.B1 = r.U8(); p.B2 = r.U8(); p.B3 = r.U8();
+            p.VisibleInShroud = r.U8(); p.DecalApplyToTerrain = r.U8(); p.DecalApplyToGbufferObjects = r.U8(); p.DecalRenderAboveSnow = r.U8();
             p.HeightMode = r.Str(); p.CultureMask = r.U64();
             p.CastShadow = r.U8(); p.NoCulling = r.U8(); p.HasHeightPatch = r.U8(); p.ApplyHeightPatch = r.U8(); p.IncludeInFog = r.U8();
             p.NotShroudOnly = r.U8(); p.DynamicShadows = r.U8(); p.UsesTerrainVertexOffset = r.U8();
@@ -360,7 +372,7 @@ public sealed class Bmd27Body
             s.InnerRadius = r.F32(); s.OuterRadius = r.F32(); s.InnerCube = r.Floats(6); s.OuterCube = r.Floats(6);
             for (var k = r.U32(); k > 0; k--) s.RiverNodes.Add(new Bmd27SoundRiverNode(r.U16(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32()));
             s.ClampToSurface = r.U8(); s.HeightMode = r.Str(); s.CultureMask = r.U64();
-            s.PdlcMask = r.U64(); s.Axes = r.Floats(6); s.Marker = r.Str();
+            s.PdlcMask = r.U64(); s.Axes = r.Floats(6); s.Scope = r.Str();
             b.Sounds.Add(s);
         }
 
@@ -406,7 +418,7 @@ public sealed class Bmd27Body
             w.Write(p.VisibleInsideDestruction); w.Write(p.VisibleOutsideDestruction); w.Write(p.Animated);
             w.Write(p.DecalParallaxScale); w.Write(p.DecalTiling); w.Write(p.DecalOverrideGbufferNormal);
             p.Flags.Write(w);
-            w.Write(p.B0); w.Write(p.B1); w.Write(p.B2); w.Write(p.B3);
+            w.Write(p.VisibleInShroud); w.Write(p.DecalApplyToTerrain); w.Write(p.DecalApplyToGbufferObjects); w.Write(p.DecalRenderAboveSnow);
             Str(w, p.HeightMode); w.Write(p.CultureMask);
             w.Write(p.CastShadow); w.Write(p.NoCulling); w.Write(p.HasHeightPatch); w.Write(p.ApplyHeightPatch); w.Write(p.IncludeInFog);
             w.Write(p.NotShroudOnly); w.Write(p.DynamicShadows); w.Write(p.UsesTerrainVertexOffset);
@@ -475,7 +487,7 @@ public sealed class Bmd27Body
             w.Write(s.RiverNodes.Count);
             foreach (var n in s.RiverNodes) { w.Write(n.Version); w.Write(n.X); w.Write(n.Y); w.Write(n.Z); w.Write(n.Width); w.Write(n.FlowSpeed); }
             w.Write(s.ClampToSurface); Str(w, s.HeightMode); w.Write(s.CultureMask); w.Write(s.PdlcMask);
-            Floats(w, s.Axes); Str(w, s.Marker);
+            Floats(w, s.Axes); Str(w, s.Scope);
         }
 
         Begin(w, 1, Scenes.Count);

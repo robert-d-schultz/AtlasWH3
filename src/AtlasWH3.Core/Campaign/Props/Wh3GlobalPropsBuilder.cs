@@ -343,7 +343,7 @@ public sealed class Wh3GlobalPropsBuilder
             var o = AddObj(new Obj
             {
                 Kind = "prop", Id = id, InnerId = innerId, Sub = _sub++, X = placed.X, Z = placed.Z, Box = box, Cultures = cultures,
-                Add = b => { var r = PropRecord(b, model, placed, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.B2 = 0; b.Props.Add(r); },
+                Add = b => { var r = PropRecord(b, model, placed, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.DecalApplyToGbufferObjects = 0; b.Props.Add(r); },
             });
             o.RootCell = box is null;
             o.River = true;
@@ -560,10 +560,10 @@ public sealed class Wh3GlobalPropsBuilder
             VisibleOutsideDestruction = B(cp("visible_outside_destruction_region", true)),
             Animated = B(info?.Skinned == true),
             DecalParallaxScale = D("parallax_scale", 0), DecalTiling = D("tiling", 0), Flags = flags,
-            B0 = B(shroud),
-            B1 = B(isDecal && (string?)decal!.Attribute("apply_to_terrain") != "false"),
-            B2 = B(isDecal ? (string?)decal!.Attribute("apply_to_objects") == "true" : (string?)rs?.Attribute("receive_decals") != "false"),
-            B3 = B(isDecal && (string?)decal!.Attribute("render_above_snow") == "true"),
+            VisibleInShroud = B(shroud),
+            DecalApplyToTerrain = B(isDecal && (string?)decal!.Attribute("apply_to_terrain") != "false"),
+            DecalApplyToGbufferObjects = B(isDecal ? (string?)decal!.Attribute("apply_to_objects") == "true" : (string?)rs?.Attribute("receive_decals") != "false"),
+            DecalRenderAboveSnow = B(isDecal && (string?)decal!.Attribute("render_above_snow") == "true"),
             CastShadow = 1, NoCulling = B(noCulling),
             HasHeightPatch = B(hp), ApplyHeightPatch = B(hp), IncludeInFog = B((string?)rs?.Attribute("render_into_skydome_fog") == "true"),
             NotShroudOnly = B(!shroudOnly), DynamicShadows = B(info?.DynamicShadows == true), UsesTerrainVertexOffset = B(info?.TerrainHeight == true),
