@@ -334,10 +334,12 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
 - **Bodies (v27):** no per-body preamble; every framing byte is the same in all 166,549 bodies of both maps
   (`global_props_sound.bin`'s bodies carry (0, 0) where the props file's carry (64, 64) after the point lights).
   Records: prop v30, VFX v11, light probe v3, terrain hole v3, point light v7, polygon mesh v4, spot light v8, sound v10,
-  composite scene v12, reference v9. The layout is WH3_visual_map_decompiler's `GlobalPropsParser`, with the bytes it
-  skips named from the layers (prop: visible_in_shroud, decal apply_to_terrain, receive_decals / decal
-  apply_to_objects, render_above_snow; a flag block of tactical-view visibility on props, VFX, lights, holes, polygons,
-  spots). Record culture masks are 1 everywhere but on sounds.
+  composite scene v12, reference v9. Every field's name, order and version gate is the kit's own: the
+  BATTLE_MAP_DEFINITION serialisers in empireutility.modder.x64.dll (`Bmd27.cs` lists them; research/bob_re's
+  `xref_strings.py`, `fn_of.py` and `disasm_named.py` find them). The framing bytes are the empty lists between the
+  ones read, and PLAYABLE_AREA after the point lights. Records' pdlc_mask is 1 plus the bits of the DLCs the entity's
+  ECDLCMask names (ECDLCMask::compute_dlc_mask, qttoolutility 0x4e940; its type is not read), on props, sounds, point
+  and spot lights and scenes; sounds' campaign_type_mask holds their cultures.
 - **Container:** 3K's. Cells ascending; in a cell, regions in CA hash-map order; per (cell, region) its bucket bodies
   ascending, then the cell body; the root last. Sounds have their own file of bucket-16 bodies only (no cell or root
   bodies), and each sound's (region, cell) also gets an empty bucket-16 body in global_props.bin.
@@ -402,15 +404,19 @@ qttoolutility (ECTransform, set_decomposed_transform, set_rotation) and the Frid
 - **Fields from elsewhere:** cast_shadow is always 1; composite scenes' autoplay is always 1; use_dynamic_shadows on
   `rigid_campaign_mountain_emissive` materials (all 8 such models, no other); "animated" when the game's RMV2 has a
   skeleton; spot lights take the decomposed world rotation, angles (degrees × π) / 180, colour × (1/255) × intensity;
-  polygons that are tactical-view-only without tactical view drop the flag and clear the byte after visible_in_shroud;
-  sound masks have only their known cultures' bits; ECPolyline3D emitters are SST_LINE_LIST of every point.
+  visible_in_tactical_view_only counts only with visible_in_tactical_view (ECVisibilitySettingsBase's getter,
+  qttoolutility 0xb2f90); an entity without ECVisibilitySettingsCampaign keeps the record constructor's
+  visible_in_tactical_view = 1 on props, point lights and polygons (flag word 0xf10); polygons' visible_without_shroud
+  is !visible_in_shroud_only; sound masks have only their known cultures' bits; a sound's shape is the first of
+  ECSphere, ECPolyline, ECPolyline3D, ECPointCloud it has (QTU::fill_sound_data, qttoolutility 0xaac70), and an
+  ECPolyline emitter is clamp_to_surface (IEE's 10 hot-river sounds).
 - **Layers:** every exported file layer; an `ECLayer export="false"` group hides its members (transitively), inside
   prefabs too (marienburg_big's "houses"); members of a group with a bmd_export_type go to the pieces' typed files
   instead. Prefabs come from the folder Terry's configuration.xml names for the campaign database, except the vanilla
   kit's mistaken `art/campaign/prefabs`, which is read as `art/prefabs/campaign` (with it, IEE's
   `white_tree_of_morash_chaos_bits` was dropped).
 - **Not matched yet:** prefab children's transforms (IEE 8,597 props, 233 decals, 21 VFX, Old World's tow_torch
-  effects: BOB's composed matrix has exact zeros where ours has ~5e-7), 533 hole vertices by an ulp, the last byte of the 53 unknown bytes on 10 IEE river sounds, a spot light's length by an ulp, one polygon
+  effects: BOB's composed matrix has exact zeros where ours has ~5e-7), 533 hole vertices by an ulp, a spot light's length by an ulp, one polygon
   BOB stops triangulating early. Not written: the devastated project's `global_props[_sound]_devastation_<type>.bin`,
   which ship nowhere (plan §2).
 

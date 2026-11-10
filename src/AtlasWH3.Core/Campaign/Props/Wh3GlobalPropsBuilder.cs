@@ -316,8 +316,15 @@ public sealed class Wh3GlobalPropsBuilder
         _cultureMask = (string?)cp?.Attribute("culture_mask") ?? "";
         var cultures = Cultures(_cultureMask);
         var vis = e.Element("ECVisibilitySettingsCampaign");
-        var flags = new Bmd27Flags(B((string?)vis?.Attribute("visible_in_tactical_view") == "true"),
-                                   B((string?)vis?.Attribute("visible_in_tactical_view_only") == "true"));
+        // ECVisibilitySettingsBase::visible_in_tactical_view_only is false unless visible_in_tactical_view is true
+        // (qttoolutility 0xb2f90)
+        var tactical = (string?)vis?.Attribute("visible_in_tactical_view") == "true";
+        var flags = new Bmd27Flags(B(tactical), B(tactical && (string?)vis?.Attribute("visible_in_tactical_view_only") == "true"));
+        // without ECVisibilitySettingsCampaign BOB leaves the record's constructor flags: PROP, POINT_LIGHT and
+        // CUSTOM_MATERIAL_MESH start at 0xf10, the seasons and visible_in_tactical_view (empireutility 0x23f060,
+        // 0x23eb80, 0x23c3e0)
+        var ctorFlags = vis is null ? flags with { TacticalView = 1 } : flags;
+        var pdlc = DlcMask(e);
         var shroud = Cp("visible_in_shroud", false);
         var shroudOnly = Cp("visible_in_shroud_only", false);
         var noCulling = Cp("no_culling", false);
@@ -343,7 +350,7 @@ public sealed class Wh3GlobalPropsBuilder
             var o = AddObj(new Obj
             {
                 Kind = "prop", Id = id, InnerId = innerId, Sub = _sub++, X = placed.X, Z = placed.Z, Box = box, Cultures = cultures,
-                Add = b => { var r = PropRecord(b, model, placed, false, Cp, flags, shroud, shroudOnly, noCulling, null, e); r.DecalApplyToGbufferObjects = 0; b.Props.Add(r); },
+                Add = b => { var r = PropRecord(b, model, placed, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e); r.DecalApplyToGbufferObjects = 0; b.Props.Add(r); },
             });
             o.RootCell = box is null;
             o.River = true;
@@ -353,7 +360,7 @@ public sealed class Wh3GlobalPropsBuilder
         {
             var model = (string?)decal.Attribute("model_path") ?? "";
             if (model.Length > 0)
-                Add("decal", b => b.Props.Add(PropRecord(b, model, world, true, Cp, flags, shroud, shroudOnly, noCulling, decal, e)));
+                Add("decal", b => b.Props.Add(PropRecord(b, model, world, true, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, decal, e)));
             return;
         }
         if (e.Element("ECMesh") is { } mesh)
@@ -361,7 +368,7 @@ public sealed class Wh3GlobalPropsBuilder
             var model = (string?)mesh.Attribute("model_path") ?? "";
             if (model.Length == 0) return;
             var info = Model(model);
-            var o = Add("prop", b => b.Props.Add(PropRecord(b, model, world, false, Cp, flags, shroud, shroudOnly, noCulling, null, e, info)),
+            var o = Add("prop", b => b.Props.Add(PropRecord(b, model, world, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e, info)),
                 MeshBox(info.Min, info.Max, world));
             o.What = model;
             o.DefaultBox = MeshBox([-1, -1, -1], [1, 1, 1], world);
@@ -403,7 +410,7 @@ public sealed class Wh3GlobalPropsBuilder
                 Animation = (string?)light.Attribute("animation_type") switch { "LAT_RADIUS_SIN" => 1, "LAT_RADIUS_SIN_SIN" => 2, _ => 0 },
                 AnimationScale1 = speed.ElementAtOrDefault(0), AnimationScale2 = speed.ElementAtOrDefault(1),
                 ColourMin = A("colour_min", 0), RandomOffset = A("random_offset", 0), Falloff = (string?)light.Attribute("falloff_type") ?? "",
-                LightProbesOnly = B((string?)light.Attribute("for_light_probes_only") == "true"), Flags = flags,
+                LightProbesOnly = B((string?)light.Attribute("for_light_probes_only") == "true"), Flags = ctorFlags, CultureMask = pdlc,
             }), [world.X - half, world.Z - half, world.X + half, world.Z + half]);
             return;
         }
@@ -422,7 +429,7 @@ public sealed class Wh3GlobalPropsBuilder
                 InnerAngle = A("inner_angle", 0) * 3.14159274f / 180f, OuterAngle = A("outer_angle", 0) * 3.14159274f / 180f,
                 R = c[0] * (1f / 255f) * intensity, G = c[1] * (1f / 255f) * intensity, B = c[2] * (1f / 255f) * intensity,
                 Falloff = A("falloff", 0), Gobo = (string?)spot.Attribute("gobo") ?? "", Volumetric = B((string?)spot.Attribute("volumetric") == "true"),
-                Flags = flags,
+                Flags = flags, CultureMask = pdlc,
             }));
             return;
         }
@@ -430,7 +437,7 @@ public sealed class Wh3GlobalPropsBuilder
         {
             Add("scene", b => b.Scenes.Add(new Bmd27Scene
             {
-                Transform = world.Record(), Path = (string?)scene.Attribute("path") ?? "", Autoplay = 1,   // 1 even for autoplay="false" (IEE's 6)
+                Transform = world.Record(), Path = (string?)scene.Attribute("path") ?? "", CultureMask = pdlc, Autoplay = 1,   // 1 even for autoplay="false" (IEE's 6)
                 VisibleInShroud = B(shroud), NoCulling = B(noCulling), ScriptId = (string?)scene.Attribute("script_id") ?? "",
                 NotShroudOnly = B(!shroudOnly), TacticalView = flags.TacticalView, TacticalViewOnly = flags.TacticalViewOnly,
                 HoldFirstFrame = B((string?)scene.Attribute("hold_first_frame") == "true"),
@@ -456,13 +463,10 @@ public sealed class Wh3GlobalPropsBuilder
             if (local.Count < 3) return;
             var outline = local.Select(p => (p.X, 0f, p.Z)).ToList();
             var indices = Triangulate(local);
-            // tactical-view-only counts only with tactical view on (the 2 such Old World polygons, also its only 2 shroud-only
-            // ones, so which of the two clears the flag is open; IEE's 19 with both set keep both)
-            var hiddenOnMap = flags.TacticalViewOnly == 1 && flags.TacticalView == 0;
             Add("poly", b => b.Polys.Add(new Bmd27Poly
             {
                 Vertices = outline, Indices = indices, Material = (string?)poly.Attribute("material") ?? "",
-                Flags = hiddenOnMap ? flags with { TacticalViewOnly = 0 } : flags,
+                Flags = ctorFlags,
                 Transform = world.Record(),
                 VisibleInsideSnow = B(Cp("visible_inside_snow_region", true)), VisibleOutsideSnow = B(Cp("visible_outside_snow_region", true)),
                 VisibleInsideDestruction = B(Cp("visible_inside_destruction_region", true)),
@@ -492,27 +496,35 @@ public sealed class Wh3GlobalPropsBuilder
         if (e.Element("ECSoundMarker") is { } sound)
         {
             var key = (string?)sound.Attribute("key") ?? "";
+            // the shape by QTU::fill_sound_data's order (qttoolutility 0xaac70): ECSphere, ECPolyline (clamped to the
+            // surface), ECPolyline3D, ECPointCloud, else a point
             var cloud = e.Element("ECPointCloud");
             var sphere = e.Element("ECSphere");
-            var line = e.Element("ECPolyline3D") ?? e.Element("ECPolyline");
+            var line = e.Element("ECPolyline") ?? e.Element("ECPolyline3D");
             var points = new List<(float X, float Y, float Z)>();
             string shape;
-            if (cloud is not null)
+            byte clamp = 0;
+            if (sphere is not null)
+            {
+                shape = "SST_SPHERE";
+                points.Add((world.X, world.Y, world.Z));
+            }
+            else if (line is not null)
+            {
+                shape = "SST_LINE_LIST";
+                clamp = B(line.Name.LocalName == "ECPolyline");
+                foreach (var p in line.Descendants("point"))
+                    points.Add(world.Apply(F(p, "x"), p.Attribute("z") is null ? 0 : F(p, "y"), p.Attribute("z") is null ? F(p, "y") : F(p, "z")));
+            }
+            else if (cloud is not null)
             {
                 shape = "SST_MULTI_POINT";
                 foreach (var p in cloud.Descendants("point"))
                     points.Add(world.Apply(F(p, "x"), F(p, "y"), F(p, "z")));
             }
-            else if (line is not null)
-            {
-                // an ECPolyline3D's points in order (IEE's 1,932 line-list emitters)
-                shape = "SST_LINE_LIST";
-                foreach (var p in line.Descendants("point"))
-                    points.Add(world.Apply(F(p, "x"), p.Attribute("z") is null ? 0 : F(p, "y"), p.Attribute("z") is null ? F(p, "y") : F(p, "z")));
-            }
             else
             {
-                shape = sphere is null ? "SST_POINT" : "SST_SPHERE";
+                shape = "SST_POINT";
                 points.Add((world.X, world.Y, world.Z));
             }
             var mask = SoundMask(cultures, (string?)cp?.Attribute("culture_mask") ?? "");
@@ -523,10 +535,25 @@ public sealed class Wh3GlobalPropsBuilder
                 Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1], Type = _type, PieceMask = PieceMask(cultures, _cultureMask),
                 Add = b => b.Sounds.Add(new Bmd27Sound
                 {
-                    Name = key, Shape = shape, Points = points, OuterRadius = radius, CultureMask = mask, Axes = SoundAxes(r),
+                    Name = key, Shape = shape, Points = points, OuterRadius = radius, ClampToSurface = clamp, CultureMask = mask, PdlcMask = pdlc,
+                    Axes = SoundAxes(r),
                 }),
             });
         }
+    }
+
+    /// <summary>A record's pdlc_mask: 1, plus each DLC its ECDLCMask names (ECDLCMask::compute_dlc_mask, qttoolutility
+    /// 0x4e940: CHAOS 2, BLOODPACK 4, BEASTMEN 8, WOOD_ELVES 0x20, BRETONNIA 0x200; the type is not read).</summary>
+    private static ulong DlcMask(XElement e)
+    {
+        ulong m = 1;
+        foreach (var name in ((string?)e.Element("ECDLCMask")?.Attribute("mask") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            m |= name switch
+            {
+                "TW_WH_CHAOS" => 2UL, "TW_WH_BLOODPACK" => 4UL, "TW_WH_BEASTMEN" => 8UL, "TW_WH_WOOD_ELVES" => 0x20UL, "TW_WH_BRETONNIA" => 0x200UL,
+                _ => 0UL,
+            };
+        return m;
     }
 
     private Obj AddObj(Obj o)
@@ -545,7 +572,7 @@ public sealed class Wh3GlobalPropsBuilder
     private static ulong PieceMask(IReadOnlyList<int> values, string mask) =>
         mask.Trim().Length == 0 ? 0 : values.Aggregate(0UL, (m, v) => m | Bit(v));
 
-    private Bmd27Prop PropRecord(Bmd27Body b, string model, Xf world, bool isDecal, Func<string, bool, bool> cp, Bmd27Flags flags,
+    private Bmd27Prop PropRecord(Bmd27Body b, string model, Xf world, bool isDecal, Func<string, bool, bool> cp, Bmd27Flags flags, ulong pdlc,
         bool shroud, bool shroudOnly, bool noCulling, XElement? decal, XElement e, ModelData? info = null)
     {
         byte B(bool v) => v ? (byte)1 : (byte)0;
@@ -559,7 +586,7 @@ public sealed class Wh3GlobalPropsBuilder
             VisibleInsideDestruction = B(cp("visible_inside_destruction_region", true)),
             VisibleOutsideDestruction = B(cp("visible_outside_destruction_region", true)),
             Animated = B(info?.Skinned == true),
-            DecalParallaxScale = D("parallax_scale", 0), DecalTiling = D("tiling", 0), Flags = flags,
+            DecalParallaxScale = D("parallax_scale", 0), DecalTiling = D("tiling", 0), Flags = flags, CultureMask = pdlc,
             VisibleInShroud = B(shroud),
             DecalApplyToTerrain = B(isDecal && (string?)decal!.Attribute("apply_to_terrain") != "false"),
             DecalApplyToGbufferObjects = B(isDecal ? (string?)decal!.Attribute("apply_to_objects") == "true" : (string?)rs?.Attribute("receive_decals") != "false"),

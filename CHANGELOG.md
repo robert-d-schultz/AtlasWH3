@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### global_props
+- Fixed: sound emitters drawn as a 2D polyline (`ECPolyline`) weren't clamped to the surface, as BOB clamps them
+  (IEE's 10 hot-river sounds).
+- A sound with more than one shape component takes the one BOB takes: a sphere first, then a 2D polyline, a 3D
+  polyline, a point cloud.
+- An entity's `ECDLCMask` now reaches its props, sounds, lights and scenes, as in BOB.
+- Props, point lights and polygon meshes without visibility settings are visible in the tactical view, as in BOB.
+
 ## 1.2.0 (2026-10-31)
 
 AtlasWH3 now reads and writes packs through RPFM, and the shroud is filled from the terrain.

@@ -5,7 +5,10 @@ import os, sys, re, capstone, pefile
 B = os.environ.get("KIT_BINARIES", r"D:\SteamLibrary\steamapps\common\Total War WARHAMMER III\assembly_kit\binaries")
 pe = pefile.PE(os.path.join(B, sys.argv[1]), max_symbol_exports=0x100000)
 base = pe.OPTIONAL_HEADER.ImageBase
-names = {e.address: (e.name or b"").decode("latin1") for e in pe.DIRECTORY_ENTRY_EXPORT.symbols}
+names = {e.address: (e.name or b"").decode("latin1") for e in getattr(getattr(pe, "DIRECTORY_ENTRY_EXPORT", None), "symbols", [])}
+for imp in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):   # IAT slots, for call qword ptr [rip + x]
+    for i in imp.imports:
+        names[i.address - base] = f"[{imp.dll.decode()}] " + (i.name or b"?").decode("latin1")
 rva, n = int(sys.argv[2], 16), int(sys.argv[3], 16)
 md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
 def s_at(r):
@@ -18,7 +21,7 @@ for i in md.disasm(pe.get_data(rva, n), base + rva):
     m = re.search(r"\[rip ([+-]) 0x([0-9a-f]+)\]", i.op_str)
     if m:
         tgt = i.address + i.size + (int(m.group(2), 16) * (1 if m.group(1) == "+" else -1)) - base
-        s = s_at(tgt); t += f"   ; {hex(tgt)} " + (repr(s) if s else names.get(tgt, ""))
+        s = None if tgt in names else s_at(tgt); t += f"   ; {hex(tgt)} " + (repr(s) if s else names.get(tgt, "")[:120])
     if i.mnemonic == "call" and i.op_str.startswith("0x"):
-        tgt = int(i.op_str, 16) - base; t += f"   ; {names.get(tgt, '')[:90]}"
+        tgt = int(i.op_str, 16) - base; t += f"   ; {names.get(tgt, '')[:120]}"
     print(t)
