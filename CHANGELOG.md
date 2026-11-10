@@ -1,14 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 (2026-11-10)
 
-### global_props
-- Fixed: sound emitters drawn as a 2D polyline (`ECPolyline`) weren't clamped to the surface, as BOB clamps them
-  (IEE's 10 hot-river sounds).
-- A sound with more than one shape component takes the one BOB takes: a sphere first, then a 2D polyline, a 3D
-  polyline, a point cloud.
-- An entity's `ECDLCMask` now reaches its props, sounds, lights and scenes, as in BOB.
-- Props, point lights and polygon meshes without visibility settings are visible in the tactical view, as in BOB.
+Props, sounds and lights on the campaign map now come out of the build the way BOB makes them.
+
+- Fixed: sounds drawn as a line in Terry (such as IEE's hot rivers) didn't follow the ground.
+- Fixed: props, sounds, lights and scenes set to a DLC in Terry weren't tied to that DLC in the game.
+- Fixed: props, lights and polygon meshes with no visibility settings in Terry were hidden in the tactical view.
+- Fixed: a polygon mesh's snow, destruction and shroud-only settings, a scene's hold-first/last-frame settings and
+  cylinder-shaped probes were ignored.
 
 ## 1.2.0 (2026-10-31)
 
