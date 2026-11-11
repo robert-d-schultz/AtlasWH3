@@ -5,7 +5,8 @@
 Props, sounds and lights on the campaign map now come out of the build the way BOB makes them.
 
 - Fixed: sounds drawn as a line in Terry (such as IEE's hot rivers) didn't follow the ground.
-- Fixed: props, sounds, lights and scenes set to a DLC in Terry weren't tied to that DLC in the game.
+- Fixed: props, sounds, lights and scenes set to a DLC in Terry weren't tied to that DLC in the game. (No vanilla map uses
+  this setting.)
 - Fixed: props, lights and polygon meshes with no visibility settings in Terry were hidden in the tactical view.
 - Fixed: a polygon mesh's snow, destruction and shroud-only settings, a scene's hold-first/last-frame settings and
   cylinder-shaped probes were ignored.
