@@ -220,13 +220,22 @@ public sealed class Wh3GlobalPropsBuilder
         return result;
     }
 
-    private readonly Dictionary<string, HashSet<string>> _prefabHidden = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (HashSet<string> Hidden, Dictionary<string, string> Typed)> _prefabGroups = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The entities of a prefab that a non-exported group or file layer hides (marienburg_big's "houses").</summary>
-    private HashSet<string> PrefabHidden(PrefabDefinition def)
+    private HashSet<string> PrefabHidden(PrefabDefinition def) => PrefabGroups(def).Hidden;
+
+    /// <summary>The bmd_export_type of a prefab's entities that a typed group inside it owns (<see cref="TypedMembers"/>):
+    /// CA's devastation prefabs (art\prefabs\campaign\devastation) keep their devastation_chaos / _nagash / _skaven
+    /// variants in such groups.</summary>
+    private Dictionary<string, string> PrefabTyped(PrefabDefinition def) => PrefabGroups(def).Typed;
+
+    /// <summary><see cref="PrefabHidden"/> and <see cref="PrefabTyped"/>, from one read of the prefab's layer files.</summary>
+    private (HashSet<string> Hidden, Dictionary<string, string> Typed) PrefabGroups(PrefabDefinition def)
     {
-        if (_prefabHidden.TryGetValue(def.Path, out var cached)) return cached;
+        if (_prefabGroups.TryGetValue(def.Path, out var cached)) return cached;
         var hidden = new HashSet<string>();
+        var typed = new Dictionary<string, string>();
         foreach (var layer in TerryProject.Load(def.Path).Layers())
         {
             if (layer.FilePath is not { } file || !File.Exists(file)) continue;
@@ -234,30 +243,15 @@ public sealed class Wh3GlobalPropsBuilder
             try { root = XDocument.Load(file).Root!; }
             catch (System.Xml.XmlException) { continue; }
             var entities = root.Element("entities")?.Elements("entity").ToList() ?? [];
-            if (!layer.Export) hidden.UnionWith(entities.Select(e => (string?)e.Attribute("id") ?? ""));
-            else hidden.UnionWith(HiddenMembers(root, entities));
+            if (!layer.Export)
+            {
+                hidden.UnionWith(entities.Select(e => (string?)e.Attribute("id") ?? ""));
+                continue;
+            }
+            hidden.UnionWith(HiddenMembers(root, entities));
+            foreach (var (id, type) in TypedMembers(root, entities)) typed[id] = type;
         }
-        return _prefabHidden[def.Path] = hidden;
-    }
-
-    private readonly Dictionary<string, Dictionary<string, string>> _prefabTyped = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>The bmd_export_type of a prefab's entities that a typed group inside it owns (<see cref="TypedMembers"/>):
-    /// CA's devastation prefabs (art\prefabs\campaign\devastation) keep their devastation_chaos / _nagash / _skaven
-    /// variants in such groups.</summary>
-    private Dictionary<string, string> PrefabTyped(PrefabDefinition def)
-    {
-        if (_prefabTyped.TryGetValue(def.Path, out var cached)) return cached;
-        var typed = new Dictionary<string, string>();
-        foreach (var layer in TerryProject.Load(def.Path).Layers())
-        {
-            if (!layer.Export || layer.FilePath is not { } file || !File.Exists(file)) continue;
-            XElement root;
-            try { root = XDocument.Load(file).Root!; }
-            catch (System.Xml.XmlException) { continue; }
-            foreach (var (id, type) in TypedMembers(root, root.Element("entities")?.Elements("entity").ToList() ?? [])) typed[id] = type;
-        }
-        return _prefabTyped[def.Path] = typed;
+        return _prefabGroups[def.Path] = (hidden, typed);
     }
 
     /// <summary>Ids owned (through Logical associations, transitively) by an ECLayer with export="false".</summary>

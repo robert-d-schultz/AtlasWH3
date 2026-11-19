@@ -1310,7 +1310,9 @@ public sealed partial class Viewport3DControl : Grid
         var tDraw = frameClock.Elapsed.TotalMilliseconds;
         // One upload for the whole frame, then a ranged draw per (model, LOD, mesh).
         var total = batches.Sum(g => g.Frame0.Sum(l => l.Count));
-        var all = new InstanceData[total];
+        // reused across frames: a forest is a few hundred thousand instances, tens of MB a frame otherwise
+        if (_frameInstances.Length < total) _frameInstances = new InstanceData[Math.Max(total, _frameInstances.Length * 3 / 2)];
+        var all = _frameInstances;
         var ranges = new List<(GpuModel Gm, int Lod, int Start, int Count)>();
         var at = 0;
         foreach (var g in batches)
@@ -1322,7 +1324,7 @@ public sealed partial class Viewport3DControl : Grid
                 ranges.Add((g, lod, at, list.Count));
                 at += list.Count;
             }
-        r.UploadInstances(all);
+        r.UploadInstances(all.AsSpan(0, total));
         foreach (var (g, lod, start, count) in ranges)
             foreach (var mesh in g.Lods[lod]) r.DrawInstanceRange(mesh, start, count);
 
@@ -1400,6 +1402,7 @@ public sealed partial class Viewport3DControl : Grid
 
     /// <summary>Queues one model instance: frustum culled, LOD picked by distance (RMV2 LOD distances, scaled).</summary>
     private int _frame;
+    private InstanceData[] _frameInstances = [];
 
     private void AddInstance(GpuModel gm, TerryTransform tr, Vector4 tint, Frustum frustum, Vector3 eye, List<GpuModel> batches)
     {

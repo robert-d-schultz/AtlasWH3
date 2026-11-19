@@ -125,8 +125,9 @@ public sealed class TileMatchSimulator
         foreach (var t in _tiles)
         {
             t.MatchesGroup = new bool[_groups.Length];
+            var key0 = VariationKey(t.Source, 0);
             for (var g = 0; g < _groups.Length; g++)
-                t.MatchesGroup[g] = _groups[g].Sets.Contains(t.Set) || _groups[g].VariationKeys.Contains(VariationKey(t.Source, 0));
+                t.MatchesGroup[g] = _groups[g].Sets.Contains(t.Set) || _groups[g].VariationKeys.Contains(key0);
             t.LinkOffsets = Enumerable.Range(0, 4).Select(r => t.Links.Select(l => Rotate(t.W, t.H, r, l.X, t.H - l.Y - 1)).ToArray()).ToArray();
             t.TargetOffsets = Enumerable.Range(0, 4).Select(r => t.Targets.Select(x => Rotate(t.W, t.H, r, x.X, t.H - x.Y - 1)).ToArray()).ToArray();
             t.LinkAsSets = t.Links.Select(l => l.Set >= 0 ? SetIndex(_setLinkAs[l.Set]) : Invalid).ToArray();
@@ -414,13 +415,15 @@ public sealed class TileMatchSimulator
     private Tile[] SelectTiles(int pass)
     {
         var list = new List<Tile>();
+        var linkSets = new HashSet<int>();      // pass 4: the sets whose unlinked tiles are already in the list
         foreach (var t in _tiles)
         {
             if (pass == 4)
             {
                 foreach (var l in t.Links)
-                    foreach (var u in _tiles)
-                        if (u.Links.Length == 0 && u.Set == l.Set && !list.Contains(u)) list.Add(u);
+                    if (linkSets.Add(l.Set))
+                        foreach (var u in _tiles)
+                            if (u.Links.Length == 0 && u.Set == l.Set) list.Add(u);
                 continue;
             }
             if (pass == 5 && t.Links.Length == 0) continue;

@@ -118,7 +118,20 @@ public sealed class TreeHeightField
         public required float[] Values { get; init; }
         public int W, H;
 
-        public static Patch Create(string model, double[] m, float px, float py, float pz, CompressedMap.Map map, bool add)
+        public static Patch Create(string model, double[] m, float px, float py, float pz, CompressedMap.Map map, bool add) =>
+            Create(model, m, px, py, pz, map, Heights(map), add);
+
+        /// <summary>A patch map's heights (raw · (1/65535) · range + lo); shared by every patch of the model.</summary>
+        internal static float[] Heights(CompressedMap.Map map)
+        {
+            float lo = map.Header[1], range = map.Header[4] - map.Header[1];
+            var raw = map.Raster.Data;
+            var values = new float[raw.Length];
+            for (var i = 0; i < raw.Length; i++) values[i] = raw[i] * (1f / 65535f) * range + lo;
+            return values;
+        }
+
+        internal static Patch Create(string model, double[] m, float px, float py, float pz, CompressedMap.Map map, float[] values, bool add)
         {
             float r00 = (float)m[0], r01 = (float)m[1], r02 = (float)m[2], r11 = (float)m[4], r20 = (float)m[6], r21 = (float)m[7],
                 r22 = (float)m[8];
@@ -128,10 +141,6 @@ public sealed class TreeHeightField
             // 0x135bc0: scale y, translation y, then the inverse of (r00, r02, r20, r22 | px, pz) (0xfea70)
             var inv = 1f / (r00 * r22 - r02 * r20);
             float ia = inv * r22, ib = -(inv * r02), ic = -(inv * r20), id = inv * r00;
-            float lo = map.Header[1], range = map.Header[4] - map.Header[1];
-            var raw = map.Raster.Data;
-            var values = new float[raw.Length];
-            for (var i = 0; i < raw.Length; i++) values[i] = raw[i] * (1f / 65535f) * range + lo;
             var p = new Patch
             {
                 Model = model, Values = values, W = map.Raster.Width, H = map.Raster.Height,
@@ -189,55 +198,119 @@ public sealed class TreeHeightField
     /// </summary>
     public static List<Patch> LoadPatches(TerryProject project, PackSet packs, List<string> notes, bool camera = false)
     {
-        var models = new Dictionary<string, (CompressedMap.Map Map, bool Add)?>(StringComparer.OrdinalIgnoreCase);
+        var models = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missing = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var patches = new List<Patch>();
         int nested = 0, cameraOnly = 0;
-        foreach (var layer in project.Layers().Where(l => l.IsFile))
+        foreach (var e in Scan(project, packs))
         {
-            var path = project.LayerFilePath(layer.Id);
-            if (!File.Exists(path)) continue;
-            foreach (var e in LayerDocument.Load(path).AllEntityElements)
+            if (e.CameraOnly)
             {
-                var hp = e.Element("ECPropHeightPatch");
-                if (hp is null || (string?)hp.Attribute("apply_height_patch") != "true") continue;
-                if ((string?)hp.Attribute("for_camera_height_map_only") == "true")
-                {
-                    cameraOnly++;
-                    if (!camera) continue;
-                }
-                // an entity inside a group would need its parents' transforms; none of the fixtures has one
-                if (e.Parent?.Name != "entities") { nested++; continue; }
-                var model = (string?)e.Element("ECMesh")?.Attribute("model_path");
-                var t = e.Element("ECTransform");
-                if (model is null || t is null) continue;
-                if (!models.TryGetValue(model, out var info)) models[model] = info = LoadModel(model, packs);
-                if (info is not { } m) { missing.Add(model); continue; }
-                var p = LayerDocument.ReadVector((string)t.Attribute("position")!);
-                var r = LayerDocument.ReadVector((string)t.Attribute("rotation")!);
-                var s = LayerDocument.ReadVector((string)t.Attribute("scale")!);
-                var matrix = QtuTransform.Matrix((float)r[0], (float)r[1], (float)r[2], (float)s[0], (float)s[1], (float)s[2],
-                    (float)p[0], (float)p[1], (float)p[2]);
-                float x = (float)p[0], y = (float)p[1], z = (float)p[2];
-                // the patch is placed at position − RS·pivot, as global_props places the model: IEE's
-                // pivoted mountains sit pivot.y · scale.y lower in BOB's trees (2026-10-10, 4.7)
-                if ((string?)t.Attribute("pivot") is { } pivot && LayerDocument.ReadVector(pivot) is [var vx, var vy, var vz] &&
-                    (vx != 0 || vy != 0 || vz != 0))
-                {
-                    float fx = (float)vx, fy = (float)vy, fz = (float)vz;
-                    x -= (float)matrix[0] * fx + (float)matrix[1] * fy + (float)matrix[2] * fz;
-                    y -= (float)matrix[3] * fx + (float)matrix[4] * fy + (float)matrix[5] * fz;
-                    z -= (float)matrix[6] * fx + (float)matrix[7] * fy + (float)matrix[8] * fz;
-                }
-                patches.Add(Patch.Create(model, matrix, x, y, z, m.Map, m.Add));
+                cameraOnly++;
+                if (!camera) continue;
             }
+            if (e.Nested) { nested++; continue; }
+            if (e.Model is null) continue;
+            if (e.Patch is null) { missing.Add(e.Model); continue; }
+            models.Add(e.Model);
+            patches.Add(e.Patch);
         }
-        notes.Add($"height patches: {patches.Count} props, {models.Values.Count(v => v is not null)} models" +
+        notes.Add($"height patches: {patches.Count} props, {models.Count} models" +
                   (cameraOnly > 0 ? $", {cameraOnly} camera-only {(camera ? "included" : "skipped")}" : ""));
         if (nested > 0) notes.Add($"{nested} height-patched props inside groups are not applied (not supported yet)");
         if (missing.Count > 0) notes.Add($"no height patch in the packs for {missing.Count} model(s): {string.Join(", ", missing.Take(8))}" +
                                          (missing.Count > 8 ? ", ..." : ""));
         return patches;
+    }
+
+    /// <summary>An entity with apply_height_patch, in layer and file order: camera-only or nested (inside a group: it
+    /// would need its parents' transforms; none of the fixtures has one), its model (null without ECMesh or
+    /// ECTransform), and its patch (null when the model has none in the packs).</summary>
+    private sealed record Scanned(bool CameraOnly, bool Nested, string? Model, Patch? Patch);
+
+    private static readonly Lock ScanGate = new();
+    /// <summary>Recent scans: the heightmaps, trees and camera height map steps of a build read the same layers and packs.
+    /// Keyed by the layer files (path, write time, size) and the pack instances (a pack changed on disk is reopened as a
+    /// new instance).</summary>
+    private static readonly List<(string Layers, PackFile[] Packs, Lazy<List<Scanned>> Scan)> Scans = [];
+
+    private static List<Scanned> Scan(TerryProject project, PackSet packs)
+    {
+        var files = project.Layers().Where(l => l.IsFile).Select(l => project.LayerFilePath(l.Id)).Select(p => new FileInfo(p)).Where(f => f.Exists).ToList();
+        var key = string.Join("|", files.Select(f => $"{f.FullName}*{f.LastWriteTimeUtc.Ticks}*{f.Length}"));
+        var packList = packs.Packs.ToArray();
+        Lazy<List<Scanned>> lazy;
+        lock (ScanGate)
+        {
+            var i = Scans.FindIndex(s => s.Layers == key && s.Packs.SequenceEqual(packList, ReferenceEqualityComparer.Instance));
+            if (i >= 0) lazy = Scans[i].Scan;
+            else
+            {
+                lazy = new Lazy<List<Scanned>>(() => ScanLayers(files.Select(f => f.FullName).ToList(), packs));
+                Scans.Add((key, packList, lazy));
+                if (Scans.Count > 4) Scans.RemoveAt(0);
+            }
+        }
+        try { return lazy.Value; }
+        catch
+        {
+            lock (ScanGate) Scans.RemoveAll(s => s.Scan == lazy);
+            throw;
+        }
+    }
+
+    private static List<Scanned> ScanLayers(List<string> paths, PackSet packs)
+    {
+        // parsing is most of the time: the files in parallel, read-only (no whitespace nodes), then in order
+        var perFile = new List<(bool CameraOnly, bool Nested, string? Model, XElement? Transform)>[paths.Count];
+        try { Parallel.For(0, paths.Count, Parse); }
+        catch (AggregateException e) when (e.InnerExceptions.Count > 0)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerExceptions[0]).Throw();
+        }
+        void Parse(int i)
+        {
+            var root = XDocument.Load(paths[i]).Root!;
+            var entities = root.Element("entities") ?? throw new InvalidDataException($"layer has no <entities>: {paths[i]}");
+            var list = new List<(bool, bool, string?, XElement?)>();
+            foreach (var e in entities.Descendants("entity"))
+            {
+                var hp = e.Element("ECPropHeightPatch");
+                if (hp is null || (string?)hp.Attribute("apply_height_patch") != "true") continue;
+                var t = e.Element("ECTransform");
+                // the transform is copied so the document can go
+                list.Add(((string?)hp.Attribute("for_camera_height_map_only") == "true", e.Parent?.Name != "entities",
+                          (string?)e.Element("ECMesh")?.Attribute("model_path"), t is null ? null : new XElement(t)));
+            }
+            perFile[i] = list;
+        }
+        var models = new Dictionary<string, (CompressedMap.Map Map, float[] Values, bool Add)?>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<Scanned>();
+        foreach (var (cameraOnly, nested, model, t) in perFile.SelectMany(l => l))
+        {
+            if (nested || model is null || t is null) { result.Add(new Scanned(cameraOnly, nested, null, null)); continue; }
+            if (!models.TryGetValue(model, out var info))
+                models[model] = info = LoadModel(model, packs) is { } lm ? (lm.Map, Patch.Heights(lm.Map), lm.Add) : null;
+            if (info is not { } m) { result.Add(new Scanned(cameraOnly, false, model, null)); continue; }
+            var p = LayerDocument.ReadVector((string)t.Attribute("position")!);
+            var r = LayerDocument.ReadVector((string)t.Attribute("rotation")!);
+            var s = LayerDocument.ReadVector((string)t.Attribute("scale")!);
+            var matrix = QtuTransform.Matrix((float)r[0], (float)r[1], (float)r[2], (float)s[0], (float)s[1], (float)s[2],
+                (float)p[0], (float)p[1], (float)p[2]);
+            float x = (float)p[0], y = (float)p[1], z = (float)p[2];
+            // the patch is placed at position − RS·pivot, as global_props places the model: IEE's
+            // pivoted mountains sit pivot.y · scale.y lower in BOB's trees (2026-10-10, 4.7)
+            if ((string?)t.Attribute("pivot") is { } pivot && LayerDocument.ReadVector(pivot) is [var vx, var vy, var vz] &&
+                (vx != 0 || vy != 0 || vz != 0))
+            {
+                float fx = (float)vx, fy = (float)vy, fz = (float)vz;
+                x -= (float)matrix[0] * fx + (float)matrix[1] * fy + (float)matrix[2] * fz;
+                y -= (float)matrix[3] * fx + (float)matrix[4] * fy + (float)matrix[5] * fz;
+                z -= (float)matrix[6] * fx + (float)matrix[7] * fy + (float)matrix[8] * fz;
+            }
+            result.Add(new Scanned(cameraOnly, false, model, Patch.Create(model, matrix, x, y, z, m.Map, m.Values, m.Add)));
+        }
+        return result;
     }
 
     /// <summary>The height patches of a compiled global_props.bin: every prop with apply_height_patch, placed by its stored
