@@ -1,9 +1,9 @@
 namespace AtlasWH3.Core;
 
 /// <summary>
-/// Keeps the original files untouched: the game's data folder and the mod packs are read-only sources. Edits go
-/// to the assembly kit (raw_data) or the output folder. Settings and other writers that take a
-/// user-chosen folder check it here first.
+/// Keeps the game's data folder and the mod packs away from writers that take a user-chosen path (AtlasWH3's data
+/// folder in Settings, the Campaign battles window's saves). The only writer of packs is the build's Pack segment, into
+/// the project's own pack; it does not go through here.
 /// </summary>
 public static class SourceGuard
 {
@@ -15,11 +15,11 @@ public static class SourceGuard
         var full = Full(path);
         foreach (var pack in linkedPacks ?? [])
             if (!string.IsNullOrWhiteSpace(pack) && full.Equals(Full(pack), StringComparison.OrdinalIgnoreCase))
-                return $"{path} is a mod pack (read-only)";
+                return $"{path} is a mod pack: only the build's Pack writes a project's pack";
         if (full.EndsWith(".pack", StringComparison.OrdinalIgnoreCase))
-            return $"{path} is a pack file: packs are only read";
+            return $"{path} is a pack file: only the build's Pack writes a project's pack";
         if (!string.IsNullOrWhiteSpace(gameDataDir) && IsUnder(full, Full(gameDataDir)))
-            return $"{path} is inside the game data folder ({gameDataDir}), which is never written";
+            return $"{path} is inside the game data folder ({gameDataDir}), where only the build's Pack writes (the project's pack)";
         return null;
     }
 

@@ -9,7 +9,8 @@ namespace AtlasWH3.App;
 /// Every shown error is also appended to the log folder.</summary>
 public sealed class ErrorDialog : Window
 {
-    public static string LogDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AtlasWH3", "logs");
+    /// <summary>logs\ in AtlasWH3's data folder (Settings), beside output\ and cache\.</summary>
+    public static string LogDir => Path.Combine(Defaults.DataFolder, "logs");
 
     public static void Show(Window? owner, string message, Exception? error = null)
     {

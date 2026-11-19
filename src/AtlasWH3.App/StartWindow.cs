@@ -19,11 +19,13 @@ public sealed class StartWindow : Window
     private BuildProject? _project;
     private bool _rebuilding;
 
+    /// <summary>Window › Start page: the Start page with its own remembered project or map, not the calling editor's
+    /// (whose packs <see cref="Selection"/> would take for packs given on the command line).</summary>
     public static void ShowSingle(ProjectPaths paths)
     {
         if (_open is null)
         {
-            _open = new StartWindow(paths);
+            _open = new StartWindow(paths with { MapName = MapCatalog.DefaultMap, ModPacks = [] });
             _open.Closed += (_, _) => _open = null;
             _open.Show();
         }
@@ -64,7 +66,7 @@ public sealed class StartWindow : Window
         var menu = new Menu().Spot("start.menu");
         var file = new MenuItem { Header = "_File" };
         file.Items.Add(StandardMenus.Item("_Open project…", OpenProject, tooltip: "Open an AtlasWH3 project (.atlaswh3) for the editors."));
-        file.Items.Add(StandardMenus.Item("_Settings…", OpenSettings, tooltip: "Game and Assembly Kit folders, developer mode and walkthroughs."));
+        file.Items.Add(StandardMenus.Item("Se_ttings…", OpenSettings, tooltip: InfoCards.Get("menu.settings").Text));
         file.Items.Add(new Separator());
         file.Items.Add(StandardMenus.Item("E_xit", ExitApp));
         menu.Items.Add(file);
@@ -96,9 +98,11 @@ public sealed class StartWindow : Window
                                 () => new Scene.SceneWindow(_paths).Show()).Spot("start.scene"));
         tiles.Children.Add(Tile(Theme.Glyph.Tiles, "Tile map (preview)", "Paint the campaign tile map hex by hex, with live validation.",
                                 () => new CampaignTileWindow(_paths).Show()).Spot("start.tiles"));
-        tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles (preview)", "Where battles start, settlement battle maps and redirects.",
-                                () => CampaignBattlesWindow.Open(this, _paths)).Card("start.battles"));
-        tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "The game and assembly kit folders, found through Steam.",
+        // Campaign battles does not read WH3's battle_locations_map.bin yet (KNOWN_ISSUES): developer mode only
+        if (AppSettings.Current.DeveloperMode)
+            tiles.Children.Add(Tile(Theme.Glyph.Battle, "Campaign battles (developer mode)", "Where battles start, settlement battle maps and redirects.",
+                                    () => CampaignBattlesWindow.Open(this, _paths)).Card("start.battles"));
+        tiles.Children.Add(Tile(Theme.Glyph.Settings, "Settings", "The game, Assembly Kit and RPFM folders, found through Steam.",
                                 OpenSettings).Card("start.settings").Spot("start.settingsTile"));
         left.Children.Add(tiles);
         Grid.SetColumn(left, 0);
@@ -154,7 +158,7 @@ public sealed class StartWindow : Window
     }
 
     /// <summary>The project picker (and, without a project, the map picker) plus a line naming what the editors will
-    /// open. The assembly kit is the one in Settings.</summary>
+    /// open. The Assembly Kit is the one in Settings.</summary>
     private UIElement MapSelector()
     {
         var box = new Border
@@ -170,7 +174,7 @@ public sealed class StartWindow : Window
         TextBlock Label(string t) => new() { Text = t, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 2, 10, 2) };
 
         var project = new ComboBox { Margin = new Thickness(0, 2, 0, 2) }.Card("start.project");
-        project.Items.Add(new ComboBoxItem { Content = "No project: a map from the assembly kit, game packs only", Tag = "" });
+        project.Items.Add(new ComboBoxItem { Content = "No project: a map from the Assembly Kit, game packs only", Tag = "" });
         var projects = AppSettings.Current.RecentProjects.Where(File.Exists).ToList();
         if (_project?.FilePath is { } current && !projects.Contains(current, StringComparer.OrdinalIgnoreCase)) projects.Insert(0, current);
         foreach (var r in projects) project.Items.Add(new ComboBoxItem { Content = $"{ProjectName(r)}   ({Path.GetFileName(r)})", Tag = r, ToolTip = r });
@@ -205,11 +209,14 @@ public sealed class StartWindow : Window
         line.Inlines.Add(new System.Windows.Documents.Run(_paths.MapName) { Foreground = Theme.Brush("Text"), FontWeight = FontWeights.SemiBold });
         line.Inlines.Add(" from ");
         line.Inlines.Add(new System.Windows.Documents.Run(_paths.AssemblyKitRoot) { Foreground = Theme.Brush("Text"), FontWeight = FontWeights.SemiBold });
-        line.Inlines.Add(_project is null ? "   ·   the game's packs only"
-            : _paths.ModPacks.Count == 0 ? "   ·   no mod packs"
-            : $"   ·   mod packs (read-only): {string.Join(", ", _paths.ModPacks.Select(Path.GetFileName))}");
+        // the editors only read these packs; Build writes the project's own (and its pieces pack)
+        var own = _project is null ? []
+            : new[] { _project.PackOutput(_paths), _project.PiecesPackOutput(_paths) }.OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        line.Inlines.Add(_paths.ModPacks.Count == 0 ? "   ·   the game's packs only"
+            : "   ·   reads " + string.Join(", ", _paths.ModPacks.Select(p => Path.GetFileName(p) + (own.Contains(p) ? " (Build writes it)" : "")))
+              + ", then the game's");
         var (cardTitle, cardText) = InfoCards.Get("start.selection");
-        line.Card(cardTitle, cardText + $"\nKit: {_paths.AssemblyKitRoot}" + (_project?.FilePath is { } f ? $"\nProject: {f}" : ""));
+        line.Card(cardTitle, cardText + $"\nAssembly Kit: {_paths.AssemblyKitRoot}" + (_project?.FilePath is { } f ? $"\nProject: {f}" : ""));
         Add(line, 2, 1);
         box.Child = grid;
 
@@ -237,7 +244,7 @@ public sealed class StartWindow : Window
             if (!maps.Any(m => m.Name.Equals(_paths.MapName, StringComparison.OrdinalIgnoreCase)))
                 map.Items.Insert(0, new ComboBoxItem
                 {
-                    Content = $"{_paths.MapName}  (missing: the assembly kit has no {_paths.MapName}.terry)", Tag = _paths.MapName,
+                    Content = $"{_paths.MapName}  (missing: the Assembly Kit has no {_paths.MapName}.terry)", Tag = _paths.MapName,
                     ToolTip = Path.Combine(_paths.AkTerrainDir, _paths.MapName + ".terry"),
                 });
             map.SelectedItem = map.Items.OfType<ComboBoxItem>().First(i => ((string)i.Tag).Equals(_paths.MapName, StringComparison.OrdinalIgnoreCase));

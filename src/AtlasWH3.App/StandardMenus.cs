@@ -6,40 +6,57 @@ using AtlasWH3.Core;
 
 namespace AtlasWH3.App;
 
-/// <summary>The Build, Window and Help menus every editor shares, so they read the same everywhere.</summary>
+/// <summary>The Build, Window and Help menus every window shares, so they read the same everywhere. Settings is in each
+/// window's File menu (<see cref="SettingsItem"/>).</summary>
 public static class StandardMenus
 {
     /// <summary>Appends Build, Window and Help to <paramref name="menu"/>.</summary>
     public static void AddTo(Menu menu, Window owner, ProjectPaths paths)
     {
         menu.Items.Add(Build(owner, paths));
-        menu.Items.Add(Windows(owner, paths));
+        menu.Items.Add(Windows(owner, () => paths));
         menu.Items.Add(Help(owner));
     }
 
+    /// <summary>The Build menu of a window showing <paramref name="paths"/>' map, with Ctrl+B and F7. F7 builds that map's
+    /// project (<see cref="BuildWindow.BuildAllFor"/>).</summary>
     public static MenuItem Build(Window owner, ProjectPaths paths)
     {
         var build = new MenuItem { Header = "_Build" };
-        build.Items.Add(Item("Open _Build window…", () => BuildWindow.Show(owner, paths), "Ctrl+B"));
-        build.Items.Add(Item("Build _all (current project)", () => BuildWindow.Show(owner, paths).BuildAll(), "F7"));
-        build.Items.Add(new Separator());
-        foreach (var recent in AppSettings.Current.RecentProjects.Where(File.Exists).Take(5))
-            build.Items.Add(Item(Path.GetFileName(recent), () => BuildWindow.Show(owner, paths, recent), tooltip: recent));
+        build.Items.Add(Item("Open _Build window", () => BuildWindow.Show(owner, paths), "Ctrl+B"));
+        build.Items.Add(Item("Build _all", () => BuildWindow.BuildAllFor(owner, paths), "F7",
+                             $"Builds the project for {paths.MapName} with its ticked steps, and writes its pack."));
+        var fixedItems = build.Items.Count;
+        build.SubmenuOpened += (_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, build)) return;
+            // the recent projects as they are now
+            while (build.Items.Count > fixedItems) build.Items.RemoveAt(fixedItems);
+            var recent = AppSettings.Current.RecentProjects.Where(File.Exists).Take(5).ToList();
+            if (recent.Count > 0) build.Items.Add(new Separator());
+            foreach (var file in recent)
+                build.Items.Add(Item(Path.GetFileName(file), () => BuildWindow.Show(owner, paths, file), tooltip: file));
+        };
         owner.InputBindings.Add(new System.Windows.Input.KeyBinding(new RelayCommand(() => BuildWindow.Show(owner, paths)),
             System.Windows.Input.Key.B, System.Windows.Input.ModifierKeys.Control));
-        owner.InputBindings.Add(new System.Windows.Input.KeyBinding(new RelayCommand(() => BuildWindow.Show(owner, paths).BuildAll()),
+        owner.InputBindings.Add(new System.Windows.Input.KeyBinding(new RelayCommand(() => BuildWindow.BuildAllFor(owner, paths)),
             System.Windows.Input.Key.F7, System.Windows.Input.ModifierKeys.None));
         return build;
     }
 
-    public static MenuItem Windows(Window owner, ProjectPaths paths)
+    /// <summary>File › Settings…, the one place every window opens Settings from.</summary>
+    public static MenuItem SettingsItem(Window owner) => Item("Se_ttings…", () => OpenSettings(owner), tooltip: SettingsTip);
+
+    /// <summary>The Window menu; <paramref name="paths"/> are what the editors open on (read when one opens).</summary>
+    public static MenuItem Windows(Window owner, Func<ProjectPaths> paths)
     {
         var window = new MenuItem { Header = "_Window" };
-        window.Items.Add(Item("_Start page", () => StartWindow.ShowSingle(paths)));
-        window.Items.Add(Item("Campaign _scene editor", () => new Scene.SceneWindow(paths).Show()));
-        window.Items.Add(Item("Campaign _tile map", () => new CampaignTileWindow(paths).Show()));
-        window.Items.Add(Item("Bu_ild", () => BuildWindow.Show(owner, paths)));
-        window.Items.Add(Item("Se_ttings…", () => OpenSettings(owner), tooltip: SettingsTip));
+        window.Items.Add(Item("_Start page", () => StartWindow.ShowSingle(paths())));
+        window.Items.Add(Item("_Build", () => BuildWindow.Show(owner, paths())));
+        window.Items.Add(Item("Campaign _scene editor", () => new Scene.SceneWindow(paths()).Show()));
+        window.Items.Add(Item("Campaign _tile map", () => new CampaignTileWindow(paths()).Show()));
+        if (AppSettings.Current.DeveloperMode)
+            window.Items.Add(Item("Campaign b_attles (developer mode)", () => CampaignBattlesWindow.Open(owner, paths())));
         var fixedItems = window.Items.Count;
         window.SubmenuOpened += (_, _) =>
         {
@@ -74,8 +91,6 @@ public static class StandardMenus
         owner.InputBindings.Add(new System.Windows.Input.KeyBinding(new RelayCommand(() => Walkthrough.Start(owner)),
             System.Windows.Input.Key.F1, System.Windows.Input.ModifierKeys.None));
         help.Items.Add(new Separator());
-        help.Items.Add(Item("_Settings…", () => OpenSettings(owner), tooltip: SettingsTip));
-        help.Items.Add(new Separator());
         help.Items.Add(Item("_Read me", () => OpenFile(Path.Combine(AppContext.BaseDirectory, "README.md"))));
         help.Items.Add(Item("_Known issues", () => OpenFile(Path.Combine(AppContext.BaseDirectory, "KNOWN_ISSUES.md"))));
         help.Items.Add(Item("Open _log folder", () => OpenFolder(ErrorDialog.LogDir)));
@@ -87,8 +102,8 @@ public static class StandardMenus
 
     private static string SettingsTip => InfoCards.Get("menu.settings").Text;
 
-    /// <summary>The Settings page, from any editor.</summary>
-    public static void OpenSettings(Window owner) => new SettingsWindow { Owner = owner }.ShowDialog();
+    /// <summary>The Settings page, from any window; true when it was saved.</summary>
+    public static bool OpenSettings(Window owner) => new SettingsWindow { Owner = owner }.ShowDialog() == true;
 
     public static MenuItem Item(string header, Action click, string gesture = "", string? tooltip = null)
     {
@@ -138,8 +153,9 @@ public sealed class AboutWindow : Window
         panel.Children.Add(new TextBlock
         {
             Margin = new Thickness(0, 10, 0, 0), TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"),
-            Text = "Builds campaign maps from the Assembly Kit's sources, natively where ported and through BOB elsewhere, and edits those sources. " +
-                   "Alpha software: back up your assembly kit and packs before building over them.\n\n" +
+            Text = "Builds Total War: WARHAMMER III campaign maps from their Terry projects in the Assembly Kit, without BOB, and " +
+                   "writes them into your campaign's pack (keeping copies of the pack in AtlasWH3's data folder). Its editors " +
+                   "(a preview) edit those Terry projects.\n\n" +
                    "Free and open source under the MIT licence (see LICENSE).\n\n" +
                    "Not affiliated with Creative Assembly or SEGA. Total War: WARHAMMER III and its Assembly Kit are their property; " +
                    "AtlasWH3 reads them from your own installation and ships none of their data.",

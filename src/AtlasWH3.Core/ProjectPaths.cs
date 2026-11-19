@@ -20,8 +20,8 @@ public sealed record ProjectPaths
     public string TileMapPng => Path.Combine(AkTerrainDir, "tile_map.png");
 
     public string AkTerrainDir => Path.Combine(AssemblyKitRoot, "raw_data", "terrain", "campaigns", MapName);
-    /// <summary>The kit's working_data: BOB's outputs. Written to (a build profile's target, the battle catchments for
-    /// BOB's pack step), never read as an input.</summary>
+    /// <summary>The Assembly Kit's working_data: BOB's outputs. Never read as an input; the build does not write it either
+    /// (only the developer-mode Campaign battles window's "Write to the Assembly Kit").</summary>
     public string AkWorkingDir => Path.Combine(AssemblyKitRoot, "working_data");
     public string AkDesignCampaignMapDir => Path.Combine(AssemblyKitRoot, "raw_data", "EmpireDesignData", "campaign_maps", MapName);
     public string TextureCacheDir => Path.Combine(CacheRoot, "terrain_textures");

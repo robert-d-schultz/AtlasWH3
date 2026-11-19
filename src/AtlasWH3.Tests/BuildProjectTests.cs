@@ -47,6 +47,29 @@ public class BuildProjectTests : IDisposable
     }
 
     [Fact]
+    public void ToPathsReadsOnlyTheProjectsOwnPacks()
+    {
+        // the Build window's defaults can come from another project: its packs must not leak into this one
+        var defaults = new ProjectPaths { MapName = "other", ModPacks = [@"G:\data\!other.pack"], GameDataDir = @"G:\data" };
+        var project = new BuildProject { Map = "m" };
+        project.Build.PackFile = Path.Combine(_dir, "missing.pack");   // not created yet: not read
+        Assert.Empty(project.ToPaths(defaults).ModPacks);
+        project.ModPacks = [@"{game}\!extra.pack"];
+        Assert.Equal([@"G:\data\!extra.pack"], project.ToPaths(defaults).ModPacks);
+        Assert.Equal("m", project.ToPaths(defaults).MapName);
+    }
+
+    [Fact]
+    public void PickedPathsKeepTheirTokens()
+    {
+        var paths = new ProjectPaths { GameDataDir = @"G:\Steam\data" };
+        Assert.Equal(@"{game}\!mod.pack", BuildProject.WithTokens(@"G:\Steam\data\!mod.pack", paths, @"D:\maps"));
+        Assert.Equal(@"{project}\packs\m.pack", BuildProject.WithTokens(@"D:\maps\packs\m.pack", paths, @"D:\maps\"));
+        Assert.Equal(@"E:\elsewhere\m.pack", BuildProject.WithTokens(@"E:\elsewhere\m.pack", paths, @"D:\maps"));
+        Assert.Equal(@"G:\Steam\database\m.pack", BuildProject.WithTokens(@"G:\Steam\database\m.pack", paths, null));   // a prefix, not the folder
+    }
+
+    [Fact]
     public void DefaultProjectWritesIntoTheModPack()
     {
         var project = BuildProject.CreateDefault("cr_oldworld_map_1", modPacks: [@"G:\data\!cr_oldworld_campaign.pack"]);
@@ -128,9 +151,24 @@ public class BuildProjectTests : IDisposable
         Assert.Equal([@"db\keep", @"terrain\campaigns\m\a.bin", @"terrain\campaigns\m\pieces\event_1\mask", @"terrain\campaigns\m_devastate_1\event_tiles"],
                      pack.Entries.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("a", System.Text.Encoding.UTF8.GetString(pack.TryRead("terrain/campaigns/m/a.bin")!));
-        var backup = PackFile.Open(Path.Combine(paths.OutputRoot, "pack_backups", "!mod.pack"));
-        Assert.Equal("old a", System.Text.Encoding.UTF8.GetString(backup.TryRead("terrain/campaigns/m/a.bin")!));
+        string Read(string pack) => System.Text.Encoding.UTF8.GetString(PackFile.Open(pack).TryRead("terrain/campaigns/m/a.bin")!);
+        var backup = Path.Combine(paths.OutputRoot, "pack_backups", "!mod.pack");
+        var original = Path.Combine(paths.OutputRoot, "pack_backups", "original", "!mod.pack");
+        Assert.Equal("old a", Read(backup));
+        Assert.Equal("old a", Read(original));
         Assert.False(File.Exists(target + ".tmp"));
+
+        // a second build: the rolling copy is the first build's pack, the original stays the pack before AtlasWH3;
+        // without a run list, the profile's ticks choose the segments (Validate and Compile unticked: Pack only)
+        Write(output, "terrain/campaigns/m/a.bin", "a2");
+        project.Build.Validate = false;
+        project.Build.Compile = false;
+        report = new BuildRunner(project, paths).Run();
+        Assert.True(report.Succeeded, string.Join("; ", report.Items.SelectMany(i => i.Problems)));
+        Assert.Equal(["pack"], report.Items.Select(i => i.Id));
+        Assert.Equal("a2", Read(target));
+        Assert.Equal("a", Read(backup));
+        Assert.Equal("old a", Read(original));
 
         // no pack there yet: a new one with the build's files only
         project.Build.PackFile = Path.Combine(_dir, "new.pack");

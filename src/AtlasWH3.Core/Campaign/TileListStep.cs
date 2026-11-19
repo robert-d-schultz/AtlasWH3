@@ -14,6 +14,10 @@ namespace AtlasWH3.Core.Campaign;
 /// </summary>
 public sealed class TileListStep : ICampaignBuildStep
 {
+    /// <summary>Part of the note naming the tile-map points that got no tile (the Build window offers the tile errors on
+    /// it).</summary>
+    public const string NoTileNote = "got no tile";
+
     public string Name => "tile_list";
     public string ReplacesBobAction => "Tilemap";
     public IReadOnlyList<string> DependsOn => [];
@@ -72,7 +76,7 @@ public sealed class TileListStep : ICampaignBuildStep
         File.WriteAllBytes(patchPath, patchMask);
         notes.Add($"{list.Records.Count} records ({sim.Tiles.Count} placed), {list.Paths.Count} tiles used");
         notes.Add($"patch_mask.dds: {ctx.PatchMask.ToString().ToLowerInvariant()}");
-        if (sim.NoTile.Count > 0) notes.Add($"{sim.NoTile.Count} tile-map points got no tile (holes in game)");
+        if (sim.NoTile.Count > 0) notes.Add($"{sim.NoTile.Count} tile-map points {NoTileNote} (holes in game)");
         return new StepResult(Name, [path, maskPath, patchPath], notes, sw.Elapsed);
     }
 }

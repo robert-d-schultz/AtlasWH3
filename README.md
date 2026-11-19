@@ -73,17 +73,18 @@ The download is unsigned, so Windows SmartScreen may warn on the first start (Mo
 
 ## Quick start
 
-**The build writes into your mod's pack** in the game's `data` folder, keeping one copy of it as it was
-(`%LocalAppData%\AtlasWH3\output\pack_backups`). The compiled files go to `%LocalAppData%\AtlasWH3\output\compiled\<map>`;
-the Assembly Kit's `working_data` is not touched.
+**The build writes into your mod's pack** in the game's `data` folder, keeping copies of it in
+`%LocalAppData%\AtlasWH3\output\pack_backups`: as it was before the last build, and (in `original\`) as it was before
+AtlasWH3 first wrote it. The compiled files go to `%LocalAppData%\AtlasWH3\output\compiled\<map>`; the Assembly Kit's
+`working_data` is not touched.
 
 ### In the app
 
 1. **Settings:** check the game and Assembly Kit folders (found automatically on a Steam install), and choose RPFM's
    folder.
 2. **Start page:** pick the map from the kit (Project: *No project*).
-3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*, save it, pick the mod pack the map ships in (or Cancel for a
-   pack of its own), then *Build all* (F7).
+3. **Build** (Ctrl+B): *New project for &lt;map&gt;…*: confirm the map, save the project, pick the mod pack the map
+   ships in (or Cancel for a pack of its own), then *Build all* (F7). F7 in an editor builds the project for its map.
 4. **Start page:** pick the project under *Project*. The editors then open on its map, mod packs and tile map source.
 
 The Build window shows each step's progress, time and notes, and keeps a log of every build in
@@ -118,13 +119,16 @@ the game are the ones in Settings (or the CLI's `--ak`).
 ```
 
 - **Segments:** a build runs Validate, Compile and Pack, in that order, and stops at the first failure.
-  `customSteps` adds your own commands before or after any of them (a startpos build, a script).
+  `customSteps` adds your own commands before or after any of them (a startpos build, a script). The Build window's
+  ticks are saved as `validate`, `compile`, `steps` (empty: all) and `writePack`; the CLI's `build` follows them
+  unless `--segments` or `--steps` says otherwise.
 - **Tokens:** `{project}`, `{game}` (the data folder), `{ak}`, `{map}`, `{out}` and `{pack}` expand
   in paths. Relative paths are relative to the project file.
 - **Pack:** writes the files this build made into `packFile` and keeps everything else in it (DB, scripts, battle
   maps, CAIME's files); river models and pieces the build no longer makes are dropped. A pack that doesn't exist yet
-  is created. It refuses while the game runs, writes beside the pack and swaps it in, and first keeps one copy of the
-  pack in `%LocalAppData%\AtlasWH3\output\pack_backups` (`"backupPack": false` turns that off). `piecesPackFile` (optional)
+  is created. It refuses while the game runs, writes beside the pack and swaps it in, and first copies the pack to
+  `%LocalAppData%\AtlasWH3\output\pack_backups` (replaced by the next build) and, the first time,
+  to `pack_backups\original` (kept) (`"backupPack": false` turns both off). `piecesPackFile` (optional)
   takes the event-area pieces instead, for a campaign that ships them in a pack of their own (Old World). `modPacks`
   lists other packs the map reads (only read). Projects made before this keep working: their `packs` and `install` become
   `packFile` on load.
@@ -140,8 +144,8 @@ the game are the ones in Settings (or the CLI's `--ak`).
 - `startpos.esf` is not built: it still comes from the game (an RPFM startpos build works as a custom step).
 - CAIME's files are inputs, not outputs.
 - The full build has been played in game on IEE. Other maps, Old World included, are checked against BOB's output.
-- The Scene editor, Tile map and Campaign battles windows are a **preview**: they come from Atlas3K and are only
-  partly moved to WH3.
+- The Scene editor and Tile map are a **preview**: they come from Atlas3K and are only partly moved to WH3. The
+  Campaign battles window, which does not read WH3's catchment file yet, is shown in developer mode only.
 
 The full list is in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
 

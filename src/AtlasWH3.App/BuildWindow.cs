@@ -13,8 +13,8 @@ using Microsoft.Win32;
 namespace AtlasWH3.App;
 
 /// <summary>
-/// Builds a map project (<c>.atlaswh3</c>): Build all runs every ticked segment (Validate, custom steps, Compile's native
-/// steps, Pack) in order; Run selected runs only the highlighted row; Pack only re-packs the last output.
+/// Builds a map project (<c>.atlaswh3</c>): Build all (F7) runs every ticked segment (Validate, custom steps, Compile's
+/// native steps, Pack) in order; Run selected runs only the highlighted row; Pack only re-packs the last output.
 /// Status and logs update live; Cancel stops at the next check. The ticks are the project's build profile (saved
 /// with it); the Profile tab edits the rest. Same <see cref="BuildRunner"/> as the CLI <c>build</c> command.
 /// </summary>
@@ -22,24 +22,61 @@ public sealed class BuildWindow : Window
 {
     private static BuildWindow? _open;
 
-    /// <summary>Shows the (single) Build window, opening <paramref name="projectFile"/> or the last project.</summary>
-    public static BuildWindow Show(Window? owner, ProjectPaths defaults, string? projectFile = null)
+    /// <summary>Shows the (single) Build window for a caller showing <paramref name="caller"/>'s map. Opens
+    /// <paramref name="projectFile"/> (asking before it drops unsaved project changes), or, when no project is open, the
+    /// project for the caller's map, else the last project. New project offers the caller's map.</summary>
+    public static BuildWindow Show(Window? owner, ProjectPaths caller, string? projectFile = null)
     {
         if (_open is null)
         {
-            _open = new BuildWindow(defaults);
+            _open = new BuildWindow(caller);
             _open.Closed += (_, _) => _open = null;
             _open.Show();
         }
-        else _open.Activate();
-        var file = projectFile ?? AppSettings.Current.RecentProjects.FirstOrDefault(File.Exists);
-        if (file is not null && (_open._project?.FilePath is null || projectFile is not null)) _open.OpenProject(file);
+        else
+        {
+            _open.Activate();
+            _open.SetCallerMap(caller.MapName);
+        }
+        if (projectFile is not null) _open.SwitchTo(projectFile);
+        else if (_open._project is null && (ProjectFor(caller) ?? AppSettings.Current.RecentProjects.FirstOrDefault(File.Exists)) is { } file)
+            _open.OpenProject(file);
         return _open;
     }
 
-    /// <summary>True while a build runs (editors show a banner).</summary>
-    public static bool Building => _open?._running == true;
+    /// <summary>Build all from another window (F7): builds the project for that window's map, never another map's.</summary>
+    public static void BuildAllFor(Window? owner, ProjectPaths caller)
+    {
+        var w = Show(owner, caller, ProjectFor(caller));
+        if (w._project is null) return;   // the empty state offers New project for the caller's map
+        if (!w._project.Map.Equals(caller.MapName, StringComparison.OrdinalIgnoreCase))
+        {
+            w.Progress($"Not built: no project builds {caller.MapName}. {w.ProjectName} builds {w._project.Map}; press F7 here to build it.", "Warn");
+            return;
+        }
+        w.BuildAll();
+    }
+
+    /// <summary>The project that builds <paramref name="paths"/>' map: the Start page's project when it does, else the most
+    /// recent project that does; null when none does.</summary>
+    public static string? ProjectFor(ProjectPaths paths)
+    {
+        var s = AppSettings.Current;
+        foreach (var file in s.RecentProjects.Prepend(s.CurrentProject).Where(f => f.Length > 0 && File.Exists(f)))
+        {
+            try
+            {
+                if (BuildProject.Load(file).Map.Equals(paths.MapName, StringComparison.OrdinalIgnoreCase)) return file;
+            }
+            catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException) { }
+        }
+        return null;
+    }
+
+    /// <summary>True while a build runs, also after its window was closed (editors show a banner).</summary>
+    public static bool Building => _buildRunning;
     public static event Action? BuildingChanged;
+    private static bool _buildRunning;
 
     private sealed class Row
     {
@@ -52,7 +89,10 @@ public sealed class BuildWindow : Window
         public required TreeViewItem Item;
     }
 
+    /// <summary>The folders (Assembly Kit, game, output) projects build with; their maps and packs are the project's own.</summary>
     private readonly ProjectPaths _defaults;
+    /// <summary>The map of the window that last showed this one: what New project offers.</summary>
+    private string _map;
     private BuildProject? _project;
     private bool _dirty, _running;
     private CancellationTokenSource? _cts;
@@ -76,9 +116,10 @@ public sealed class BuildWindow : Window
     private Button _buildAll = null!, _runSelected = null!, _packOnly = null!, _cancel = null!, _save = null!;
     private string? _lastLogFile;
 
-    private BuildWindow(ProjectPaths defaults)
+    private BuildWindow(ProjectPaths caller)
     {
-        _defaults = defaults;
+        _defaults = caller with { MapName = MapCatalog.DefaultMap, ModPacks = [] };
+        _map = caller.MapName;
         Width = 1250;
         Height = 820;
         Background = Theme.Brush("Bg");
@@ -88,14 +129,13 @@ public sealed class BuildWindow : Window
         Content = BuildLayout();
         Placement.Track(this, "build");
         Walkthrough.Enable(this, "build");
-        InputBindings.Add(new KeyBinding(new RelayCommand(() => Walkthrough.Start(this)), Key.F1, ModifierKeys.None));
         UpdateTitle();
         ShowEmptyState();
         _filter.TextChanged += (_, _) => RefreshLog();
         _onlySelected.Click += (_, _) => RefreshLog();
         _tree.SelectedItemChanged += (_, _) => { if (_onlySelected.IsChecked == true) RefreshLog(); };
         InputBindings.Add(new KeyBinding(new RelayCommand(() => SaveProject()), Key.S, ModifierKeys.Control));
-        InputBindings.Add(new KeyBinding(new RelayCommand(() => Run(AllRequest())), Key.F5, ModifierKeys.None));
+        InputBindings.Add(new KeyBinding(new RelayCommand(BuildAll), Key.F7, ModifierKeys.None));
         Closing += (_, e) =>
         {
             if (_running && MessageBox.Show(this, "A build is running. Cancel it and close?", "AtlasWH3", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
@@ -107,9 +147,58 @@ public sealed class BuildWindow : Window
 
     // ------------------------------------------------------------------ layout
 
+    /// <summary>The paths the Window menu opens editors on: the open project's, else the caller's map.</summary>
+    private ProjectPaths MenuPaths() => _project is null ? _defaults with { MapName = _map } : Paths();
+
+    private Menu BuildMenu()
+    {
+        var menu = new Menu();
+        var file = new MenuItem { Header = "_File" };
+        file.Items.Add(StandardMenus.Item("_New project…", NewProjectDialog));
+        file.Items.Add(StandardMenus.Item("_Open project…", OpenProjectDialog));
+        var save = StandardMenus.Item("_Save project", () => SaveProject(), "Ctrl+S");
+        file.Items.Add(save);
+        file.Items.Add(new Separator());
+        file.Items.Add(StandardMenus.SettingsItem(this));
+        file.Items.Add(new Separator());
+        file.Items.Add(StandardMenus.Item("_Close", Close));
+        file.SubmenuOpened += (_, _) => save.IsEnabled = _project is not null;
+        menu.Items.Add(file);
+
+        var build = new MenuItem { Header = "_Build" };
+        var all = StandardMenus.Item("Build _all", BuildAll, "F7", "Runs every ticked row from top to bottom.");
+        var selected = StandardMenus.Item("_Run selected", RunSelected, tooltip: "Runs only the highlighted row.");
+        var pack = StandardMenus.Item("_Pack only", PackOnly, tooltip: "Writes the files already compiled into the pack.");
+        var cancel = StandardMenus.Item("_Cancel", CancelBuild);
+        foreach (var item in new[] { all, selected, pack }) build.Items.Add(item);
+        build.Items.Add(new Separator());
+        build.Items.Add(cancel);
+        build.SubmenuOpened += (_, _) =>
+        {
+            all.IsEnabled = selected.IsEnabled = pack.IsEnabled = _project is not null && !_running;
+            cancel.IsEnabled = _running;
+        };
+        menu.Items.Add(build);
+        menu.Items.Add(StandardMenus.Windows(this, MenuPaths));
+        menu.Items.Add(StandardMenus.Help(this));
+        return menu;
+    }
+
+    private void PackOnly() => Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } });
+
+    private void CancelBuild()
+    {
+        if (!_running) return;
+        _cts?.Cancel();
+        _progress.Text = "Cancelling…";
+    }
+
     private UIElement BuildLayout()
     {
         var dock = new DockPanel();
+        var menu = BuildMenu();
+        DockPanel.SetDock(menu, Dock.Top);
+        dock.Children.Add(menu);
 
         var bar = new DockPanel { Background = Theme.Brush("Panel"), LastChildFill = true };
         var tour = Theme.IconButton(Theme.Glyph.Info, "Walkthrough", (_, _) => Walkthrough.Start(this), null).Card("build.walkthrough").Spot("build.walkthrough");
@@ -127,10 +216,10 @@ public sealed class BuildWindow : Window
         _save = Theme.IconButton(Theme.Glyph.Save, "Save", (_, _) => SaveProject(), null).Card("build.save");
         projectGroup.Children.Add(_save);
         left.Children.Add(new Border { Width = 1, Background = Theme.Brush("BorderBrush"), Margin = new Thickness(8, 2, 12, 2) });
-        _buildAll = Theme.IconButton(Theme.Glyph.Play, "Build all", (_, _) => Run(AllRequest()), null, (Style)FindResource("AccentButton")).Card("build.buildAll");
+        _buildAll = Theme.IconButton(Theme.Glyph.Play, "Build all", (_, _) => BuildAll(), null, (Style)FindResource("AccentButton")).Card("build.buildAll");
         _runSelected = Theme.IconButton(Theme.Glyph.Running, "Run selected", (_, _) => RunSelected(), null).Card("build.runSelected");
-        _packOnly = Theme.IconButton(Theme.Glyph.Package, "Pack only", (_, _) => Run(new BuildRunner.Request { Segments = new HashSet<BuildSegment> { BuildSegment.Pack } }), null).Card("build.packOnly");
-        _cancel = Theme.IconButton(Theme.Glyph.Stop, "Cancel", (_, _) => { _cts?.Cancel(); _progress.Text = "Cancelling…"; }, null).Card("build.cancel");
+        _packOnly = Theme.IconButton(Theme.Glyph.Package, "Pack only", (_, _) => PackOnly(), null).Card("build.packOnly");
+        _cancel = Theme.IconButton(Theme.Glyph.Stop, "Cancel", (_, _) => CancelBuild(), null).Card("build.cancel");
         _cancel.IsEnabled = false;
         var runGroup = new StackPanel { Orientation = Orientation.Horizontal }.Spot("build.runBar");
         foreach (var b in new[] { _buildAll, _runSelected, _packOnly, _cancel }) runGroup.Children.Add(b);
@@ -144,7 +233,7 @@ public sealed class BuildWindow : Window
         var treePanel = new DockPanel { Background = Theme.Brush("Panel") }.Spot("build.tree");
         var treeHint = new TextBlock
         {
-            Text = "Ticked rows run on Build all, top to bottom; ticks are saved with the project. Select a row and press Run selected to run only that part. Hover a row for what it does.",
+            Text = "Ticked rows run on Build all (F7), top to bottom; ticks are saved with the project. Select a row and press Run selected to run only that part. Hover a row for what it does.",
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(10, 6, 10, 8), FontSize = 11,
         };
         DockPanel.SetDock(treeHint, Dock.Bottom);
@@ -209,11 +298,11 @@ public sealed class BuildWindow : Window
         {
             Text = $"The map itself is its Terry project. A build project (.atlaswh3) holds what Terry doesn't: the mod pack the " +
                    $"build writes into, extra steps such as CAIME, and which steps run. " +
-                   $"Create one for {_defaults.MapName}, or open one you already have.",
+                   $"Create one for {_map}, or open one you already have.",
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), TextAlignment = TextAlignment.Center,
         });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
-        buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, $"New project for {_defaults.MapName}…", (_, _) => NewProjectDialog(), style: (Style)FindResource("AccentButton")).Card("build.emptyNew"));
+        buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, $"New project for {_map}…", (_, _) => NewProjectDialog(), style: (Style)FindResource("AccentButton")).Card("build.emptyNew"));
         buttons.Children.Add(Theme.IconButton(Theme.Glyph.Open, "Open project…", (_, _) => OpenProjectDialog()).Card("build.emptyOpen"));
         panel.Children.Add(buttons);
         var recent = AppSettings.Current.RecentProjects.Where(File.Exists).Take(6).ToList();
@@ -239,40 +328,83 @@ public sealed class BuildWindow : Window
 
     private string? PackPath() => _project?.PackOutput(Paths());
 
+    private string ProjectName => _project is null ? "" : _project.Name.Length > 0 ? _project.Name : _project.Map;
+
+    private void Progress(string text, string brush = "Text")
+    {
+        _progress.Text = text;
+        _progress.Foreground = Theme.Brush(brush);
+    }
+
+    /// <summary>Another window showed this one for <paramref name="map"/>: New project offers it.</summary>
+    private void SetCallerMap(string map)
+    {
+        if (map.Equals(_map, StringComparison.OrdinalIgnoreCase)) return;
+        _map = map;
+        if (_project is null) ShowEmptyState();
+    }
+
+    /// <summary>Opens <paramref name="file"/> for another window (Start page, Build menu, F7): the open project stays when
+    /// it is that file, when a build runs, or when its unsaved changes are kept (Cancel).</summary>
+    private void SwitchTo(string file)
+    {
+        if (_project?.FilePath is { } open && open.Equals(Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase)) return;
+        if (_running)
+        {
+            Progress($"A build is running: open {Path.GetFileName(file)} when it has finished.", "Warn");
+            return;
+        }
+        if (ConfirmDiscard()) OpenProject(file);
+    }
+
     private void OpenProjectDialog()
     {
-        if (!ConfirmDiscard()) return;
+        if (_running || !ConfirmDiscard()) return;
         var dlg = new OpenFileDialog { Filter = "AtlasWH3 project (*.atlaswh3)|*.atlaswh3|All files|*.*" };
         if (dlg.ShowDialog(this) == true) OpenProject(dlg.FileName);
     }
 
+    /// <summary>A new project: its map (from the Assembly Kit's Terry projects, the caller's map first), where to save it,
+    /// and the pack the map ships in, which the build writes into.</summary>
     private void NewProjectDialog()
     {
-        if (!ConfirmDiscard()) return;
+        if (_running || !ConfirmDiscard()) return;
+        var maps = MapCatalog.KitMaps(_defaults.AssemblyKitRoot);
+        if (maps.Count == 0)
+        {
+            MessageBox.Show(this, $"The Assembly Kit in Settings has no Terry projects ({Path.Combine(_defaults.AssemblyKitRoot, "raw_data", "terrain", "campaigns")}).",
+                            AppInfo.Product, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var map = Scene.Prompt.Choose(this, "New project", "The map it builds (a Terry project in the Assembly Kit):", maps,
+                                      maps.FirstOrDefault(m => m.Equals(_map, StringComparison.OrdinalIgnoreCase)) ?? maps[0])?.Trim();
+        if (string.IsNullOrEmpty(map)) return;
+        if (maps.FirstOrDefault(m => m.Equals(map, StringComparison.OrdinalIgnoreCase)) is not { } known)
+        {
+            MessageBox.Show(this, $"The Assembly Kit has no Terry project for {map}.", AppInfo.Product, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         var dlg = new SaveFileDialog
         {
-            Filter = "AtlasWH3 project (*.atlaswh3)|*.atlaswh3", FileName = _defaults.MapName + BuildProject.Extension,
-            Title = "New project: where to save it (the default pack goes next to it)",
+            Filter = "AtlasWH3 project (*.atlaswh3)|*.atlaswh3", FileName = known + BuildProject.Extension,
+            Title = $"New project for {known}: where to save it",
         };
         if (dlg.ShowDialog(this) != true) return;
         // the map's mod pack: the build writes its compiled files into it
-        var modPacks = _defaults.ModPacks;
-        if (modPacks.Count == 0)
+        var pack = new OpenFileDialog
         {
-            var pack = new OpenFileDialog
-            {
-                Filter = "Pack files (*.pack)|*.pack",
-                Title = $"The pack {_defaults.MapName} ships in, which the build writes into (Cancel: a new pack beside the project)",
-                InitialDirectory = Directory.Exists(_defaults.GameDataDir) ? _defaults.GameDataDir : "",
-            };
-            if (pack.ShowDialog(this) == true) modPacks = [pack.FileName];
-        }
-        var project = BuildProject.CreateDefault(_defaults.MapName, modPacks);
-        project.Save(dlg.FileName);
+            Filter = "Pack files (*.pack)|*.pack",
+            Title = $"The pack {known} ships in, which the build writes into (Cancel: a new pack beside the project)",
+            InitialDirectory = Directory.Exists(_defaults.GameDataDir) ? _defaults.GameDataDir : "",
+        };
+        string[]? packs = pack.ShowDialog(this) == true ? [BuildProject.WithTokens(pack.FileName, _defaults, Path.GetDirectoryName(dlg.FileName))] : null;
+        BuildProject.CreateDefault(known, packs).Save(dlg.FileName);
+        _map = known;
         OpenProject(dlg.FileName);
     }
 
-    public void OpenProject(string file)
+    /// <summary>Opens <paramref name="file"/>, dropping the open project as it is: callers ask first (<see cref="ConfirmDiscard"/>).</summary>
+    private void OpenProject(string file)
     {
         if (_running) return;
         try
@@ -297,9 +429,14 @@ public sealed class BuildWindow : Window
         _progress.Text = "";
     }
 
+    /// <summary>Applies the Project settings field being typed in: a key binding (Ctrl+S, F7) leaves the focus there, so
+    /// the field has not committed its text yet.</summary>
+    private void CommitEdits() => (_profileHost.Content as BuildProfileEditor)?.CommitPending();
+
     private bool SaveProject()
     {
         if (_project is null) return false;
+        CommitEdits();
         try
         {
             _project.Save();
@@ -316,6 +453,7 @@ public sealed class BuildWindow : Window
 
     private bool ConfirmDiscard()
     {
+        CommitEdits();
         if (!_dirty || _project is null) return true;
         var r = MessageBox.Show(this, $"Save changes to {_project.Name}?", "AtlasWH3", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         return r == MessageBoxResult.No || (r == MessageBoxResult.Yes && SaveProject());
@@ -346,27 +484,34 @@ public sealed class BuildWindow : Window
 
     private void RebuildTree()
     {
+        var selected = _rows.Values.FirstOrDefault(r => r.Item == _tree.SelectedItem)?.Id;
         _rows.Clear();
         _tree.Items.Clear();
         var p = _project!;
         var profile = p.Build;
-        var steps = profile.Steps.Count > 0 ? profile.Steps.ToHashSet(StringComparer.OrdinalIgnoreCase)
-                                            : CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var steps = !profile.Compile ? []
+            : profile.Steps.Count > 0 ? profile.Steps.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        AddRow(_tree.Items, "validate", BuildSegment.Validate, "Validate", InfoCard.For("build.validate"), true, null);
+        AddRow(_tree.Items, "validate", BuildSegment.Validate, "Validate", InfoCard.For("build.validate"), profile.Validate,
+               on => { profile.Validate = on; MarkDirty(); });
         AddCustom(CustomStepStage.BeforeCompile);
-        var compile = AddRow(_tree.Items, "compile", BuildSegment.Compile, "Compile", InfoCard.For("build.compile"), true, null);
+        // Compile's tick ticks or unticks every step; with some ticked it shows as partly ticked
+        var compile = AddRow(_tree.Items, "compile", BuildSegment.Compile, "Compile", InfoCard.For("build.compile"), true, SetAllSteps);
         foreach (var step in CampaignBuildPipeline.AllSteps)
             AddRow(compile.Item.Items, "compile:" + step.Name, BuildSegment.Compile, step.Name,
                    InfoCards.BuildStepKey(step.Name) is { } key ? InfoCard.For(key) : InfoCard.Make(step.Name, $"Replaces BOB {step.ReplacesBobAction}."), steps.Contains(step.Name),
-                   on => SetStep(step.Name, on)).Step = step.Name;
+                   _ => SetSteps()).Step = step.Name;
         compile.Item.IsExpanded = true;
+        UpdateCompileTick();
         AddCustom(CustomStepStage.AfterCompile);
         var packTarget = p.PackOutput(Paths()) is { } target ? $"Writes into {target}." : "No pack set yet (Project settings > Pack).";
         if (p.PiecesPackOutput(Paths()) is { } pieces) packTarget += $"\nThe event-area pieces go into {pieces}.";
         AddRow(_tree.Items, "pack", BuildSegment.Pack, "Pack", InfoCard.Make("Pack", $"{InfoCards.Get("build.pack").Text}\n{packTarget}"),
                profile.WritePack, on => { profile.WritePack = on; MarkDirty(); });
         AddCustom(CustomStepStage.AfterPack);
+        // the rows are new: keep the selection (Run selected, the log's "Selected row only")
+        if (selected is not null && _rows.TryGetValue(selected, out var again)) again.Item.IsSelected = true;
 
         void AddCustom(CustomStepStage stage)
         {
@@ -380,7 +525,7 @@ public sealed class BuildWindow : Window
         }
     }
 
-    private Row AddRow(ItemCollection parent, string id, BuildSegment segment, string label, ToolTip card, bool on, Action<bool>? changed)
+    private Row AddRow(ItemCollection parent, string id, BuildSegment segment, string label, ToolTip card, bool on, Action<bool> changed)
     {
         var check = new CheckBox { IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         var icon = Theme.Icon(Theme.Glyph.Pending, 12, Theme.Brush("DimText"));
@@ -397,18 +542,34 @@ public sealed class BuildWindow : Window
         parent.Add(item);
         var row = new Row { Id = id, Segment = segment, Check = check, StatusIcon = icon, Info = info, Item = item };
         _rows[id] = row;
-        // Validate and Compile ticks only apply to this session (unticking Compile skips the segment, not its steps)
-        if (changed is not null)
-            check.Click += (_, _) => changed(check.IsChecked == true);
+        check.Click += (_, _) => changed(check.IsChecked == true);
         return row;
     }
 
-    private void SetStep(string step, bool on)
+    private IEnumerable<Row> StepRows => _rows.Values.Where(r => r.Step is not null);
+
+    /// <summary>The Compile tick: every step ticked or none.</summary>
+    private void SetAllSteps(bool on)
     {
-        var all = CampaignBuildPipeline.AllSteps.Select(s => s.Name).ToList();
-        var ticked = _rows.Values.Where(r => r.Step is not null && r.Check.IsChecked == true).Select(r => r.Step!).ToList();
-        _project!.Build.Steps = ticked.Count == all.Count ? [] : ticked;
+        foreach (var r in StepRows) r.Check.IsChecked = on;
+        SetSteps();
+    }
+
+    /// <summary>Saves the step ticks in the profile: no step ticked turns Compile off (an empty step list means all).</summary>
+    private void SetSteps()
+    {
+        var ticked = StepRows.Where(r => r.Check.IsChecked == true).Select(r => r.Step!).ToList();
+        _project!.Build.Compile = ticked.Count > 0;
+        _project.Build.Steps = ticked.Count == 0 || ticked.Count == CampaignBuildPipeline.AllSteps.Count ? [] : ticked;
+        UpdateCompileTick();
         MarkDirty();
+    }
+
+    private void UpdateCompileTick()
+    {
+        if (!_rows.TryGetValue("compile", out var compile)) return;
+        var ticked = StepRows.Count(r => r.Check.IsChecked == true);
+        compile.Check.IsChecked = ticked == 0 ? false : ticked == StepRows.Count() ? true : null;
     }
 
     private void SetStatus(string id, string status, string? info = null)
@@ -439,20 +600,25 @@ public sealed class BuildWindow : Window
         var custom = _rows.Values.Where(r => r.Custom is not null && r.Check.IsChecked == true).Select(r => r.Custom!).ToList();
         var segments = new HashSet<BuildSegment>();
         if (On("validate")) segments.Add(BuildSegment.Validate);
-        if (On("compile") && steps.Count > 0) segments.Add(BuildSegment.Compile);
+        if (steps.Count > 0) segments.Add(BuildSegment.Compile);
         if (custom.Count > 0) segments.Add(BuildSegment.Custom);
         if (On("pack")) segments.Add(BuildSegment.Pack);
         return new BuildRunner.Request { Segments = segments, Steps = steps, CustomSteps = custom };
     }
 
-    /// <summary>Build all (the ticked segments), as the toolbar button / F5.</summary>
-    public void BuildAll() => Run(AllRequest());
+    /// <summary>Build all (the ticked segments), as the toolbar button / F7.</summary>
+    public void BuildAll()
+    {
+        CommitEdits();   // before the ticks are read: a committed field rebuilds the tree
+        Run(AllRequest());
+    }
 
     private void RunSelected()
     {
+        CommitEdits();
         if (_tree.SelectedItem is not TreeViewItem item || _rows.Values.FirstOrDefault(r => r.Item == item) is not { } row)
         {
-            _progress.Text = "Select a segment or step first.";
+            Progress("Select a segment or step first.");
             return;
         }
         var request = row switch
@@ -472,21 +638,27 @@ public sealed class BuildWindow : Window
     private async void Run(BuildRunner.Request request)
     {
         if (_project is null || _running) return;
+        CommitEdits();
+        if (_buildRunning)
+        {
+            Progress("The build started before this window was closed is still finishing; try again in a moment.", "Warn");
+            return;
+        }
         if (request.Segments is { Count: 0 })
         {
-            _progress.Text = "Nothing ticked to run.";
+            Progress("Nothing ticked to run.");
             return;
         }
         if (request.Segments?.Contains(BuildSegment.Compile) == true && request.Steps is { Count: 0 })
         {
-            _progress.Text = "No compile steps ticked.";
+            Progress("No compile steps ticked.");
             return;
         }
         foreach (var r in _rows.Values) SetStatus(r.Id, "pending");
         _showTileErrors.Visibility = Visibility.Collapsed;
         _lines.Clear();
         RefreshLog();
-        _running = true;
+        _running = _buildRunning = true;
         BuildingChanged?.Invoke();
         _cts = new CancellationTokenSource();
         SetRunningUi(true);
@@ -504,12 +676,14 @@ public sealed class BuildWindow : Window
         }
         catch (Exception e)
         {
+            timer.Stop();   // its tick would overwrite the message while the dialog is open
+            Progress($"The build stopped with an unexpected error after {Duration(sw.Elapsed.TotalSeconds)}.", "Error");
             ErrorDialog.Show(this, "The build stopped with an unexpected error.", e);
         }
         finally
         {
             timer.Stop();
-            _running = false;
+            _running = _buildRunning = false;
             BuildingChanged?.Invoke();
             SetRunningUi(false);
         }
@@ -565,8 +739,8 @@ public sealed class BuildWindow : Window
 
     /// <summary>Validate found tile-map problems, or tile_list left holes: worth opening the tile error mode.</summary>
     private static bool HasTileErrors(string id, BuildRunner.ItemResult r) =>
-        (id == "validate" && r.Problems.Concat(r.Notes).Any(n => n.Contains("tile map ") && !n.Contains("accepted tile map")))
-        || (id == "compile:tile_list" && r.Notes.Any(n => n.Contains("got no tile")));
+        (id == "validate" && r.Problems.Concat(r.Notes).Any(n => n.Contains(BuildRunner.TileMap) && !n.StartsWith(BuildRunner.AcceptedTileMap)))
+        || (id == "compile:tile_list" && r.Notes.Any(n => n.Contains(TileListStep.NoTileNote)));
 
     private void ShowTileErrors()
     {

@@ -17,11 +17,11 @@ public static partial class Walkthroughs
         new("tiles.save", "Save",
             "Writes your strokes to tile_map.png (Ctrl+S). Build the map afterwards to see them in game."),
         new("tiles.history", "Saved edits",
-            "Every saved batch, shared with the command-line and MCP tile tools; Edit › Undo last saved batch takes one back."),
+            "Every saved batch, including those made from the command line; Edit › Undo last saved batch takes one back."),
         new("tiles.errorsTab", "Errors (F8)",
             "Lists every tile error on the whole map with a checked fix for each. Select one to see it, press Enter to apply the fix, N for the next."),
         new("tiles.file", "File menu",
-            "Save, reload from disk, and Tile map source to pick which tile_map.png you edit (the Terry project's, a loose file or one in a pack)."),
+            "Save to the Terry project's tile_map.png (or save despite the issues), reload it from disk, and Settings."),
         new("tiles.status", "Status bar",
             "The hex under the mouse and what the last action did."),
     ]);

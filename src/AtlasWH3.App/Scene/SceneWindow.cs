@@ -73,6 +73,8 @@ public sealed partial class SceneWindow : Window
             ("_Save terrain and tree edits", SaveAll, "Ctrl+S"),
             ("_Reload from disk", () => _ = LoadAsync(), "F5"),
             (null, null, null),
+            ("Se_ttings…", () => StandardMenus.OpenSettings(this), ""),
+            (null, null, null),
             ("_Close", Close, "")).Spot("scene.file"));
         menu.Items.Add(MenuOf("_Edit",
             ("_Undo last edit", Undo, "Ctrl+Z"),
@@ -103,6 +105,9 @@ public sealed partial class SceneWindow : Window
         StandardMenus.AddTo(menu, this, _paths);
         DockPanel.SetDock(menu, Dock.Top);
         dock.Children.Add(menu);
+        var banner = BuildBanner.For(this);
+        DockPanel.SetDock(banner, Dock.Top);
+        dock.Children.Add(banner);
 
         var statusBar = new DockPanel { Background = Theme.Brush("Panel") }.Spot("scene.status");
         DockPanel.SetDock(_hover, Dock.Right);

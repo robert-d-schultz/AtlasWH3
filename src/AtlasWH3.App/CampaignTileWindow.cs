@@ -92,6 +92,8 @@ public sealed partial class CampaignTileWindow : Window
         file.Items.Add(Item("Save _anyway (ignore issues)", (_, _) => Save(true)));
         file.Items.Add(Item("_Reload from disk (drop unsaved edits)", async (_, _) => await LoadAsync()));
         file.Items.Add(new Separator());
+        file.Items.Add(StandardMenus.SettingsItem(this));
+        file.Items.Add(new Separator());
         file.Items.Add(Item("_Close", (_, _) => Close()));
         var edit = new MenuItem { Header = "_Edit" };
         edit.Items.Add(Gesture(Item("_Undo unsaved stroke", (_, _) => UndoStroke()), "Ctrl+Z"));
@@ -109,6 +111,9 @@ public sealed partial class CampaignTileWindow : Window
         StandardMenus.AddTo(menu, this, _paths);
         DockPanel.SetDock(menu, Dock.Top);
         dock.Children.Add(menu);
+        var banner = BuildBanner.For(this);
+        DockPanel.SetDock(banner, Dock.Top);
+        dock.Children.Add(banner);
 
         var statusBar = new Border { Background = Theme.Brush("Panel"), Padding = new Thickness(6, 3, 6, 3), Child = _status }.Spot("tiles.status");
         DockPanel.SetDock(statusBar, Dock.Bottom);
@@ -147,13 +152,13 @@ public sealed partial class CampaignTileWindow : Window
         issuesGroup.Children.Add(save);
         var historyGroup = new StackPanel().Spot("tiles.history");
         panel.Children.Add(historyGroup);
-        historyGroup.Children.Add(Header("Saved edits (shared with the terry MCP tools)"));
+        historyGroup.Children.Add(Header("Saved edits"));
         historyGroup.Children.Add(_history);
         panel.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0), Foreground = Theme.Brush("DimText"),
-            Text = "Right/middle drag pans, wheel zooms. Double-click an issue to go to it. After saving, build the map (Ctrl+B: " +
-                   "tile_list, then global_map) and check holes (tiles-holes / check_tile_holes).",
+            Text = "Right/middle drag pans, wheel zooms. Double-click an issue to go to it. After saving, build tile_list and " +
+                   "global_map (Ctrl+B); tile_list's notes name any points that got no tile.",
         });
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Theme.Brush("Panel"), Content = panel };
         _tabs.Items.Add(new TabItem { Header = "Paint", Content = scroll });

@@ -23,7 +23,7 @@ static class BuildCommands
         }
     }
 
-    // build --project <file> [--segments validate,compile,custom,pack,install] [--steps a,b] [--custom name,..]
+    // build --project <file> [--segments validate,compile,custom,pack] [--steps a,b] [--custom name,..]
     //       [--out <dir>] [--pack-output <file>] [--json]
     private static int Build(ProjectPaths paths, string[] a)
     {

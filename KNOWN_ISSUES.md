@@ -10,8 +10,9 @@
 - **CAIME's files are inputs.** The build does not write `map_data.esf`, `pathfinding.ppd` or the region lookup
   `.bmp`. It reads `map_data.esf` and `pathfinding.ppd` from the map's mod pack (add it to the project's mod packs),
   and the lookup `.bmp` from the Assembly Kit's EmpireDesignData folder. It does not read `map.hex` (only the Scene editor does).
-- **The build writes into the map's mod pack** in the game's `data` folder (keeping one backup copy, unless the
-  project turns it off). A map that ships its event-area pieces in a pack of their own (Old World) sets it as the project's pieces pack.
+- **The build writes into the map's mod pack** in the game's `data` folder, keeping copies of it (as it was before the
+  last build, and before AtlasWH3 first wrote it) unless the project turns that off. A map that ships its event-area
+  pieces in a pack of their own (Old World) sets it as the project's pieces pack.
 - **Height map:** `full_height_map.dds` is BC6H from AtlasWH3's own encoder. It is not byte-identical to BOB's (AMD
   Compress); its error against the source heights is about half BOB's.
 - **Tile list:** byte-identical to BOB's on IEE and Old World. A map whose hex width is not a multiple of 4 reports
@@ -36,15 +37,16 @@
   - regions come from `map_data.esf`. They are `map.hex`'s wherever both come from one CAIME export.
 - **Devastation pieces:** `event_tiles` lists the same road tiles as BOB's, in path-table order; BOB's order comes
   from a hash map and is not reproducible.
-- The build runs while editors stay open. Saving an edit during a build can make the output mix old and new data;
-  rebuild afterwards.
+- The build runs while editors stay open. Saving an edit during a build can make the output mix old and new data; the
+  editors show a banner while a build runs: rebuild afterwards.
 
 ## Editors (preview)
 
 - The Scene editor, Tile map and Campaign battles windows are previews: parts of them are still Three Kingdoms-shaped.
   - The tile map validator's neighbourhood rules and reference pattern are 3K's; tile props and some tile textures
     are not drawn yet, and some props draw black.
-  - The Campaign battles window does not read WH3's `battle_locations_map.bin` yet.
+  - The Campaign battles window does not read WH3's `battle_locations_map.bin` yet, so it is shown in developer mode
+    only. It still saves the way AtlasWH3 1.0 did (loose files, a pack of its own, the Assembly Kit's `working_data`).
   - The Scene editor's 3D view draws VFX as unlit textured particles. It does not draw dynamic lights, distortion,
     model (rigid) particles, decals or custom-shader effects (IEE's skull fires), and it does not simulate wind or
     vector fields. The motion is AtlasWH3's reading of the vfx files, not the game's code. `vfx-check` lists what

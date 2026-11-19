@@ -7,7 +7,7 @@ using Microsoft.Win32;
 namespace AtlasWH3.App;
 
 /// <summary>
-/// Settings and first-run setup: the game and assembly kit folders (found through Steam, each checked live), AtlasWH3's
+/// Settings and first-run setup: the game and Assembly Kit folders (found through Steam, each checked live), AtlasWH3's
 /// own data folder (shown, rarely moved), developer mode and the walkthroughs. Everything about a map (its mod packs,
 /// tile map source, build) lives in its project. Paths apply to windows opened after saving.
 /// </summary>
@@ -22,7 +22,7 @@ public sealed class SettingsWindow : Window
     private readonly string _detectedGame = GameSetup.FindGameFolder() ?? "";
     private readonly CheckBox _dev = new()
     {
-        Content = "Developer mode (BOB launch, tile-matching simulation, comparison tools, self-tests)",
+        Content = "Developer mode (the Tile map's Check menu, the Campaign battles window, self-tests)",
     };
 
     public SettingsWindow(bool firstRun = false)
@@ -45,7 +45,8 @@ public sealed class SettingsWindow : Window
             {
                 TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(0, 6, 0, 6),
                 Text = "AtlasWH3 found these through Steam: check them, choose RPFM's folder, and continue. Nothing of the game's is " +
-                       "shipped with AtlasWH3: it reads your own install and packs through RPFM, and never writes to them.",
+                       "shipped with AtlasWH3: it reads your own install and packs through RPFM. The only pack it writes is your " +
+                       "campaign's own, when you build it, and it keeps copies of that pack first.",
             });
         }
         var folders = new StackPanel().Spot("settings.folders");
@@ -53,7 +54,7 @@ public sealed class SettingsWindow : Window
         folders.Children.Add(Theme.Header("Folders", firstRun ? 8 : 0));
         folders.Children.Add(PathRow("Game folder", _game, _s.GameFolder, () => _detectedGame, "found through Steam",
                                      p => Directory.Exists(Path.Combine(p, "data")), "settings.game"));
-        folders.Children.Add(PathRow("Assembly kit", _kit, _s.AssemblyKit, () => KitFor(Game), "the game's assembly_kit",
+        folders.Children.Add(PathRow("Assembly Kit", _kit, _s.AssemblyKit, () => KitFor(Game), "the game's assembly_kit",
                                      p => Directory.Exists(Path.Combine(p, "raw_data")), "settings.kit"));
         // the kit follows the game folder while it is still the game's own assembly_kit
         var kitAuto = KitFor(Game);

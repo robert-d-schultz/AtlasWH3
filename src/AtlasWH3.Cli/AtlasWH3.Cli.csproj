@@ -3,7 +3,6 @@
   <ItemGroup>
     <ProjectReference Include="..\AtlasWH3.Core\AtlasWH3.Core.csproj" />
     <ProjectReference Include="..\AtlasWH3.Formats\AtlasWH3.Formats.csproj" />
-    <ProjectReference Include="..\AtlasWH3.Db\AtlasWH3.Db.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

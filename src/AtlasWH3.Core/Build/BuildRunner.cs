@@ -41,6 +41,10 @@ public sealed class BuildRunner
     public const string GameProcess = "Warhammer3";
     /// <summary>Notes starting with this make an item's status "warning" instead of "ok".</summary>
     public const string WarningPrefix = "warning: ";
+    /// <summary>Validate's problems and notes about the tile map start with this (the Build window offers its tile
+    /// errors on them); accepted ones with <see cref="AcceptedTileMap"/>.</summary>
+    public const string TileMap = "tile map ";
+    public const string AcceptedTileMap = "accepted tile map ";
 
     private readonly BuildProject _project;
     private readonly ProjectPaths _paths;
@@ -67,6 +71,8 @@ public sealed class BuildRunner
         var profile = _project.Build;
         bool Want(BuildSegment s) => request.Segments?.Contains(s) ?? s switch
         {
+            BuildSegment.Validate => profile.Validate,
+            BuildSegment.Compile => profile.Compile,
             BuildSegment.Pack => profile.WritePack,
             _ => true,
         };
@@ -110,10 +116,10 @@ public sealed class BuildRunner
         {
             var report = TileMapValidator.Run(_paths, new() { Log = m => Log("validate", m) });
             foreach (var f in report.Findings.Where(f => f.Severity == TileMapFinding.Warning).Take(20))
-                notes.Add($"{WarningPrefix}tile map {f.Code}: {f.Message}");
+                notes.Add($"{WarningPrefix}{TileMap}{f.Code}: {f.Message}");
             foreach (var f in report.Findings.Where(f => f.Severity == TileMapFinding.Error))
-                if (_project.Build.AcceptTileMap.Contains(f.Code)) notes.Add($"accepted tile map {f.Code}: {f.Message}");
-                else problems.Add($"tile map {f.Code}: {f.Message} (fix it, or tick it under Project settings > Accepted tile-map errors)");
+                if (_project.Build.AcceptTileMap.Contains(f.Code)) notes.Add($"{AcceptedTileMap}{f.Code}: {f.Message}");
+                else problems.Add($"{TileMap}{f.Code}: {f.Message} (fix it, or tick it under Project settings > Accepted tile-map errors)");
         }
         return (problems, 0);
     });
@@ -270,11 +276,18 @@ public sealed class BuildRunner
         {
             if (_project.Build.BackupPack)
             {
+                // the pack before AtlasWH3 first wrote it (kept), and before this build (replaced by the next one)
                 var backupDir = Path.Combine(_paths.OutputRoot, "pack_backups");
-                Directory.CreateDirectory(backupDir);
-                var backup = Path.Combine(backupDir, name);   // one rolling copy per pack name
+                var original = Path.Combine(backupDir, "original", name);
+                if (!File.Exists(original))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(original)!);
+                    File.Copy(target, original);
+                    notes.Add($"{name} before AtlasWH3 first wrote it: {original}");
+                }
+                var backup = Path.Combine(backupDir, name);
                 File.Copy(target, backup, overwrite: true);
-                notes.Add($"{name} as it was: {backup}");
+                notes.Add($"{name} before this build: {backup}");
             }
             Log("pack", $"writing {files.Count} files into {target}");
             summary = PackBuilder.Merge(target, temp, files, owned: owned);

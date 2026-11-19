@@ -102,6 +102,8 @@ public sealed class CampaignBattlesWindow : Window
         file.Items.Add(StandardMenus.Item("Write to the Assembly _Kit (working_data)", WriteToKit, tooltip: "Copies the file into the Assembly Kit's working_data, where its pack step picks it up. The old file is backed up."));
         file.Items.Add(StandardMenus.Item("Open output _folder", () => OpenFolder(OutputDir)));
         file.Items.Add(new Separator());
+        file.Items.Add(StandardMenus.SettingsItem(this));
+        file.Items.Add(new Separator());
         file.Items.Add(StandardMenus.Item("_Close", Close));
         menu.Items.Add(file);
         var edit = new MenuItem { Header = "_Edit" };

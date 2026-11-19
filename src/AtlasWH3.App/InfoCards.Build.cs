@@ -11,15 +11,17 @@ public static partial class InfoCards
         new("build.open", "Open project",
             "Open an existing .atlaswh3 build project. It stores the map, its pack, the ticked steps and the build options."),
         new("build.new", "New project",
-            "Create a .atlaswh3 project for the current map: compile into AtlasWH3's data folder, then pack next to the project, merged into the map's mod pack when it has one."),
+            "Create a .atlaswh3 project: pick the map (a Terry project in the Assembly Kit), where to save the project, and the pack the " +
+            "map ships in. The build compiles into AtlasWH3's data folder and writes the result into that pack (or, without one, a new pack beside the project)."),
         new("build.save", "Save project (Ctrl+S)",
             "Write the ticks and Project settings back to the .atlaswh3 file. Nothing is saved automatically."),
-        new("build.buildAll", "Build all (F5)",
-            "Run every ticked row from top to bottom: Validate, Compile steps, Pack and any custom steps in between. It stops at the first failure."),
+        new("build.buildAll", "Build all (F7)",
+            "Run every ticked row from top to bottom: Validate, Compile steps, Pack and any custom steps in between. It stops at the first failure. " +
+            "F7 in an editor builds the project for that editor's map."),
         new("build.runSelected", "Run selected",
             "Run only the highlighted row (one segment, one compile step or one custom step), whether it is ticked or not. Handy for redoing one step after an edit."),
         new("build.packOnly", "Pack only",
-            "Rebuild the output pack from the files already on disk, without compiling. Use it after hand-editing compiled files or changing the pack contents."),
+            "Write the files already compiled into the project's pack, without compiling. Use it after changing the pack in Project settings, or after hand-editing compiled files."),
         new("build.cancel", "Cancel",
             "Stop the build at the next safe point. Files already written stay on disk."),
         new("build.progress", "Progress", "What the build is doing now, or the last run's result."),
@@ -30,7 +32,8 @@ public static partial class InfoCards
         new("build.validate", "Validate",
             "Pre-flight checks before anything is written: every ticked step's inputs exist, and the tile map passes the tile-map validator. Errors stop the build; double-click to open tile errors."),
         new("build.compile", "Compile",
-            "Runs the ticked native campaign steps, AtlasWH3's replacements for BOB's terrain actions. Output goes to AtlasWH3's data folder (Project settings > Compiled files); independent steps run in parallel."),
+            "Runs the ticked native campaign steps, AtlasWH3's replacements for BOB's terrain actions. Output goes to AtlasWH3's data folder (Project settings > Compiled files); independent steps run in parallel. " +
+            "Its tick ticks or unticks every step."),
         new("build.pack", "Pack",
             "Writes the compiled files into the project's pack (Project settings > Pack): the build's files are replaced, everything else in the pack is kept. Refuses while Warhammer3.exe is running. Untick to skip it."),
         new("build.custom", "Custom step",
@@ -40,7 +43,7 @@ public static partial class InfoCards
         new("build.step.heightmaps", "heightmaps  (BOB: Campaign Heightmap, Campaign Shroud Heights)",
             "Writes full_logic_map.compressed_map, full_height_map.dds, lf_normal.dds and shroud_heights.dds from the Terry project's height layers (lf_normal without Terry's export). The shroud is filled from the heights and the props' height patches, 1 above the ground, as Terry's Fill From Terrain does; the Terry project's shroud layers are not used. tile_list, trees and the camera height map read them, so run it after any height edit."),
         new("build.step.tile_list", "tile_list  (BOB: Tilemap)",
-            "Turns the Terry project's tile_map.png into tile_list.bin, choosing and placing the 3D terrain tiles. Run it after editing the tile map; its source is set under Tile map source."),
+            "Turns the Terry project's tile_map.png into tile_list.bin, choosing and placing the 3D terrain tiles. Run it after editing the tile map."),
         new("build.step.trees", "trees  (BOB: Campaign Trees)",
             "Writes trees.campaign_tree_list from the Terry project's CampaignTree map, with heights from the logic height map."),
         new("build.step.global_map", "global_map  (BOB: Global Tilemap, Campaign Global Blendmap)",
@@ -74,12 +77,12 @@ public static partial class InfoCards
         new("build.copy", "Copy", "Copy the log lines currently shown (after the filter) to the clipboard."),
         new("build.logFile", "Log file", "Show the last build's full log file in Explorer. Every build writes one."),
         new("build.outputFolder", "Output folder", "Open the folder Compile writes to, in AtlasWH3's data folder."),
-        new("build.packFile", "Pack file", "Show the output .pack in Explorer."),
+        new("build.packFile", "Pack file", "Show the project's pack, the one the build writes into, in Explorer."),
         new("build.tileErrors", "Show tile errors",
             "Open the tile map editor in error mode, with every tile-map error highlighted and a recommended fix for each."),
 
         // ---- empty state
-        new("build.emptyNew", "New project", "Create a build project for the current map and open it."),
+        new("build.emptyNew", "New project", "Create a build project (this map is offered first) and open it."),
         new("build.emptyOpen", "Open project", "Open an existing .atlaswh3 build project."),
         new("build.recent", "Recent project", "Open this recently used project."),
 
@@ -134,11 +137,14 @@ public static partial class InfoCards
             "folder (Old World's !cr_oldworld_campaign_devastate.pack). The rest goes into the pack above. Like it, the pack is " +
             "read first, backed up, updated in place (its other files kept), or created. Empty: everything goes into the pack above."),
         new("profile.backupPack", "Back up the pack",
-            "Before each build writes the pack (and the pieces pack), keep a copy of it as it was in AtlasWH3's data folder (output\\pack_backups). The next build replaces the copy."),
+            "Before a build writes the pack (and the pieces pack), keep copies of it in AtlasWH3's data folder: output\\pack_backups holds " +
+            "it as it was before this build (the next build replaces that copy), and output\\pack_backups\\original as it was before " +
+            "AtlasWH3 first wrote it (kept until you delete it)."),
         new("profile.packFile", "Pack file",
-            "Your campaign's .pack, usually in the game's data folder. The build replaces the files it makes (heights, tiles, props, " +
-            "river models, pieces…), drops the ones it no longer makes, and keeps everything else (DB, scripts, map_data.esf, " +
-            "pathfinding.ppd). It is also read before the game's packs. A pack that doesn't exist yet is created with the build's files."),
+            "Your campaign's .pack, usually in the game's data folder ({game}\\…; the line below shows the full path). The build replaces " +
+            "the files it makes (heights, tiles, props, river models, pieces…), drops the ones it no longer makes, and keeps everything " +
+            "else (DB, scripts, map_data.esf, pathfinding.ppd). It is also read before the game's packs. A pack that doesn't exist yet " +
+            "is created with the build's files."),
         new("profile.browse", "Browse", "Pick the path with a file dialog."),
         new("build.walkthrough", "Walkthrough",
             "A short guided tour of the Build window: the project bar, the build steps, the log and the project settings (F1)."),

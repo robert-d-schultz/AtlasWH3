@@ -11,6 +11,33 @@
 - New CLI command `road-check --map <name>`: checks that the roads the 3D view paints from the tiles join across tile
   borders, and lists the tile edges where they don't.
 
+### Build window and menus
+- **F7 is Build all everywhere**, the Build window included (F5 there no longer builds). F7 in an editor builds the
+  project for that editor's map, and builds nothing when there is none, instead of whichever project the Build window had open.
+- The Build window has the File, Build, Window and Help menus of the other windows. Settings is in every window's File
+  menu, no longer in Window and Help.
+- **New project** asks which of the Assembly Kit's maps to build, and always asks for its pack.
+- The Validate and Compile ticks are saved with the project like the others (`validate`, `compile`), and Compile's tick
+  ticks or unticks all its steps. The CLI's `build` follows them unless `--segments` says otherwise.
+- **Pack backups:** besides the copy from before the last build, `pack_backups\original\` keeps each pack as it was
+  before AtlasWH3 first wrote it.
+- Project settings show the pack as saved (`{game}\…`) with its full path below; a pack picked with … is saved with
+  `{game}` or `{project}` where one fits.
+- The Scene editor and Tile map show a banner while a build runs.
+- The Campaign battles window is shown in developer mode only: it does not read WH3's `battle_locations_map.bin` yet.
+- Error logs go to `logs\` in the data folder set in Settings.
+- Fixed: New project in the Build window offered the map, and took the packs, of whichever window opened the Build
+  window first.
+- Fixed: opening a project from the Start page or the Build menu dropped unsaved project changes without asking.
+- Fixed: Ctrl+S, Build all and closing missed a Project settings field still being typed in: they saved or built with
+  the old value.
+- Fixed: a project whose pack did not exist yet read the packs of the project the Build window was first opened with.
+- Fixed: Window › Start page from an editor showed "No project" when the Start page had been closed.
+- Fixed: after an unexpected build error, the progress line stayed at "Building…".
+- Fixed: after closing the Build window during a build, a second build could start while the first was still finishing.
+- The About box, first-run text, info cards and walkthroughs describe the build as it is now (no "never writes to
+  the packs", Tile map source or BOB fallback).
+
 ### Faster builds
 - `full_height_map.dds` is only encoded again where the heights changed since the map's last build: a build whose
   Height and HeightSea are unchanged skips its encoding (about 3 minutes on IEE). The last encode is kept in AtlasWH3's

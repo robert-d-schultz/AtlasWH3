@@ -71,8 +71,9 @@ public sealed class BuildProject
     };
 
 
-    /// <summary>The editor / builder paths for this project, on top of <paramref name="defaults"/>: the map, and the
-    /// packs read before the game's (the project's pack, when it exists, then the other mod packs).</summary>
+    /// <summary>The editor / builder paths for this project, on top of <paramref name="defaults"/>' folders: the map, and
+    /// the packs read before the game's (the project's pack, when it exists, then the other mod packs). Only this
+    /// project's packs: never <paramref name="defaults"/>' own, which may be another project's.</summary>
     public ProjectPaths ToPaths(ProjectPaths? defaults = null)
     {
         var p = (defaults ?? new ProjectPaths()) with { MapName = Map };
@@ -80,9 +81,23 @@ public sealed class BuildProject
         if (PackOutput(p) is { } pack && File.Exists(pack)) packs.Add(pack);
         if (PiecesPackOutput(p) is { } pieces && File.Exists(pieces)) packs.Add(pieces);
         packs.AddRange(ModPacks.Select(m => Resolve(m, p)));
-        packs = packs.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (packs.Count > 0) p = p with { ModPacks = packs };
-        return p;
+        return p with { ModPacks = packs.Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
+    }
+
+    /// <summary><paramref name="path"/> written with a token where one fits, so the project keeps working on another
+    /// machine: <c>{game}\…</c> inside the game's data folder, <c>{project}\…</c> inside <paramref name="projectFolder"/>,
+    /// else the path as it is.</summary>
+    public static string WithTokens(string path, ProjectPaths paths, string? projectFolder)
+    {
+        var full = Path.GetFullPath(path);
+        foreach (var (token, root) in new[] { ("{game}", paths.GameDataDir), ("{project}", projectFolder) })
+        {
+            if (string.IsNullOrEmpty(root)) continue;
+            var r = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            if (full.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return token + full[r.Length..];
+        }
+        return path;
     }
 
     /// <summary>Expands the tokens and makes a path absolute (relative to the project folder).</summary>
@@ -145,9 +160,15 @@ public sealed class BuildProfile
     /// <summary>Optional: the .pack the event-area pieces go into (the map's pieces\ and the devastated map's folder), for
     /// a campaign that ships them in a pack of their own (Old World). Empty: they go into <see cref="PackFile"/>.</summary>
     public string PiecesPackFile { get; set; } = "";
+    /// <summary>Whether a build runs Validate (the Build window's Validate tick).</summary>
+    public bool Validate { get; set; } = true;
+    /// <summary>Whether a build runs Compile (the Build window's Compile tick: false when no step is ticked, since an
+    /// empty <see cref="Steps"/> means all of them).</summary>
+    public bool Compile { get; set; } = true;
     /// <summary>Whether Build all runs Pack (the Build window's Pack tick).</summary>
     public bool WritePack { get; set; } = true;
-    /// <summary>Keep one copy of the pack as it was before Pack writes it (AtlasWH3's output\pack_backups).</summary>
+    /// <summary>Keep copies of the pack in AtlasWH3's output\pack_backups: as it was before this build, and as it was
+    /// before AtlasWH3 first wrote it (original\).</summary>
     public bool BackupPack { get; set; } = true;
 
     // ---- older projects: "packs" / "pack" (output, merge base) and "install", read once into PackFile

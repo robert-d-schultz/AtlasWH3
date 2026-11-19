@@ -20,6 +20,13 @@ public sealed class BuildProfileEditor : ScrollViewer
     private readonly Func<ProjectPaths> _paths;
     private readonly Action _changed;
     private readonly ObservableCollection<CustomStep> _custom;
+    /// <summary>Each text field's commit (it runs on losing focus; <see cref="CommitPending"/> runs them all).</summary>
+    private readonly List<Action> _commits = [];
+    private DataGrid? _customGrid;
+    /// <summary>A custom-step cell edit ended and its deferred change callback has not run yet; the version drops a
+    /// deferred callback that <see cref="CommitPending"/> already ran.</summary>
+    private bool _gridChanged;
+    private int _gridVersion;
 
     public BuildProfileEditor(BuildProject project, Func<ProjectPaths> paths, Action changed)
     {
@@ -30,6 +37,19 @@ public sealed class BuildProfileEditor : ScrollViewer
         _custom.CollectionChanged += (_, _) => { project.Build.CustomSteps = [.. _custom]; changed(); };
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         Content = BuildForm();
+    }
+
+    /// <summary>Applies whatever is being typed (a text field, a custom-step cell) to the project now: Save, Build and
+    /// closing call this, since a key binding leaves the focus where it is.</summary>
+    public void CommitPending()
+    {
+        foreach (var commit in _commits) commit();
+        _customGrid?.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true);
+        if (!_gridChanged) return;
+        _gridChanged = false;
+        _gridVersion++;
+        _project.Build.CustomSteps = [.. _custom];
+        _changed();
     }
 
     private UIElement BuildForm()
@@ -43,15 +63,16 @@ public sealed class BuildProfileEditor : ScrollViewer
 
         form.Children.Add(Theme.Header("Pack").Card("profile.header.pack"));
         form.Children.Add(Check("Back up the pack before each build", () => b.BackupPack, v => b.BackupPack = v, "profile.backupPack"));
-        form.Children.Add(Field("Pack file", () => _project.PackOutput(_paths()) ?? "", v => b.PackFile = v, Browse.SaveFile, "profile.packFile"));
+        form.Children.Add(Field("Pack file", () => b.PackFile, v => b.PackFile = v, Browse.SaveFile, "profile.packFile",
+                                () => _project.PackOutput(_paths())));
         form.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 2, 0, 6),
             Text = "Your campaign's pack. The build writes the compiled map into it: its own files are replaced, everything else " +
                    "(DB, scripts, map_data.esf, pathfinding.ppd) is kept.",
         });
-        form.Children.Add(Field("Pieces pack (optional)", () => _project.PiecesPackOutput(_paths()) ?? "", v => b.PiecesPackFile = v,
-                                Browse.SaveFile, "profile.piecesPackFile"));
+        form.Children.Add(Field("Pieces pack (optional)", () => b.PiecesPackFile, v => b.PiecesPackFile = v,
+                                Browse.SaveFile, "profile.piecesPackFile", () => _project.PiecesPackOutput(_paths())));
         form.Children.Add(new TextBlock
         {
             TextWrapping = TextWrapping.Wrap, Foreground = Theme.Brush("DimText"), Margin = new Thickness(160, 2, 0, 6),
@@ -209,7 +230,20 @@ public sealed class BuildProfileEditor : ScrollViewer
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Working folder", "profile.custom.workingDir"), Binding = new Binding(nameof(CustomStep.WorkingDir)), Width = 130 });
         grid.Columns.Add(new DataGridTextColumn { Header = ColumnHeader("Timeout (s)", "profile.custom.timeout"), Binding = new Binding(nameof(CustomStep.TimeoutSeconds)), Width = 80 });
         grid.Columns.Add(new DataGridCheckBoxColumn { Header = ColumnHeader("Continue on error", "profile.custom.continue"), Binding = new Binding(nameof(CustomStep.ContinueOnError)) });
-        grid.CellEditEnding += (_, _) => Dispatcher.BeginInvoke(() => { _project.Build.CustomSteps = [.. _custom]; _changed(); });
+        _customGrid = grid;
+        // deferred: the cell's binding writes the value after this event
+        grid.CellEditEnding += (_, _) =>
+        {
+            _gridChanged = true;
+            var version = _gridVersion;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (version != _gridVersion) return;   // CommitPending ran it already
+                _gridChanged = false;
+                _project.Build.CustomSteps = [.. _custom];
+                _changed();
+            });
+        };
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
         buttons.Children.Add(Theme.IconButton(Theme.Glyph.New, "Add", (_, _) =>
@@ -252,21 +286,46 @@ public sealed class BuildProfileEditor : ScrollViewer
 
     // ------------------------------------------------------------------ fields
 
-    private UIElement Field(string label, Func<string> get, Action<string> set, Browse browse = Browse.None, string? key = null)
+    /// <summary>A text field showing the setting as saved (tokens such as {game} kept) and, with
+    /// <paramref name="resolved"/>, the path it stands for underneath. It commits on losing focus and on
+    /// <see cref="CommitPending"/>.</summary>
+    private UIElement Field(string label, Func<string> get, Action<string> set, Browse browse = Browse.None, string? key = null,
+                            Func<string?>? resolved = null)
     {
         var grid = Row(label, key);
         var box = new TextBox { Text = get(), VerticalContentAlignment = VerticalAlignment.Center };
-        box.LostFocus += (_, _) =>
+        var hint = new TextBlock { Foreground = Theme.Brush("DimText"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+        void ShowResolved()
         {
-            if (box.Text == get()) return;
-            set(box.Text.Trim());
+            var full = resolved?.Invoke();
+            hint.Text = full is not null && !full.Equals(get(), StringComparison.OrdinalIgnoreCase) ? full : "";
+            hint.Visibility = hint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void Commit()
+        {
+            var text = box.Text.Trim();
+            if (text == get()) return;
+            set(text);
+            ShowResolved();
             _changed();
-        };
+        }
+        _commits.Add(Commit);
+        box.LostFocus += (_, _) => Commit();
         Grid.SetColumn(box, 1);
         grid.Children.Add(box);
+        if (resolved is not null)
+        {
+            // the resolved path on a second row under the box
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(hint, 1);
+            Grid.SetColumn(hint, 1);
+            grid.Children.Add(hint);
+            ShowResolved();
+        }
         if (browse != Browse.None)
         {
-            var button = new Button { Content = "…", Margin = new Thickness(4, 0, 0, 0), Padding = new Thickness(8, 0, 8, 0), }.Card("profile.browse");
+            var button = new Button { Content = "…", Margin = new Thickness(4, 0, 0, 0), Padding = new Thickness(8, 0, 8, 0) }.Card("profile.browse");
             button.Click += (_, _) =>
             {
                 string? picked = browse switch
@@ -280,9 +339,9 @@ public sealed class BuildProfileEditor : ScrollViewer
                     } is var s && s.ShowDialog() == true ? s.FileName : null,
                 };
                 if (picked is null) return;
+                if (browse != Browse.Folder) picked = BuildProject.WithTokens(picked, _paths(), _project.Folder);
                 box.Text = picked;
-                set(picked);
-                _changed();
+                Commit();
             };
             Grid.SetColumn(button, 2);
             grid.Children.Add(button);
@@ -317,9 +376,6 @@ public sealed class BuildProfileEditor : ScrollViewer
         grid.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
         return grid;
     }
-
-    private static List<string> Split(string v, char sep) =>
-        v.Split(sep, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     /// <summary>A grid column header with an info card.</summary>
     private static TextBlock ColumnHeader(string text, string key) => new TextBlock { Text = text }.Card(key);
