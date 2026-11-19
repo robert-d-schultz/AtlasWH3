@@ -790,9 +790,9 @@ public sealed partial class Viewport3DControl : Grid
     /// <summary>
     /// Every placed tile whose texture set names a ground group of its own (roads, verges, river beds, banks...):
     /// the drawn terrain mesh clipped to the tile (<see cref="ClipMesh"/>) whose pixels mix the groups by the tile's
-    /// blend0.dds (R, G, B, A = texture-set slots 0–3, through the tile transform; image row 0 = the tile's south edge,
-    /// as the tile names say: 2x2_straight_bl_tr's road leaves row 0 in the left cell; with the 90°/270° turns swapped
-    /// or the rows flipped, IEE's road ends meet a neighbour's 28% / 11% of the time instead of 72%).
+    /// blend0.dds (R, G, B, A = texture-set slots 0–3), placed by <see cref="AtlasWH3.Core.Rendering.TileGroundMapping"/>.
+    /// CLI road-check measures it: 95.8% of the road ends facing another road tile join (IEE and Old World), against
+    /// 61–69% with the 90°/270° turns swapped, 37–47% with the rows flipped and 11–12% without the apron.
     /// The "climate" slots are the global ground, so they are left to the terrain below via alpha.
     /// </summary>
     private static TileGround? BuildTileGround(SceneModel model, Renderer3D r)
@@ -834,18 +834,15 @@ public sealed partial class Viewport3DControl : Grid
             // World xz directions of the tile's a and b axes (the turn), for its normal map.
             var axisA = Vector2.Normalize(new Vector2(m.M11, m.M13));
             var axisB = Vector2.Normalize(new Vector2(m.M31, m.M33));
-            // blend0 ((W+2)·128 px) and normal.dds ((W+2)·64) carry a one-cell apron round the tile: tile cell (a, b)
-            // is at uv ((a + 1) / (W + 2), (b + 1) / (H + 2)). Stretched over the tile alone, half a 2x2 tile's road
-            // falls off its edges: road ends meeting a neighbour's on IEE go from 10% to 72% with the apron.
             void Vertex(Vector3 p)
             {
                 var local = Vector3.Transform(p with { Y = 0 }, toTile);
                 var dx = (float)(model.GroundY(p.X + d, p.Z) - model.GroundY(p.X - d, p.Z)) / (2 * d);
                 var dz = (float)(model.GroundY(p.X, p.Z + d) - model.GroundY(p.X, p.Z - d)) / (2 * d);
                 var n = Vector3.Normalize(new Vector3(-dx, 1, -dz));
+                var uv = AtlasWH3.Core.Rendering.TileGroundMapping.Uv(local, t.TileW, t.TileH);
                 f.I.Add((uint)(f.V.Count / 12));
-                f.V.AddRange([p.X, p.Y + 0.004f, p.Z, n.X, n.Y, n.Z, (local.X / 128f + 1) / (t.TileW + 2), (local.Z / 128f + 1) / (t.TileH + 2),
-                    axisA.X, axisA.Y, axisB.X, axisB.Y]);
+                f.V.AddRange([p.X, p.Y + 0.004f, p.Z, n.X, n.Y, n.Z, uv.X, uv.Y, axisA.X, axisA.Y, axisB.X, axisB.Y]);
             }
             var (c0, c1) = (Vector3.Transform(Vector3.Zero, m), Vector3.Transform(new Vector3(t.TileW * 128f, 0, t.TileH * 128f), m));
             ClipMesh(model.Terrain!, Math.Min(c0.X, c1.X), Math.Min(c0.Z, c1.Z), Math.Max(c0.X, c1.X), Math.Max(c0.Z, c1.Z),
@@ -931,18 +928,8 @@ public sealed partial class Viewport3DControl : Grid
 
     /// <summary>Row-vector matrix from tile space (128 units per cell, origin at the tile's south-west corner before
     /// the turn) to world, with <paramref name="baseY"/> as the world height of tile y = 0.</summary>
-    private static Matrix4x4 TileMatrix(SceneModel.TilePlacement t, float sx, float sz, float baseY)
-    {
-        float w = t.TileW * 128f, h = t.TileH * 128f, px = t.X * 128f, pz = t.Y * 128f, sy = sx;
-        var (r0, r2, tx, tz) = (t.Orientation & 0xF0) switch
-        {
-            0x20 => (new Vector3(0, 0, -sz), new Vector3(sx, 0, 0), sx * px, sz * (w + pz)),
-            0x40 => (new Vector3(-sx, 0, 0), new Vector3(0, 0, -sz), sx * (w + px), sz * (h + pz)),
-            0x80 => (new Vector3(0, 0, sz), new Vector3(-sx, 0, 0), sx * (h + px), sz * pz),
-            _ => (new Vector3(sx, 0, 0), new Vector3(0, 0, sz), sx * px, sz * pz),
-        };
-        return new Matrix4x4(r0.X, r0.Y, r0.Z, 0, 0, sy, 0, 0, r2.X, r2.Y, r2.Z, 0, tx, baseY, tz, 1);
-    }
+    private static Matrix4x4 TileMatrix(SceneModel.TilePlacement t, float sx, float sz, float baseY) =>
+        AtlasWH3.Core.Rendering.TileGroundMapping.TileToWorld(t.X, t.Y, t.TileW, t.TileH, t.Orientation, sx, sz, baseY);
 
     private static (Dictionary<string, (InstanceData[] Instances, Vector3[] Centres, float[] Scales)> Models, LineVertex[] RiverVertices, uint[] RiverIndices)
         BuildTileMeshCache(SceneModel model)

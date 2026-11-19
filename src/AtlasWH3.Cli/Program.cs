@@ -113,6 +113,7 @@ static void Help()
     Console.WriteLine("  asset-info <path> | asset-find <filter> [--ext e] | asset-preview <model> [--out png --size --yaw --pitch --lod]");
     Console.WriteLine("  asset-census [--ext .rigid_model_v2|.wsmodel|.material|.dds] | asset-check   (--mod-pack p, --asset-root dir)");
     Console.WriteLine("  vfx-check <name> | --list <counts.txt> [--each]   (what the 3D view draws of an effect, what it skips, texture formats)");
+    Console.WriteLine("  road-check --map <name> [--mod-pack <map pack>]   (do the 3D view's tile roads join across tile borders?)");
     Console.WriteLine();
     Console.WriteLine("Parity and research");
     Console.WriteLine("  parity <builtDir> <referenceDir>|--fixture <name> [--mask-junk] [--json]");

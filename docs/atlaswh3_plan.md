@@ -656,8 +656,8 @@ build comes first. The open items below stay as they are. **Resumed 2026-11-18 (
 - [x] 5.6 The user's fourth look (2026-10-11), roads and the tile overlay:
   - WH3's `blend0.dds` ((W+2)·128 px) and `normal.dds` ((W+2)·64) carry a one-cell apron round the tile, so tile cell
     (a, b) is at uv ((a + 1) / (W + 2), (b + 1) / (H + 2)); the tile mesh has no UVs. Stretched over the tile alone,
-    roads were half size and broke at every tile edge. IEE road ends meeting a neighbour's (within 0.3 cell): 19% → 93%
-    (90°/270° swapped: 53%; rows flipped: ~11%), so the turn and row 0 = south were already right;
+    roads were half size and broke at every tile edge. Remeasured 2026-11-18 with CLI `road-check` (the measurement
+    of 2026-10-11 was not kept, and its numbers disagreed between the commit and the code): see 5.8;
   - tile ground, the tile overlay and tile river water lie on the drawn terrain mesh (`ClipMesh`: the mesh's triangles
     clipped to the tile) instead of the full-resolution lf, which the decimated mesh (a quad per 2 cells on IEE) cut
     through: the z-fighting;
@@ -681,6 +681,18 @@ build comes first. The open items below stay as they are. **Resumed 2026-11-18 (
     frame at an IEE settlement (`--shots` writes the numbers to `shots.log`). Particles draw premultiplied (additive =
     alpha 0) after the water, depth-tested; colours past 0.5 ease toward 1 keeping their hue (no HDR in the view).
   - Not done: lights, distortion, rigid particles, decals, soft edges, wind, vector fields, lit particles.
+- [x] 5.8 **Road tiles checked** (2026-11-18, the user asked). The placement of the tiles' blend0.dds moved to Core
+  (`TileGroundMapping`, the view and the check share it); `TileRoadCheck` / CLI `road-check` sample the road just
+  inside every edge of every placed road tile (layers `road0`, `road_grey0`) and test the tile across. A road end
+  joins when the road across overlaps half of it or lies within 0.1 cell of its middle.
+  - Road ends facing another road tile that join: IEE 95.8% (4,681 of 4,884; 1,939 road tiles), Old World 95.8%
+    (25,475 of 26,594; 11,159). The other readings: turns swapped 60.9 / 69.4%, rows flipped 36.7 / 46.6%, no apron
+    11.0 / 11.9%. Offsets are near 0 on every turn and tile edge (medians within ±0.08 cell, most one sample, 0.03).
+  - What does not join is tile content, not the placement: the same tile edge in every placement against many
+    different tiles (`2x2_straight_br_tr_b` north edge, `2x2_straight_br_tl_a` south, `6x2_straight_b0_b5` south,
+    `8x3_straight_l1_r1_mirror` east top both maps), and slivers about 0.2 cell from a tile corner (median 0.09 cell
+    wide, against 0.28 for joined ends): a diagonal road clipping the corner, its continuation just round it.
+  - Not known: whether the game draws the apron over the neighbouring tiles (the view clips each tile to its cells).
 - [ ] Left: the user still sees some overlapping on the tiles (not found; parked 2026-10-11); some props still draw black; tile meshes untextured; tile props (WH3's tile `bmd_data.bin` is BMD v26, which
   the 3K reader skips); culture-masked `ECTerrainHole`s; non-water polygon meshes.
 

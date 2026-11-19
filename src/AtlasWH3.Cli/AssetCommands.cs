@@ -16,7 +16,7 @@ using AtlasWH3.Formats.Models;
 /// </summary>
 static class AssetCommands
 {
-    public static readonly HashSet<string> Names = ["asset-info", "asset-find", "asset-preview", "asset-census", "asset-check", "vfx-check"];
+    public static readonly HashSet<string> Names = ["asset-info", "asset-find", "asset-preview", "asset-census", "asset-check", "vfx-check", "road-check"];
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
@@ -33,6 +33,7 @@ static class AssetCommands
                 "asset-census" => Census(library, Option(a, "--ext") ?? ".rigid_model_v2", Option(a, "--limit")),
                 "asset-check" => Check(library, new EntityEditor(paths, Option(a, "--project"))),
                 "vfx-check" => VfxCheck(library, a),
+                "road-check" => RoadCheck(paths, library, a),
                 _ => throw new ArgumentException(command),
             };
             Console.WriteLine(result.ToJsonString(Indented));
@@ -267,6 +268,48 @@ static class AssetCommands
             ["skipped"] = new JsonObject(skipped.OrderByDescending(kv => kv.Value).Take(30).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
             ["detail"] = effects,
         };
+    }
+
+    /// <summary>road-check: do the roads the 3D view paints from the tiles' blend0.dds join across tile borders? Scores
+    /// the drawn texture placement against its alternatives and lists the drawn one's road ends that miss.</summary>
+    private static JsonNode RoadCheck(ProjectPaths paths, ModelLibrary lib, string[] a)
+    {
+        var map = paths.MapName;   // the global --map
+        var relative = $"terrain/campaigns/{map}/tile_list.bin";
+        var list = AtlasWH3.Formats.Maps.TileList.Read(lib.Source.TryRead(relative) ?? throw new FileNotFoundException($"{relative} is not in the packs (add the map's pack with --mod-pack)"));
+        var db = AtlasWH3.Core.Campaign.TileMapCheck.TileMapValidator.LoadDatabase(paths);
+        static bool IsRoad(string layer) => layer.Contains("road", StringComparison.OrdinalIgnoreCase);
+        var layers = db.Tiles.SelectMany(t => t.Variations).SelectMany(v => v.TextureLayers.Take(4)).Where(IsRoad)
+            .GroupBy(x => x, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).Select(g => (JsonNode)$"{g.Key} ({g.Count()} variations)").ToArray();
+        var result = new JsonObject { ["map"] = map, ["tile_list"] = lib.Source.Locate(relative), ["road_layers"] = new JsonArray(layers) };
+        var mappings = new JsonObject();
+        foreach (var mapping in Enum.GetValues<TileRoadCheck.Mapping>())
+        {
+            var r = new TileRoadCheck(list, db, lib.Source.TryRead, IsRoad, mapping).Run();
+            mappings[mapping.ToString()] = new JsonObject
+            {
+                ["road_tiles"] = r.RoadTiles, ["road_ends"] = r.Ends.Count, ["joined"] = r.Count("joined"), ["offset"] = r.Count("offset"),
+                ["missed"] = r.Count("missed"), ["open"] = r.Count("open"),
+                ["joined_share_of_facing_road"] = Math.Round(r.JoinedShare, 4),
+            };
+            if (mapping != TileRoadCheck.Mapping.Drawn) continue;
+            // Per turn and edge of the tile's own space: a placement error shows as offsets of one sign there.
+            static double Median(IEnumerable<float> v) { var s = v.OrderBy(x => x).ToList(); return s.Count == 0 ? double.NaN : s[s.Count / 2]; }
+            result["by_turn_and_tile_edge"] = new JsonObject(r.Ends.Where(e => e.FacesRoad).GroupBy(e => $"{e.Degrees}° {e.TileEdge}").OrderBy(g => g.Key)
+                .Select(g => KeyValuePair.Create(g.Key, (JsonNode?)FormattableString.Invariant(
+                    $"{g.Count()} ends, joined {g.Count(e => e.Grade == "joined") / (double)g.Count():P1}, offset median {Median(g.Where(e => !float.IsNaN(e.Offset)).Select(e => e.Offset)):0.000} mean {g.Where(e => !float.IsNaN(e.Offset)).Select(e => (double)e.Offset).DefaultIfEmpty(double.NaN).Average():0.000} cells"))));
+            result["median_width_by_grade"] = new JsonObject(r.Ends.GroupBy(e => e.Grade).OrderBy(g => g.Key)
+                .Select(g => KeyValuePair.Create(g.Key, (JsonNode?)Math.Round(Median(g.Select(e => e.Width)), 3))));
+            var missed = r.Ends.Where(e => e.Grade is "offset" or "missed").ToList();
+            result["not_joined_by_tile"] = new JsonObject(missed.GroupBy(e => $"{e.Tile} {e.TileEdge} edge").OrderByDescending(g => g.Count()).Take(25)
+                .Select(g => KeyValuePair.Create(g.Key, (JsonNode?)$"{g.Count()} ({g.Select(e => (e.X, e.Y)).Distinct().Count()} placements, {g.Select(e => e.Across).Distinct().Count()} different tiles across)")));
+            result["not_joined"] = new JsonArray(missed.OrderByDescending(e => float.IsNaN(e.Gap) ? 9 : e.Gap).Take(int.Parse(Option(a, "--limit") ?? "60", CultureInfo.InvariantCulture))
+                .Select(e => (JsonNode)FormattableString.Invariant($"{e.Tile} at ({e.X},{e.Y}) {e.Degrees}°, {e.Edge} edge +{e.At:0.00} (w {e.Width:0.00}) → {e.Across}: overlap {e.Overlap:0.00}, nearest road {(float.IsNaN(e.Gap) ? "none" : e.Gap.ToString("0.00"))}")).ToArray());
+            result["open_into"] = new JsonObject(r.Ends.Where(e => e.Across is null || e.Across.EndsWith("(no road layer)", StringComparison.Ordinal))
+                .GroupBy(e => e.Across ?? "(no tile)").OrderByDescending(g => g.Count()).Take(25).Select(g => KeyValuePair.Create(g.Key, (JsonNode?)g.Count())));
+        }
+        result["mappings"] = mappings;
+        return result;
     }
 
     private static string? Option(string[] a, string name)

@@ -8,6 +8,8 @@
   not drawn; their markers stay.
 - New CLI command `vfx-check <name>` (or `--list <counts.txt>`): what the 3D view draws of an effect, what it skips
   and why, and its textures' formats.
+- New CLI command `road-check --map <name>`: checks that the roads the 3D view paints from the tiles join across tile
+  borders, and lists the tile edges where they don't.
 
 ## 1.2.1 (2026-11-10)
 
