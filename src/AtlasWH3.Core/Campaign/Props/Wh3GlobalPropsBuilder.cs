@@ -341,10 +341,12 @@ public sealed class Wh3GlobalPropsBuilder
             }
             var baked = spline is null ? null : Rivers.Wh3River.Build(spline);
             var box = baked is null ? null : MeshBox(baked.Bounds[..3], baked.Bounds[3..], placed);
+            var river = PropRecord(placed, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e);
+            river.DecalApplyToGbufferObjects = 0;
             var o = AddObj(new Obj
             {
                 Kind = "prop", Id = id, InnerId = innerId, Sub = _sub++, X = placed.X, Z = placed.Z, Box = box, Cultures = cultures,
-                Add = b => { var r = PropRecord(b, model, placed, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e); r.DecalApplyToGbufferObjects = 0; b.Props.Add(r); },
+                Add = AddProp(river, model),
             });
             o.RootCell = box is null;
             o.River = true;
@@ -354,7 +356,7 @@ public sealed class Wh3GlobalPropsBuilder
         {
             var model = (string?)decal.Attribute("model_path") ?? "";
             if (model.Length > 0)
-                Add("decal", b => b.Props.Add(PropRecord(b, model, world, true, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, decal, e)));
+                Add("decal", AddProp(PropRecord(world, true, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, decal, e), model));
             return;
         }
         if (e.Element("ECMesh") is { } mesh)
@@ -362,7 +364,7 @@ public sealed class Wh3GlobalPropsBuilder
             var model = (string?)mesh.Attribute("model_path") ?? "";
             if (model.Length == 0) return;
             var info = Model(model);
-            var o = Add("prop", b => b.Props.Add(PropRecord(b, model, world, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e, info)),
+            var o = Add("prop", AddProp(PropRecord(world, false, Cp, ctorFlags, pdlc, shroud, shroudOnly, noCulling, null, e, info), model),
                 MeshBox(info.Min, info.Max, world));
             o.What = model;
             o.DefaultBox = MeshBox([-1, -1, -1], [1, 1, 1], world);
@@ -379,12 +381,13 @@ public sealed class Wh3GlobalPropsBuilder
                     scaled[i * 3 + j] = world.R[i * 3] * (j == 0 ? vs : 0f) + world.R[i * 3 + 1] * (j == 1 ? vs : 0f) + world.R[i * 3 + 2] * (j == 2 ? vs : 0f);
             var vfxWorld = world with { R = scaled };
             var vfxName = (string?)vfx.Attribute("vfx") ?? "";
-            Add("vfx", b => b.Vfx.Add(new Bmd27Vfx
+            var vfxRecord = new Bmd27Vfx
             {
                 Name = (string?)vfx.Attribute("vfx") ?? "", Transform = vfxWorld.Record(), Instance = (string?)vfx.Attribute("instance_name") ?? "",
                 Flags = flags, Autoplay = B((string?)vfx.Attribute("autoplay") != "false"), VisibleInShroud = B(shroud),
                 NotShroudOnly = B(!shroudOnly), NoCulling = B(noCulling),
-            })).What = vfxName;
+            };
+            Add("vfx", AddTo(vfxRecord, r => r.Clone(), b => b.Vfx)).What = vfxName;
             return;
         }
         if (e.Element("ECPointLight") is { } light)
@@ -397,7 +400,7 @@ public sealed class Wh3GlobalPropsBuilder
                        + MathF.Sqrt(r[5] * r[5] + r[2] * r[2] + r[8] * r[8])) * 0.33333334f;
             var radius = A("radius", 1) * avg;
             var half = radius * 0.5f;
-            Add("light", b => b.Lights.Add(new Bmd27Light
+            var lightRecord = new Bmd27Light
             {
                 X = world.X, Y = world.Y, Z = world.Z, Radius = radius,
                 R = c[0] * (1f / 255f), G = c[1] * (1f / 255f), B = c[2] * (1f / 255f), ColourScale = A("colour_scale", 1),
@@ -405,7 +408,8 @@ public sealed class Wh3GlobalPropsBuilder
                 AnimationScale1 = speed.ElementAtOrDefault(0), AnimationScale2 = speed.ElementAtOrDefault(1),
                 ColourMin = A("colour_min", 0), RandomOffset = A("random_offset", 0), Falloff = (string?)light.Attribute("falloff_type") ?? "",
                 LightProbesOnly = B((string?)light.Attribute("for_light_probes_only") == "true"), Flags = ctorFlags, CultureMask = pdlc,
-            }), [world.X - half, world.Z - half, world.X + half, world.Z + half]);
+            };
+            Add("light", AddTo(lightRecord, r => r.Clone(), b => b.Lights), [world.X - half, world.Z - half, world.X + half, world.Z + half]);
             return;
         }
         if (e.Element("ECSpotLight") is { } spot)
@@ -417,26 +421,28 @@ public sealed class Wh3GlobalPropsBuilder
             // radians; the length through the z column's length over the z scale
             var ((qx, qy, qz, qw), _, _, s2) = QtuTransform.Decompose(world.R);
             var column = MathF.Sqrt(world.R[5] * world.R[5] + world.R[2] * world.R[2] + world.R[8] * world.R[8]);
-            Add("spot", b => b.Spots.Add(new Bmd27Spot
+            var spotRecord = new Bmd27Spot
             {
                 X = world.X, Y = world.Y, Z = world.Z, Rotation = [qx, qy, qz, qw], Length = A("length", 1) * (column / s2),
                 InnerAngle = A("inner_angle", 0) * 3.14159274f / 180f, OuterAngle = A("outer_angle", 0) * 3.14159274f / 180f,
                 R = c[0] * (1f / 255f) * intensity, G = c[1] * (1f / 255f) * intensity, B = c[2] * (1f / 255f) * intensity,
                 Falloff = A("falloff", 0), Gobo = (string?)spot.Attribute("gobo") ?? "", Volumetric = B((string?)spot.Attribute("volumetric") == "true"),
                 Flags = flags, CultureMask = pdlc,
-            }));
+            };
+            Add("spot", AddTo(spotRecord, r => r.Clone(), b => b.Spots));
             return;
         }
         if (e.Element("ECCompositeScene") is { } scene)
         {
-            Add("scene", b => b.Scenes.Add(new Bmd27Scene
+            var sceneRecord = new Bmd27Scene
             {
                 Transform = world.Record(), Path = (string?)scene.Attribute("path") ?? "", CultureMask = pdlc, Autoplay = 1,   // 1 even for autoplay="false" (IEE's 6)
                 VisibleInShroud = B(shroud), NoCulling = B(noCulling), ScriptId = (string?)scene.Attribute("script_id") ?? "",
                 NotShroudOnly = B(!shroudOnly), TacticalView = flags.TacticalView, TacticalViewOnly = flags.TacticalViewOnly,
                 HoldFirstFrame = B((string?)scene.Attribute("hold_first_frame") == "true"),
                 HoldLastFrame = B((string?)scene.Attribute("hold_last_frame") == "true"),
-            }));
+            };
+            Add("scene", AddTo(sceneRecord, r => r.Clone(), b => b.Scenes));
             return;
         }
         if (e.Element("ECLightProbe") is { } probe)
@@ -444,11 +450,12 @@ public sealed class Wh3GlobalPropsBuilder
             var cylinder = e.Element("ECDoubleCylinder");
             var sphere = e.Element("ECDoubleSphere") ?? cylinder;
             float S(string n, float d) => sphere?.Attribute(n) is { } a ? float.Parse((string)a, CultureInfo.InvariantCulture) : d;
-            Add("probe", b => b.Probes.Add(new Bmd27Probe
+            var probeRecord = new Bmd27Probe
             {
                 X = world.X, Y = world.Y, Z = world.Z, OuterRadius = S("outer_radius", 1), InnerRadius = S("inner_radius", 1),
                 IsCylinder = B(sphere is not null && sphere == cylinder), Primary = B((string?)probe.Attribute("primary") == "true"),
-            }));
+            };
+            Add("probe", AddTo(probeRecord, r => r.Clone(), b => b.Probes));
             return;
         }
         if (e.Element("ECPolygonMesh") is { } poly)
@@ -457,7 +464,7 @@ public sealed class Wh3GlobalPropsBuilder
             if (local.Count < 3) return;
             var outline = local.Select(p => (p.X, 0f, p.Z)).ToList();
             var indices = Triangulate(local);
-            Add("poly", b => b.Polys.Add(new Bmd27Poly
+            var polyRecord = new Bmd27Poly
             {
                 Vertices = outline, Indices = indices, Material = (string?)poly.Attribute("material") ?? "",
                 Flags = ctorFlags,
@@ -466,7 +473,8 @@ public sealed class Wh3GlobalPropsBuilder
                 VisibleInsideDestruction = B(Cp("visible_inside_destruction_region", true)),
                 VisibleOutsideDestruction = B(Cp("visible_outside_destruction_region", true)),
                 VisibleInShroud = B(shroud), NotShroudOnly = B(!shroudOnly),
-            }));
+            };
+            Add("poly", AddTo(polyRecord, r => r.Clone(), b => b.Polys));
             return;
         }
         if (e.Element("ECTerrainHole") is not null)
@@ -482,8 +490,8 @@ public sealed class Wh3GlobalPropsBuilder
             for (var k = 0; k + 2 < indices.Count; k += 3)
             {
                 var (a, bb, cc) = (outline[indices[k]], outline[indices[k + 1]], outline[indices[k + 2]]);
-                Add("hole", b => b.Holes.Add(new Bmd27Hole { Vertices = [a.X, a.Y, a.Z, bb.X, bb.Y, bb.Z, cc.X, cc.Y, cc.Z], Flags = flags }), box)
-                    .Hole = hole;
+                var holeRecord = new Bmd27Hole { Vertices = [a.X, a.Y, a.Z, bb.X, bb.Y, bb.Z, cc.X, cc.Y, cc.Z], Flags = flags };
+                Add("hole", AddTo(holeRecord, r => r.Clone(), b => b.Holes), box).Hole = hole;
             }
             return;
         }
@@ -524,14 +532,15 @@ public sealed class Wh3GlobalPropsBuilder
             var mask = SoundMask(cultures, (string?)cp?.Attribute("culture_mask") ?? "");
             var r = world.R;
             var radius = sphere is null ? 0f : float.Parse((string?)sphere.Attribute("radius") ?? "0", CultureInfo.InvariantCulture);
+            var soundRecord = new Bmd27Sound
+            {
+                Name = key, Shape = shape, Points = points, OuterRadius = radius, ClampToSurface = clamp, CultureMask = mask, PdlcMask = pdlc,
+                Axes = SoundAxes(r),
+            };
             _sounds.Add(new Obj
             {
                 Kind = "sound", Id = id, Sub = _sub++, X = world.X, Z = world.Z, Cultures = [1], Type = _type, PieceMask = PieceMask(cultures, _cultureMask),
-                Add = b => b.Sounds.Add(new Bmd27Sound
-                {
-                    Name = key, Shape = shape, Points = points, OuterRadius = radius, ClampToSurface = clamp, CultureMask = mask, PdlcMask = pdlc,
-                    Axes = SoundAxes(r),
-                }),
+                Add = AddTo(soundRecord, s => s.Clone(), b => b.Sounds),
             });
         }
     }
@@ -566,7 +575,23 @@ public sealed class Wh3GlobalPropsBuilder
     private static ulong PieceMask(IReadOnlyList<int> values, string mask) =>
         mask.Trim().Length == 0 ? 0 : values.Aggregate(0UL, (m, v) => m | Bit(v));
 
-    private Bmd27Prop PropRecord(Bmd27Body b, string model, Xf world, bool isDecal, Func<string, bool, bool> cp, Bmd27Flags flags, ulong pdlc,
+    // The records are made when the entity is read, so a layer's document can go once it is added (holding the objects'
+    // elements kept every layer's document: 1.9 GB on IEE). Each body gets its own copy: a prop's path index is the
+    // body's, and the pieces clear their sound emitters' culture masks.
+
+    /// <summary>Adds a copy of a prop record to a body, with the body's index of its model.</summary>
+    private static Action<Bmd27Body> AddProp(Bmd27Prop record, string model) => b =>
+    {
+        var r = record.Clone();
+        r.PathIndex = b.PathIndex(model);
+        b.Props.Add(r);
+    };
+
+    /// <summary>Adds a copy of a record to a body's list.</summary>
+    private static Action<Bmd27Body> AddTo<T>(T record, Func<T, T> clone, Func<Bmd27Body, List<T>> list) => b => list(b).Add(clone(record));
+
+    /// <summary>A prop record, all but its path index (<see cref="AddProp"/>).</summary>
+    private static Bmd27Prop PropRecord(Xf world, bool isDecal, Func<string, bool, bool> cp, Bmd27Flags flags, ulong pdlc,
         bool shroud, bool shroudOnly, bool noCulling, XElement? decal, XElement e, ModelData? info = null)
     {
         byte B(bool v) => v ? (byte)1 : (byte)0;
@@ -575,7 +600,7 @@ public sealed class Wh3GlobalPropsBuilder
         var hp = (string?)e.Element("ECPropHeightPatch")?.Attribute("apply_height_patch") == "true";
         return new Bmd27Prop
         {
-            PathIndex = b.PathIndex(model), Transform = world.Record(), Decal = B(isDecal),
+            Transform = world.Record(), Decal = B(isDecal),
             VisibleInsideSnow = B(cp("visible_inside_snow_region", true)), VisibleOutsideSnow = B(cp("visible_outside_snow_region", true)),
             VisibleInsideDestruction = B(cp("visible_inside_destruction_region", true)),
             VisibleOutsideDestruction = B(cp("visible_outside_destruction_region", true)),

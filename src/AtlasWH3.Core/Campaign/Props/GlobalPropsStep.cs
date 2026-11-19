@@ -45,6 +45,7 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
         var layers = project.Layers().Where(l => l.IsFile && l.Export && l.FilePath is { } f && File.Exists(f)).ToList();
         ctx.Log($"{layers.Count} exported layers...");
         builder.AddLayers(layers.Select(l => l.FilePath!).ToList(), ctx.Cancel);
+        var layerNotes = builder.Notes.ToList();
         ctx.Log($"{builder.ObjectCount:N0} objects, {builder.SoundCount:N0} sound emitters; writing...");
         var props = builder.BuildProps();
         var sound = builder.BuildSound();
@@ -62,8 +63,14 @@ public sealed class GlobalPropsStep : ICampaignBuildStep
                       + string.Join(", ", missing.Take(10)) + (missing.Count > 10 ? $" (+{missing.Count - 10} more)" : ""));
         notes.Add($"quadtree root {root.Item1:G9}..{root.Item3:G9} x {root.Item2:G9}..{root.Item4:G9} (quadtree_margin {margin:G9}, {marginFrom})");
         notes.AddRange(builder.Notes.Distinct());
+        ctx.Share?.Publish(Name, new LayerObjects(builder, layerNotes));
         return new StepResult(Name, [propsPath, soundPath], notes, sw.Elapsed);
     }
+
+    /// <summary>The map's layer objects (the builder once its layers are added; its quadtree root and region lookup only
+    /// lay out global_props.bin) and the builder's notes as they were then. devastation_pieces takes them for the map's
+    /// pieces instead of reading the layers again.</summary>
+    public sealed record LayerObjects(Wh3GlobalPropsBuilder Builder, IReadOnlyList<string> Notes);
 
     private static Action<string> TraceTo(string path)
     {

@@ -51,9 +51,11 @@ public sealed class CampaignBuildPipeline
             devastated = DevastationPiecesStep.DevastatedFromDb(ctx.Paths) ?? "";
         var outcomes = new ConcurrentDictionary<string, StepOutcome>();
         var tasks = new Dictionary<string, Task>();
+        var share = new BuildShare();
 
         void Finish(StepOutcome o)
         {
+            share.Finished(o.Step);
             outcomes[o.Step] = o;
             Progress?.Invoke(new StepEvent(o.Step, StepEventKind.Finished, Outcome: o));
         }
@@ -85,7 +87,7 @@ public sealed class CampaignBuildPipeline
                 {
                     AcceptedTileMapIssues = ctx.AcceptedTileMapIssues, Cancel = ctx.Cancel,
                     PatchMask = ctx.PatchMask, CampaignMapName = ctx.CampaignMapName, HeightMapBlocks = ctx.HeightMapBlocks,
-                    HeightMapReference = ctx.HeightMapReference, SelectedSteps = selected,
+                    HeightMapReference = ctx.HeightMapReference, SelectedSteps = selected, Share = share,
                     DevastatedMap = devastated, LookupLastRegions = ctx.LookupLastRegions, KeepOutsideQuadtree = ctx.KeepOutsideQuadtree,
                     ZeroShroudWestEdge = ctx.ZeroShroudWestEdge,
                 };

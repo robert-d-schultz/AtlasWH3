@@ -84,7 +84,14 @@ public sealed class DevastationPiecesStep : ICampaignBuildStep
                 () =>
                 {
                     var main = TerryProject.Load(ctx.TerryFile);
-                    mainObjects = Objects(ctx, main, ctx.MapName, Packs, notes);
+                    // the map's objects are global_props' when that step is in the build
+                    if (ctx.Shared<Props.GlobalPropsStep.LayerObjects>("global_props") is { } shared)
+                    {
+                        ctx.Log($"{ctx.MapName}: objects from global_props");
+                        mainObjects = shared.Builder;
+                        notes.AddRange(shared.Notes.Distinct().Select(n => $"{ctx.MapName} objects: {n}"));
+                    }
+                    else mainObjects = Objects(ctx, main, ctx.MapName, Packs, notes);
                     Write(main, rel => Terrain(ctx.TargetRoot, ctx.MapName, rel),
                           Compiled(ctx.TargetRoot, TreeExporter.PackPath(ctx.MapName)), ctx.TerrainOutDir, TileDb, ctx, written, notes,
                           mainObjects);

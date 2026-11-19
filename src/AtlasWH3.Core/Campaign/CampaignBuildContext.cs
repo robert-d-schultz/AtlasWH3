@@ -48,6 +48,15 @@ public sealed class CampaignBuildContext
     /// one): a step that can do another's work itself does it when that one is not selected.</summary>
     public IReadOnlySet<string>? SelectedSteps { get; init; }
 
+    /// <summary>What the steps of this build hand each other (set by <see cref="CampaignBuildPipeline"/>; null outside
+    /// one).</summary>
+    public BuildShare? Share { get; init; }
+
+    /// <summary>What <paramref name="step"/> of this build publishes in <see cref="Share"/>, waited for; null when the
+    /// step is not in the build or published nothing.</summary>
+    public T? Shared<T>(string step) where T : class =>
+        SelectedSteps?.Contains(step) == true ? Share?.Take<T>(step, Cancel) : null;
+
     /// <summary>The devastated project whose pieces go into terrain\campaigns\&lt;it&gt;\pieces (its raw_data folder next
     /// to the map's). Null: the one the db names (<see cref="DevastationPiecesStep.DevastatedFromDb"/>); empty: none.
     /// The CLI's --devastated sets it.</summary>

@@ -118,6 +118,9 @@ public sealed class Bmd27Nested
 /// <summary>A prop (ECMesh, ECDecal, river model): v30.</summary>
 public sealed class Bmd27Prop
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Prop Clone() => (Bmd27Prop)MemberwiseClone();
+
     public uint PathIndex;
     /// <summary>The 3x3 rotation-scale as three columns, then the position (12 floats, as stored).</summary>
     public float[] Transform = new float[12];
@@ -142,6 +145,9 @@ public sealed class Bmd27Prop
 
 public sealed class Bmd27Vfx
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Vfx Clone() => (Bmd27Vfx)MemberwiseClone();
+
     public string Name = "";
     public float[] Transform = new float[12];
     public float EmissionRate;
@@ -157,6 +163,9 @@ public sealed class Bmd27Vfx
 
 public sealed class Bmd27Probe
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Probe Clone() => (Bmd27Probe)MemberwiseClone();
+
     public float X, Y, Z, OuterRadius, InnerRadius;
     /// <summary>Terry's is_cylinder: the probe's shape is an ECDoubleCylinder, not an ECDoubleSphere.</summary>
     public byte IsCylinder;
@@ -166,6 +175,9 @@ public sealed class Bmd27Probe
 
 public sealed class Bmd27Hole
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Hole Clone() => (Bmd27Hole)MemberwiseClone();
+
     /// <summary>Three vertices (9 floats).</summary>
     public float[] Vertices = new float[9];
     public string HeightMode = "BHM_CLASSIC";
@@ -174,6 +186,9 @@ public sealed class Bmd27Hole
 
 public sealed class Bmd27Light
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Light Clone() => (Bmd27Light)MemberwiseClone();
+
     public float X, Y, Z, Radius, R, G, B, ColourScale;
     public byte Animation;
     /// <summary>AnimationScale1/2: the animation's params.</summary>
@@ -189,6 +204,9 @@ public sealed class Bmd27Light
 
 public sealed class Bmd27Poly
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Poly Clone() => (Bmd27Poly)MemberwiseClone();
+
     public List<(float X, float Y, float Z)> Vertices = [];
     public List<ushort> Indices = [];
     public string Material = "";
@@ -203,6 +221,9 @@ public sealed class Bmd27Poly
 
 public sealed class Bmd27Spot
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Spot Clone() => (Bmd27Spot)MemberwiseClone();
+
     public float X, Y, Z;
     /// <summary>Rotation quaternion (x, y, z, w); the kit calls it "end".</summary>
     public float[] Rotation = [0, 0, 0, 1];
@@ -219,6 +240,9 @@ public record struct Bmd27SoundRiverNode(ushort Version, float X, float Y, float
 
 public sealed class Bmd27Sound
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Sound Clone() => (Bmd27Sound)MemberwiseClone();
+
     public string Name = "";
     public string Shape = "SST_POINT";
     public List<(float X, float Y, float Z)> Points = [];
@@ -240,6 +264,9 @@ public sealed class Bmd27Sound
 
 public sealed class Bmd27Scene
 {
+    /// <summary>A shallow copy (the arrays and lists are shared).</summary>
+    public Bmd27Scene Clone() => (Bmd27Scene)MemberwiseClone();
+
     public float[] Transform = new float[12];
     public string Path = "";
     public string HeightMode = "BHM_CLASSIC";
