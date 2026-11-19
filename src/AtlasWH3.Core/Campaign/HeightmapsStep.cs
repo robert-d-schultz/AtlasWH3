@@ -74,9 +74,16 @@ public sealed class HeightmapsStep : ICampaignBuildStep
         var reference = Reference(ctx, land, notes);
         ctx.Log("full_height_map.dds (BC6H)...");
         var heightPath = ctx.OutFile("full_height_map.dds");
-        var copied = WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"), ctx.HeightMapBlocks, reference);
+        // the last full encode of this map, for the blocks whose heights have not changed since
+        var cache = ctx.HeightMapBlocks is null && reference is null ? new HeightMapCache(Path.Combine(ctx.Paths.CacheRoot, "heightmaps", ctx.MapName)) : null;
+        var copied = WriteHeightMap(land, sea, heightPath, p => ctx.Log($"BC6H {p:P0}"), ctx.HeightMapBlocks, reference, cache);
         if (ctx.HeightMapBlocks is not null) notes.Add("full_height_map.dds: only the blocks the build asked for are encoded, the rest are zero");
         if (reference is not null) notes.Add($"full_height_map.dds: {copied} blocks copied from {ctx.HeightMapReference!.Value.HeightMap}");
+        if (cache is not null && copied > 0)
+        {
+            var total = (long)((land.Width + 3) / 4) * ((land.Height + 3) / 4);
+            notes.Add($"full_height_map.dds: {copied:N0} of {total:N0} blocks unchanged since the last build, copied from {cache.Directory}");
+        }
         ctx.Cancel.ThrowIfCancellationRequested();
 
         ctx.Log("shroud heights (height patches from the packs)...");
@@ -156,9 +163,12 @@ public sealed class HeightmapsStep : ICampaignBuildStep
 
     /// <summary>full_height_map.dds: BC6H_SF16, red = land, green = sea bed, bottom row first. <paramref name="blocks"/>
     /// (block column, block row in file order) encodes only some blocks. A block whose texels equal
-    /// <paramref name="reference"/>'s is copied from it. Returns the number of blocks copied.</summary>
+    /// <paramref name="reference"/>'s is copied from it; else, with a <paramref name="cache"/>, a block of a region whose
+    /// texels are those the cached file was encoded from is copied from that (and the result is cached when every block
+    /// was asked for). Returns the number of blocks copied.</summary>
     public static long WriteHeightMap(Raster<float> land, Raster<float> sea, string path, Action<double>? progress = null,
-                                      Func<int, int, bool>? blocks = null, HeightMapReference? reference = null)
+                                      Func<int, int, bool>? blocks = null, HeightMapReference? reference = null,
+                                      HeightMapCache? cache = null)
     {
         int w = land.Width, h = land.Height;
         var red = new float[w * h];
@@ -169,7 +179,11 @@ public sealed class HeightmapsStep : ICampaignBuildStep
             Array.Copy(sea.Data, (h - 1 - y) * w, green, y * w, w);
         });
         int bw = (w + 3) / 4, bh = (h + 3) / 4;
-        var same = reference is null ? null : SameBlocks(land, sea, reference);
+        bool[]? same = null;
+        ReadOnlyMemory<byte> from = default;
+        if (reference is not null) (same, from) = (SameBlocks(land, sea, reference), reference.Blocks);
+        var fingerprint = cache?.Fingerprint(red, green, w, h);
+        if (same is null && cache?.Match(fingerprint!, w, h) is { } hit) (same, from) = hit;
         bool Wanted(int bx, int by) => blocks?.Invoke(bx, by) ?? true;
         var data = Bc6h.Encode(red, green, w, h, progress, same is null ? blocks : (bx, by) => !same[by * bw + bx] && Wanted(bx, by));
         long copied = 0;
@@ -179,12 +193,15 @@ public sealed class HeightmapsStep : ICampaignBuildStep
                 {
                     var i = by * bw + bx;
                     if (!same[i] || !Wanted(bx, by)) continue;
-                    reference!.Blocks.Span.Slice(i * Bc6h.BlockBytes, Bc6h.BlockBytes).CopyTo(data.AsSpan(i * Bc6h.BlockBytes));
+                    from.Span.Slice(i * Bc6h.BlockBytes, Bc6h.BlockBytes).CopyTo(data.AsSpan(i * Bc6h.BlockBytes));
                     copied++;
                 }
-        using var f = File.Create(path);
-        f.Write(DdsHeader.BuildDx10(w, h, DdsHeader.DxgiBc6hSf16, true, Bc6h.BlockBytes));
-        f.Write(data);
+        using (var f = File.Create(path))
+        {
+            f.Write(DdsHeader.BuildDx10(w, h, DdsHeader.DxgiBc6hSf16, true, Bc6h.BlockBytes));
+            f.Write(data);
+        }
+        if (cache is not null && blocks is null) cache.Save(fingerprint!, w, h, data);
         return copied;
     }
 

@@ -178,6 +178,43 @@ public sealed class Bc6hTests
         finally { dir.Delete(true); }
     }
 
+    /// <summary>The cache of the last encode: only the regions whose texels changed are encoded again, the result is the
+    /// full encode's, and a damaged cached file is not used.</summary>
+    [Fact]
+    public void WriteHeightMap_ReusesTheCachedUnchangedRegions()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            const int w = 63, h = 47;
+            var (red, green) = Synthetic();
+            var land = new Raster<float>(w, h, red);
+            var sea = new Raster<float>(w, h, green);
+            var cacheDir = Path.Combine(dir.FullName, "cache");
+            var cache = new HeightMapCache(cacheDir, regionTexels: 8);      // 2 x 2 blocks per region
+            string Out(string name) => Path.Combine(dir.FullName, name);
+            Assert.Equal(0, HeightmapsStep.WriteHeightMap(land, sea, Out("first.dds"), cache: cache));
+
+            Assert.Equal(16 * 12, HeightmapsStep.WriteHeightMap(land, sea, Out("same.dds"), cache: cache));
+            Assert.Equal(File.ReadAllBytes(Out("first.dds")), File.ReadAllBytes(Out("same.dds")));
+
+            // texel (10, 10) of the map is stored row 36: the region of texels 8-15 x 32-39, 4 blocks
+            var changed = new Raster<float>(w, h, (float[])red.Clone());
+            changed.Data[10 * w + 10] += 1;
+            HeightmapsStep.WriteHeightMap(changed, sea, Out("full.dds"));
+            Assert.Equal(16 * 12 - 4, HeightmapsStep.WriteHeightMap(changed, sea, Out("reused.dds"), cache: cache));
+            Assert.Equal(File.ReadAllBytes(Out("full.dds")), File.ReadAllBytes(Out("reused.dds")));
+
+            var cached = Path.Combine(cacheDir, "full_height_map.dds");
+            var bytes = File.ReadAllBytes(cached);
+            bytes[^1] ^= 1;
+            File.WriteAllBytes(cached, bytes);
+            Assert.Equal(0, HeightmapsStep.WriteHeightMap(changed, sea, Out("damaged.dds"), cache: cache));
+            Assert.Equal(File.ReadAllBytes(Out("full.dds")), File.ReadAllBytes(Out("damaged.dds")));
+        }
+        finally { dir.Delete(true); }
+    }
+
     /// <summary>full_logic_map.compressed_map is BOB's bytes on the IEE fixture, and WriteShroud writes BOB's shroud_heights.dds
     /// from the HeightShroud layers BOB copied (the build fills the shroud from the terrain instead, see ShroudHeightsTests).</summary>
     [Fact]

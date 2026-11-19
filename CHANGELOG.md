@@ -11,6 +11,15 @@
 - New CLI command `road-check --map <name>`: checks that the roads the 3D view paints from the tiles join across tile
   borders, and lists the tile edges where they don't.
 
+### Faster builds
+- `full_height_map.dds` is only encoded again where the heights changed since the map's last build: a build whose
+  Height and HeightSea are unchanged skips its encoding (about 3 minutes on IEE). The last encode is kept in AtlasWH3's
+  cache folder (`heightmaps\<map>`, about 100 MB for IEE).
+- The heightmaps, trees and camera height map steps read the props' height patches once per build instead of each
+  reading every layer (IEE: trees and the camera height map from about 35 s each to under 10 s).
+- The props step holds a fifth of the memory it did (IEE: 1.9 GB to 0.4 GB), and the devastation pieces take the map's
+  own props from it instead of reading the layers again.
+
 ## 1.2.1 (2026-11-10)
 
 Props, sounds and lights on the campaign map now come out of the build the way BOB makes them.
