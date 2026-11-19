@@ -255,6 +255,11 @@ public sealed partial class SceneWindow : Window
             ToolTip = "The placed tiles' own content: cliff meshes, the props of their bmd (mountains, their trees, bridges, road props) and river water" };
         tileMeshes.Click += (_, _) => { _view3d.ShowTileMeshes = tileMeshes.IsChecked == true; _view3d.Invalidate(); };
         bar.Children.Add(tileMeshes);
+        var vfx = new CheckBox { Content = "VFX", IsChecked = true, Foreground = Theme.Brush("Text"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 2, 0),
+            ToolTip = "Placed effects as particles (fire, smoke, mist, embers...), within each effect's own draw distance. " +
+                      "Dynamic lights, distortion and model particles are not drawn; their markers stay" };
+        vfx.Click += (_, _) => { _view3d.ShowVfx = vfx.IsChecked == true; _view3d.Invalidate(); };
+        bar.Children.Add(vfx);
         bar.Children.Add(BarSeparator());
         var frame = new Button { Content = "Frame (F)", Padding = new Thickness(8, 1, 8, 1), Margin = new Thickness(2) };
         frame.Click += (_, _) => _view3d.FrameSelection();

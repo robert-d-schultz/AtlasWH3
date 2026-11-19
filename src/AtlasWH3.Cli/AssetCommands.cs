@@ -16,7 +16,7 @@ using AtlasWH3.Formats.Models;
 /// </summary>
 static class AssetCommands
 {
-    public static readonly HashSet<string> Names = ["asset-info", "asset-find", "asset-preview", "asset-census", "asset-check"];
+    public static readonly HashSet<string> Names = ["asset-info", "asset-find", "asset-preview", "asset-census", "asset-check", "vfx-check"];
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
@@ -32,6 +32,7 @@ static class AssetCommands
                 "asset-preview" => Preview(library, Positional(a, 0, "model path"), a),
                 "asset-census" => Census(library, Option(a, "--ext") ?? ".rigid_model_v2", Option(a, "--limit")),
                 "asset-check" => Check(library, new EntityEditor(paths, Option(a, "--project"))),
+                "vfx-check" => VfxCheck(library, a),
                 _ => throw new ArgumentException(command),
             };
             Console.WriteLine(result.ToJsonString(Indented));
@@ -204,6 +205,70 @@ static class AssetCommands
         };
     }
 
+    /// <summary>vfx-check: resolves effects (one name, or --list with "count name" lines, as uniq -c writes them), runs each
+    /// for its warm-up plus ten seconds (counting the most particles alive at once), and reports what draws, what is skipped and why, and the textures' formats.</summary>
+    private static JsonNode VfxCheck(ModelLibrary lib, string[] a)
+    {
+        var vfx = new AtlasWH3.Core.Rendering.Vfx.VfxLibrary(lib.Source.TryRead);
+        var names = Option(a, "--list") is { } list
+            ? File.ReadLines(list).Select(l => l.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)).Where(p => p.Length == 2)
+                .Select(p => (Name: p[1].Trim(), Uses: int.Parse(p[0], CultureInfo.InvariantCulture))).ToList()
+            : [(Positional(a, 0, "vfx name"), 1)];
+        var sw = Stopwatch.StartNew();
+        var skipped = new Dictionary<string, int>();
+        var formats = new Dictionary<string, int>();
+        var missing = new Dictionary<string, int>();
+        var effects = new JsonArray();
+        var placements = 0;
+        var drawnPlacements = 0;
+        foreach (var (name, uses) in names)
+        {
+            var effect = vfx.Resolve(name);
+            placements += uses;
+            var instance = new AtlasWH3.Core.Rendering.Vfx.VfxInstance(effect, System.Numerics.Matrix4x4.Identity, 1);
+            instance.Warm();
+            var peak = 0;
+            for (var step = 0; step < 40; step++)    // bursts come every few seconds: the most alive over 10 s
+            {
+                instance.Advance(0.25f);
+                peak = Math.Max(peak, instance.ParticleCount);
+            }
+            if (peak > 0) drawnPlacements += uses;
+            foreach (var e in effect.Emitters)
+            {
+                foreach (var why in e.Skipped) skipped[why] = skipped.GetValueOrDefault(why) + uses;
+                if (!e.Draws || e.Texture is null) continue;
+                var bytes = lib.Source.TryRead(e.Texture);
+                var format = bytes is null ? "missing" : DdsHeader.Read(bytes) is var h && h.IsDx10 ? $"DXGI {h.DxgiFormat}" : h.FourCC.Length > 0 ? h.FourCC : $"{h.RgbBitCount} bpp";
+                formats[format] = formats.GetValueOrDefault(format) + uses;
+                if (bytes is null) missing[e.Texture] = missing.GetValueOrDefault(e.Texture) + uses;
+            }
+            if (names.Count == 1 || Flag(a, "--each"))
+                effects.Add(new JsonObject
+                {
+                    ["name"] = name, ["uses"] = uses, ["peak_particles"] = peak,
+                    ["problems"] = new JsonArray(effect.Problems.Select(p => (JsonNode)p).ToArray()),
+                    ["emitters"] = new JsonArray(effect.Emitters.Select(e => (JsonNode)new JsonObject
+                    {
+                        ["name"] = e.Name, ["draws"] = e.Draws, ["texture"] = e.Texture, ["facing"] = e.Facing.ToString(),
+                        ["infinite"] = e.Infinite, ["additive"] = e.Additive, ["cells"] = $"{e.CellsX}x{e.CellsY}{(e.Animated ? " animated" : "")}",
+                        ["scale"] = Math.Round(new System.Numerics.Vector3(e.Local.M11, e.Local.M12, e.Local.M13).Length(), 4),
+                        ["cull"] = $"{e.EmitterCull.W:0.##} / {e.ParticleCull.Z:0.##}..{e.ParticleCull.W:0.##}",
+                        ["skipped"] = new JsonArray(e.Skipped.Select(s => (JsonNode)s).ToArray()),
+                    }).ToArray()),
+                });
+        }
+        return new JsonObject
+        {
+            ["effects"] = names.Count, ["placements"] = placements, ["placements_with_particles"] = drawnPlacements,
+            ["seconds"] = Math.Round(sw.Elapsed.TotalSeconds, 1),
+            ["texture_formats"] = new JsonObject(formats.OrderByDescending(kv => kv.Value).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
+            ["missing_textures"] = new JsonObject(missing.OrderByDescending(kv => kv.Value).Take(20).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
+            ["skipped"] = new JsonObject(skipped.OrderByDescending(kv => kv.Value).Take(30).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))),
+            ["detail"] = effects,
+        };
+    }
+
     private static string? Option(string[] a, string name)
     {
         var i = Array.FindIndex(a, s => s.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -226,7 +291,7 @@ static class AssetCommands
         for (var i = 0; i < a.Length; i++)
         {
             if (!a[i].StartsWith("--", StringComparison.Ordinal)) { positional.Add(a[i]); continue; }
-            if (a[i] is not ("--untextured" or "--json")) i++;
+            if (a[i] is not ("--untextured" or "--json" or "--each")) i++;
         }
         return index < positional.Count ? positional[index] : throw new ArgumentException($"missing {what}");
     }

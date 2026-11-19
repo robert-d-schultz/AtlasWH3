@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Scene editor:** the 3D view plays the map's VFX: fire, smoke, embers, mist, spores, lava and the like, from the
+  game's vfx files with their references followed. Each effect draws within its own draw distance (the nearest 256 at
+  once). A **VFX** check box in the 3D view's toolbar turns them off. Dynamic lights, distortion and model particles are
+  not drawn; their markers stay.
+- New CLI command `vfx-check <name>` (or `--list <counts.txt>`): what the 3D view draws of an effect, what it skips
+  and why, and its textures' formats.
+
 ## 1.2.1 (2026-11-10)
 
 Props, sounds and lights on the campaign map now come out of the build the way BOB makes them.

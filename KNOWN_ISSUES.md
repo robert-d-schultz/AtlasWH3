@@ -45,6 +45,10 @@
   - The tile map validator's neighbourhood rules and reference pattern are 3K's; tile props and some tile textures
     are not drawn yet, and some props draw black.
   - The Campaign battles window does not read WH3's `battle_locations_map.bin` yet.
+  - The Scene editor's 3D view draws VFX as unlit textured particles. It does not draw dynamic lights, distortion,
+    model (rigid) particles, decals or custom-shader effects (IEE's skull fires), and it does not simulate wind or
+    vector fields. The motion is AtlasWH3's reading of the vfx files, not the game's code. `vfx-check` lists what
+    each effect skips.
 - The `tiles-*`, `props-*` and `entity-*` CLI commands share the editors' code and status.
 
 ## App

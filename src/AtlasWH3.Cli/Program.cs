@@ -112,6 +112,7 @@ static void Help()
     Console.WriteLine("  prefab-list [--filter s] | prefab-get <key>");
     Console.WriteLine("  asset-info <path> | asset-find <filter> [--ext e] | asset-preview <model> [--out png --size --yaw --pitch --lod]");
     Console.WriteLine("  asset-census [--ext .rigid_model_v2|.wsmodel|.material|.dds] | asset-check   (--mod-pack p, --asset-root dir)");
+    Console.WriteLine("  vfx-check <name> | --list <counts.txt> [--each]   (what the 3D view draws of an effect, what it skips, texture formats)");
     Console.WriteLine();
     Console.WriteLine("Parity and research");
     Console.WriteLine("  parity <builtDir> <referenceDir>|--fixture <name> [--mask-junk] [--json]");

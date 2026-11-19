@@ -516,8 +516,10 @@ public sealed partial class SceneWindow
                 _view3d.Camera.Yaw = cy >= 0 ? float.Parse(f[cy], System.Globalization.CultureInfo.InvariantCulture) : 0.5f;
                 _view3d.Invalidate();
                 for (var wait = 0; wait < 40 && !_view3d.ModelsSettled; wait++) await Task.Delay(100);
+                for (var wait = 0; wait < 100 && !_view3d.VfxSettled; wait++) { _view3d.Invalidate(); await Task.Delay(100); }
                 await Task.Delay(200);
                 Save3D(outDir, f[ci]);
+                await File.AppendAllTextAsync(Path.Combine(outDir, "shots.log"), $"{f[ci]}: {_view3d.FrameBreakdown}; {_view3d.VfxStats}{Environment.NewLine}");
             }
         }
         catch (Exception ex) { await File.WriteAllTextAsync(Path.Combine(outDir, "error.txt"), ex.ToString()); }

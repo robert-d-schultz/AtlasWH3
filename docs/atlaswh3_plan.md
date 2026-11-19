@@ -605,7 +605,7 @@ and the devastated project's `global_props[_sound]_devastation_<type>.bin` (they
 ### Phase 5: Editors on WH3 (3–5 weeks)
 
 Started 2026-10-11, after Phase 6. **Parked 2026-10-11 (the user):** the editors are a long-term stretch goal; the
-build comes first. The open items below stay as they are.
+build comes first. The open items below stay as they are. **Resumed 2026-11-18 (the user)** with VFX (5.7).
 
 - [x] 5.1 **Scene terrain on WH3** (`CampaignTerrain`): the 2D and 3D views draw the composited float `Height` map in
   world units, over x 0..world_width and z 0..h · (world_width / w) · 1.15476, as BOB's terrain provider maps the logic
@@ -663,6 +663,24 @@ build comes first. The open items below stay as they are.
     through: the z-fighting;
   - base tiles' ground (opaque climate + normal map) draws before the feature tiles', which it hid where it drew later;
   - `--shots` CSV takes optional pitch, yaw and tiles (off / features / all) columns.
+- [x] 5.7 **VFX in the 3D view** (resumed 2026-11-18, the user). AtlasWH3's own code: the Asset Editor has a VFX
+  viewer, but it is another contributor's, unlicensed, and on MonoGame, so it was not ported (the user's choice).
+  - `Formats/Vfx`: `VfxDocument` (quality-0 emitters, behaviour chains, render stacks, references; the packs' files are
+    UTF-16 with several roots) and `VfxCurve` (channels and min/max outputs; keys sorted, as some are written out of
+    time order).
+  - `Core/Rendering/Vfx`: `VfxLibrary` follows references (a reference that lists emitters plays only the ones it
+    enables; start-time ranges add up and are drawn per placed instance, so IEE's 1,124 shroud lightning bolts strike
+    at their own moments), `VfxEmitterReader` reads what the view draws, `VfxInstance` simulates and writes quads.
+    Forces are cm/s² (the common downward ones in vanilla are -500, -490.5, -98.1 and -981).
+  - What IEE needs, measured over its 34,272 placed effects with references followed: 94% of emitters are
+    `continuous_mesh`; the plain alpha views draw, dynamic lights (8%) and distortion (8%) draw no colour of their own,
+    rigid particles are 6%, decals almost none. With the view's subset, 25,337 placements (74%) put particles out within
+    10 s (`vfx-check --list`). The rest are lights, rigid particles, custom-shader skull fires, effects that fire once a
+    minute, and 11 placements whose emitter has no `EmissionRateCurve` (the game's default rate is unknown).
+  - Viewport: effects within their own CullDistances, the nearest 256, at most 8 started (warmed) a frame; 3.4–3.7 ms a
+    frame at an IEE settlement (`--shots` writes the numbers to `shots.log`). Particles draw premultiplied (additive =
+    alpha 0) after the water, depth-tested; colours past 0.5 ease toward 1 keeping their hue (no HDR in the view).
+  - Not done: lights, distortion, rigid particles, decals, soft edges, wind, vector fields, lit particles.
 - [ ] Left: the user still sees some overlapping on the tiles (not found; parked 2026-10-11); some props still draw black; tile meshes untextured; tile props (WH3's tile `bmd_data.bin` is BMD v26, which
   the 3K reader skips); culture-masked `ECTerrainHole`s; non-water polygon meshes.
 

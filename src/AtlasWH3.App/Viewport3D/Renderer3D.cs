@@ -261,6 +261,21 @@ public sealed class Renderer3D : IDisposable
         SpriteOut SpriteVS(SpriteIn i) { SpriteOut o; o.pos = float4(i.pos, 0, 1); o.uv = i.uv; return o; }
         float4 SpritePS(SpriteOut i) : SV_TARGET { return tex.SampleLevel(samp, i.uv, 0); }
 
+        // VFX particles: world-space quads built on the CPU; colour is premultiplied by alpha, col.a the share of the
+        // background covered (0 for additive). flags.x: the texture's rgb is already premultiplied.
+        struct PartIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
+        struct PartOut { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
+        PartOut ParticleVS(PartIn i) { PartOut o; o.pos = mul(float4(i.pos, 1), viewProj); o.uv = i.uv; o.col = i.col; return o; }
+        float4 ParticlePS(PartOut i) : SV_TARGET
+        {
+            float4 t = tex.Sample(samp, i.uv);
+            float3 c = (flags.x > 0.5 ? t.rgb : t.rgb * t.a) * i.col.rgb;
+            // No HDR here: a colour past 0.5 eases toward 1 keeping its hue (fire brightness runs to 20 and more).
+            float m = max(c.r, max(c.g, c.b));
+            if (m > 0.5) c *= (0.5 + 0.5 * (1 - exp(-(m - 0.5) * 2))) / m;
+            return float4(c, t.a * i.col.a);
+        }
+
         struct LineIn { float3 pos : POSITION; float4 col : COLOR; };
         struct LineOut { float4 pos : SV_POSITION; float4 col : COLOR; };
         LineOut LineVS(LineIn i) { LineOut o; o.pos = mul(float4(i.pos, 1), viewProj); o.col = i.col; return o; }
@@ -271,9 +286,12 @@ public sealed class Renderer3D : IDisposable
     public ID3D11DeviceContext Context { get; }
     public string AdapterName { get; }
 
-    private readonly ID3D11VertexShader _meshVs, _terrainVs, _lineVs, _tileVs, _spriteVs;
-    private readonly ID3D11PixelShader _meshPs, _terrainPs, _linePs, _tilePs, _spritePs;
-    private readonly ID3D11InputLayout _meshLayout, _terrainLayout, _lineLayout, _tileLayout, _spriteLayout;
+    private readonly ID3D11VertexShader _meshVs, _terrainVs, _lineVs, _tileVs, _spriteVs, _particleVs;
+    private readonly ID3D11PixelShader _meshPs, _terrainPs, _linePs, _tilePs, _spritePs, _particlePs;
+    private readonly ID3D11InputLayout _meshLayout, _terrainLayout, _lineLayout, _tileLayout, _spriteLayout, _particleLayout;
+    private readonly ID3D11BlendState _premultiplied;
+    private ID3D11Buffer? _particleBuffer;
+    private int _particleCapacity;
     private ID3D11Buffer? _spriteBuffer;
     private int _spriteCapacity;
     private readonly ID3D11Buffer _frameCb, _drawCb, _groundCb, _tileCb;
@@ -313,6 +331,15 @@ public sealed class Renderer3D : IDisposable
         var lineVs = Compile("LineVS", "vs_5_0");
         var tileVs = Compile("TileVS", "vs_5_0");
         var spriteVs = Compile("SpriteVS", "vs_5_0");
+        var particleVs = Compile("ParticleVS", "vs_5_0");
+        _particleVs = Device.CreateVertexShader(particleVs.Span);
+        _particlePs = Device.CreatePixelShader(Compile("ParticlePS", "ps_5_0").Span);
+        _particleLayout = Device.CreateInputLayout(
+        [
+            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+            new InputElementDescription("TEXCOORD", 0, Format.R32G32_Float, 12, 0),
+            new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 20, 0),
+        ], particleVs.Span);
         _spriteVs = Device.CreateVertexShader(spriteVs.Span);
         _spritePs = Device.CreatePixelShader(Compile("SpritePS", "ps_5_0").Span);
         _spriteLayout = Device.CreateInputLayout(
@@ -368,6 +395,7 @@ public sealed class Renderer3D : IDisposable
         _depthReadOnly = Device.CreateDepthStencilState(DepthStencilDescription.DepthRead);
         _opaque = Device.CreateBlendState(BlendDescription.Opaque);
         _alpha = Device.CreateBlendState(BlendDescription.NonPremultiplied);
+        _premultiplied = Device.CreateBlendState(BlendDescription.AlphaBlend);   // One, InvSrcAlpha
         _sampler = Device.CreateSamplerState(new SamplerDescription(Filter.Anisotropic, TextureAddressMode.Wrap, TextureAddressMode.Wrap, TextureAddressMode.Wrap) { MaxAnisotropy = 8, MaxLOD = float.MaxValue });
         _flatNormal = CreateTexture(1, 1, [255, 128, 0, 128]); // DXT5nm flat: x (alpha) = y (green) = 0.5
     }
@@ -790,6 +818,46 @@ public sealed class Renderer3D : IDisposable
         Context.Draw((uint)vertices.Length, 0);
     }
 
+    /// <summary>VFX particles: one upload of the frame's quads (6 vertices each), then a draw per range with its texture;
+    /// premultiplied blending (an additive particle writes alpha 0), depth tested but not written.</summary>
+    public void DrawParticles(ReadOnlySpan<AtlasWH3.Core.Rendering.Vfx.ParticleVertex> vertices,
+                              IReadOnlyList<(GpuTexture Texture, bool Premultiplied, int Start, int Count)> ranges)
+    {
+        if (vertices.Length == 0 || ranges.Count == 0) return;
+        var stride = Marshal.SizeOf<AtlasWH3.Core.Rendering.Vfx.ParticleVertex>();
+        if (_particleBuffer is null || _particleCapacity < vertices.Length)
+        {
+            _particleBuffer?.Dispose();
+            _particleCapacity = Math.Max(vertices.Length, Math.Max(6 * 4096, _particleCapacity * 2));
+            _particleBuffer = Device.CreateBuffer(new BufferDescription((uint)(_particleCapacity * stride), BindFlags.VertexBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write));
+        }
+        var map = Context.Map(_particleBuffer, 0, MapMode.WriteDiscard);
+        unsafe
+        {
+            fixed (AtlasWH3.Core.Rendering.Vfx.ParticleVertex* src = vertices)
+                Buffer.MemoryCopy(src, (void*)map.DataPointer, (long)_particleCapacity * stride, (long)vertices.Length * stride);
+        }
+        Context.Unmap(_particleBuffer, 0);
+        Context.OMSetDepthStencilState(_depthReadOnly);
+        Context.OMSetBlendState(_premultiplied);
+        Context.IASetInputLayout(_particleLayout);
+        Context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        Context.IASetVertexBuffer(0, _particleBuffer, (uint)stride);
+        Context.VSSetShader(_particleVs);
+        Context.PSSetShader(_particlePs);
+        foreach (var (texture, premultiplied, start, count) in ranges)
+        {
+            if (!texture.MipsGenerated)
+            {
+                Context.GenerateMips(texture.View);
+                texture.MipsGenerated = true;
+            }
+            Write(_drawCb, new DrawConstants { Flags = new Vector4(premultiplied ? 1 : 0, 0, 0, 0) });
+            Context.PSSetShaderResource(0, texture.View);
+            Context.Draw((uint)count, (uint)start);
+        }
+    }
+
     /// <summary>Screen-space textured quads (x, y in clip space, u, v per vertex; 6 per quad), alpha blended on
     /// top of everything (labels).</summary>
     public void DrawSprites(GpuTexture texture, ReadOnlySpan<float> vertices)
@@ -869,7 +937,8 @@ public sealed class Renderer3D : IDisposable
         _swapChain?.Dispose();
         _instanceBuffer?.Dispose();
         _lineBuffer?.Dispose();
-        foreach (var d in new IDisposable[] { _meshVs, _terrainVs, _lineVs, _meshPs, _terrainPs, _linePs, _meshLayout, _terrainLayout, _lineLayout,
+        _particleBuffer?.Dispose();
+        foreach (var d in new IDisposable[] { _particleVs, _particlePs, _particleLayout, _premultiplied, _meshVs, _terrainVs, _lineVs, _meshPs, _terrainPs, _linePs, _meshLayout, _terrainLayout, _lineLayout,
                                                _frameCb, _drawCb, _groundCb, _solid, _depthOn, _depthOff, _depthReadOnly, _opaque, _alpha, _sampler })
             d.Dispose();
         Context.Dispose();

@@ -19,7 +19,7 @@ namespace AtlasWH3.App.Viewport3D;
 /// the selection, Home frames everything. Edits are raised as <see cref="TransformsCommitted"/>; the window turns
 /// them into entity ops.
 /// </summary>
-public sealed class Viewport3DControl : Grid
+public sealed partial class Viewport3DControl : Grid
 {
     public enum GizmoMode { Move, Rotate, Scale }
 
@@ -166,6 +166,7 @@ public sealed class Viewport3DControl : Grid
         _tileRivers = null;
         _tileGround = null;
         _terrainRequested = false;
+        ResetVfx();
         FrameAll();
         Invalidate();
     }
@@ -190,6 +191,7 @@ public sealed class Viewport3DControl : Grid
         if (_model is null) return;
         _builtVersion = _model.Version;
         var items = new List<Item>();
+        var vfx = new List<VfxPlacement>();
         foreach (var it in _model.All)
         {
             var e = it.Entity;
@@ -227,8 +229,10 @@ public sealed class Viewport3DControl : Grid
             {
                 Parts = parts, PartBounds = partBounds,
             });
+            AddVfx(vfx, items[^1], e);
         }
         _items = items;
+        _vfxPlacements = vfx;
     }
 
     /// <summary>Prefab-space box around every part (its model box placed by the part transform, or a small box).</summary>
@@ -1200,6 +1204,8 @@ public sealed class Viewport3DControl : Grid
         // Real frame time (capped so a hitch doesn't jump the camera across the map).
         var dt = (float)Math.Min(0.25, (now - _lastFrame).TotalSeconds); // capped so a long hitch can't jump the camera; slow frames keep the speed
         _lastFrame = now;
+        _vfxPendingTime += dt;
+        if (ShowVfx && _vfxLive) _dirty = true;   // particles move every frame
         if (_keysDown.Count > 0)
         {
             var move = Vector3.Zero;
@@ -1344,6 +1350,7 @@ public sealed class Viewport3DControl : Grid
         if (_tileMesh is { } tm2 && _model.TilesShown != SceneModel.TileOverlay.Off) r.DrawColoured(tm2.V, tm2.I, tm2.Count);
         if (ShowWater && ShowTileMeshes && _tileRivers is { } trv) r.DrawColoured(trv.V, trv.I, trv.Count);
         if (ShowWater && _rivers is { } rv) r.DrawColoured(rv.V, rv.I, rv.Count);
+        DrawVfx(r, frustum, eye);
         foreach (var item in placeholders)
         {
             var isSelected = Selection.Contains(item.Id);
